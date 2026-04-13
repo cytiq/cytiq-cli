@@ -1,0 +1,7 @@
+[package]
+name = "cytiq-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cytiq-core = { path = "../cytiq-core" }

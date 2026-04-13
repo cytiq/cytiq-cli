@@ -5,8 +5,10 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/cytiq-cli/Cargo.toml crates/cytiq-cli/Cargo.toml
 COPY crates/cytiq-core/Cargo.toml crates/cytiq-core/Cargo.toml
+COPY crates/cytiq-fcs/Cargo.toml crates/cytiq-fcs/Cargo.toml
 COPY crates/cytiq-cli/src crates/cytiq-cli/src
 COPY crates/cytiq-core/src crates/cytiq-core/src
+COPY crates/cytiq-fcs/src crates/cytiq-fcs/src
 
 RUN cargo build --workspace --release
 

@@ -53,6 +53,24 @@ verify:
     just lint
     just test
 
+# ---- Start Docker
+[group('ci-cd')]
+docker-up:
+    @if command -v brew >/dev/null; then \
+        open -a Docker; \
+    else \
+        sudo systemctl start docker; \
+    fi
+
+# ---- Stop Docker
+[group('ci-cd')]
+docker-down:
+    @if command -v brew >/dev/null; then \
+        osascript -e 'quit app "Docker"'; \
+    else \
+        sudo systemctl stop docker; \
+    fi
+
 # ---- Build the Docker image
 [group('docker')]
 docker-build:

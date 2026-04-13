@@ -2,6 +2,7 @@
 members = [
     "crates/cytiq-cli",
     "crates/cytiq-core",
+    "crates/cytiq-fcs",
 ]
 resolver = "3"
 

@@ -3,5 +3,15 @@ name = "cytiq-cli"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "cytiq"
+path = "src/main.rs"
+
 [dependencies]
-cytiq-core = { path = "../cytiq-core" }
+clap = { version = "4.5.39", features = ["derive"] }
+cytiq-gate = { path = "../cytiq-gate" }
+
+[dev-dependencies]
+onnx-protobuf = "0.2.3"
+protobuf = "=3.4.0"
+tempfile = "3.23.0"

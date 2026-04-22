@@ -59,7 +59,7 @@ pub(crate) fn resolve_layout(
     version: FcsVersion,
     text: &FcsText,
 ) -> Result<ResolvedLayout, FcsError> {
-    let mode = required_value(text, "$MODE")?;
+    let mode = trimmed_required_value(text, "$MODE")?;
     if mode != "L" {
         return Err(FcsError::UnsupportedMode(mode.to_owned()));
     }
@@ -156,7 +156,7 @@ pub(crate) fn resolve_layout(
 }
 
 fn parse_data_type(value: &str) -> Result<ParameterDataType, FcsError> {
-    match value {
+    match value.trim() {
         "A" => Ok(ParameterDataType::Ascii),
         "I" => Ok(ParameterDataType::Integer),
         "F" => Ok(ParameterDataType::Float),
@@ -173,7 +173,8 @@ fn parse_width(
     width_value: &str,
     data_type: ParameterDataType,
 ) -> Result<(ParameterWidth, ParameterEncoding), FcsError> {
-    if width_value == "*" {
+    let trimmed_width = width_value.trim();
+    if trimmed_width == "*" {
         return if data_type == ParameterDataType::Ascii {
             Ok((
                 ParameterWidth::DelimitedAscii,
@@ -187,7 +188,7 @@ fn parse_width(
         };
     }
 
-    let width_number = width_value
+    let width_number = trimmed_width
         .parse::<u8>()
         .map_err(|_| FcsError::UnsupportedWidth {
             parameter,
@@ -259,9 +260,10 @@ fn parse_byte_order(
     raw_value: &str,
     numeric_width: usize,
 ) -> Result<ByteOrder, FcsError> {
+    let trimmed_value = raw_value.trim();
     match version {
-        FcsVersion::V3_0 => parse_ordered_byte_order(raw_value, numeric_width),
-        FcsVersion::V3_1 | FcsVersion::V3_2 => match raw_value {
+        FcsVersion::V3_0 => parse_ordered_byte_order(trimmed_value, numeric_width),
+        FcsVersion::V3_1 | FcsVersion::V3_2 => match trimmed_value {
             "1,2,3,4" => Ok(ByteOrder::LittleEndian),
             "4,3,2,1" => Ok(ByteOrder::BigEndian),
             _ => Err(FcsError::UnsupportedByteOrder(raw_value.to_owned())),
@@ -274,9 +276,14 @@ fn required_value<'a>(text: &'a FcsText, key: &str) -> Result<&'a str, FcsError>
         .ok_or_else(|| FcsError::MissingKeyword(key.to_owned()))
 }
 
+fn trimmed_required_value<'a>(text: &'a FcsText, key: &str) -> Result<&'a str, FcsError> {
+    Ok(required_value(text, key)?.trim())
+}
+
 fn parse_required_usize(text: &FcsText, key: &str) -> Result<usize, FcsError> {
     let value = required_value(text, key)?;
     value
+        .trim()
         .parse::<usize>()
         .map_err(|_| FcsError::InvalidKeywordValue {
             key: key.to_owned(),
@@ -329,6 +336,7 @@ fn parse_ordered_byte_order(raw_value: &str, numeric_width: usize) -> Result<Byt
 
     let components = raw_value
         .split(',')
+        .map(str::trim)
         .map(str::parse::<usize>)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| FcsError::UnsupportedByteOrder(raw_value.to_owned()))?;

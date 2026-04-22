@@ -24,3 +24,5 @@ tmp/
 # OS files
 .DS_Store
 Thumbs.db
+
+run.sh

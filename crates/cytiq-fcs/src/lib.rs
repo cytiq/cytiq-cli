@@ -9,17 +9,19 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use log::debug;
+
 use crate::data::{decode_data, read_raw_segment};
 use crate::error::FcsError;
 use crate::header::read_header;
 use crate::layout::resolve_layout;
 use crate::text::{build_text, parse_segment_range, read_text_segment};
-use crate::types::{ByteRange, FcsDataset, FcsText, Header};
+use crate::types::{ByteRange, FcsText, Header};
 
 pub use crate::error::FcsError as Error;
 pub use crate::types::{
-    ColumnData, EventColumns, FcsText as Text, FcsVersion, Parameter, ParameterDataType,
-    ParameterWidth, TextSegment,
+    ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,
+    ParameterDataType, ParameterWidth, TextSegment,
 };
 
 #[derive(Debug)]
@@ -34,6 +36,7 @@ impl FcsReader<File> {
     ///
     /// Returns an error when the file cannot be opened for reading.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, FcsError> {
+        debug!("opening FCS file {}", path.as_ref().display());
         let reader = File::open(path).map_err(FcsError::Io)?;
         Ok(Self::new(reader))
     }
@@ -87,6 +90,15 @@ impl<R: Read + Seek> FcsReader<R> {
         let analysis = analysis_range
             .map(|range| read_raw_segment(&mut self.reader, range))
             .transpose()?;
+
+        let event_count = data.columns.first().map_or(0, ColumnData::len);
+        debug!(
+            "parsed FCS dataset: version={:?}, parameters={}, events={}, analysis_bytes={}",
+            header.version,
+            parameters.len(),
+            event_count,
+            analysis.as_ref().map_or(0, Vec::len)
+        );
 
         Ok(FcsDataset {
             version: header.version,

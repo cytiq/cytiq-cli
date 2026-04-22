@@ -140,6 +140,33 @@ fn parses_escaped_text_delimiter() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn parses_whitespace_padded_layout_keywords() -> Result<(), Box<dyn Error>> {
+    let bytes = build_fcs(
+        "FCS3.1",
+        vec![
+            ("$BYTEORD", "1,2,3,4   "),
+            ("$DATATYPE", "I   "),
+            ("$MODE", "L   "),
+            ("$NEXTDATA", "00000000"),
+            ("$PAR", "1   "),
+            ("$TOT", "1               "),
+            ("$P1B", "16   "),
+            ("$P1E", "0,0"),
+            ("$P1N", "Time"),
+            ("$P1R", "1024"),
+        ],
+        None,
+        encode_u16_rows(&[[42]], true),
+        None,
+    );
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    assert_uint_column(dataset.data.column(0), &[42]);
+
+    Ok(())
+}
+
+#[test]
 fn rejects_duplicate_keywords() {
     let bytes = build_fcs(
         "FCS3.1",
@@ -196,9 +223,37 @@ fn rejects_header_text_offset_mismatch() {
 }
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/fixtures/fcs")
-        .join(name)
+    fixture_dir().join(name)
+}
+
+fn fixture_dir() -> PathBuf {
+    for start in fixture_search_roots() {
+        for candidate in start
+            .ancestors()
+            .map(|ancestor| ancestor.join("data").join("fixtures").join("fcs"))
+        {
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+
+    panic!("fixture directory should exist: data/fixtures/fcs");
+}
+
+fn fixture_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        roots.push(current_dir);
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        roots.push(current_exe);
+    }
+
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    roots
 }
 
 fn assert_uint_column(column: Option<&ColumnData>, expected: &[u64]) {

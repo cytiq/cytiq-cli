@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+log = "0.4.28"
 thiserror = "2.0.17"
 
 [lints]

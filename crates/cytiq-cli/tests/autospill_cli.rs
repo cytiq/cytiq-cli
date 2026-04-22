@@ -6,8 +6,8 @@ use std::process::Command;
 
 #[test]
 fn cli_writes_csv_tsv_and_parquet_outputs() {
-    let directory = support::create_temp_dir("cytiq-cli-success");
-    let manifest_path = support::write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
+    let directory = support::copy_autospill_fixture_set("cytiq-cli-success");
+    let manifest_path = directory.join("controls.csv");
 
     let csv_path = directory.join("matrix.csv");
     run_success(&manifest_path, &directory, &csv_path);

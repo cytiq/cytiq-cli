@@ -10,8 +10,8 @@ use cytiq_autospill::{
 
 #[test]
 fn runner_matches_synthetic_spillover_fixture() {
-    let directory = support::create_temp_dir("autospill-runner");
-    let manifest_path = support::write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
+    let directory = support::autospill_fixture_dir();
+    let manifest_path = directory.join("controls.csv");
     let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
 
     let result = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
@@ -20,14 +20,14 @@ fn runner_matches_synthetic_spillover_fixture() {
     assert_eq!(result.channels, vec!["FL1-A", "FL2-A"]);
     assert_close(result.spillover_matrix[0][1], 0.2, 1e-6);
     assert_close(result.spillover_matrix[1][0], 0.1, 1e-6);
-    assert_close(
-        result.compensation_matrix[0][0],
-        1.020_408_163_265_306,
+    assert_matrix_csv(
+        &result.compensation_matrix,
+        &support::read_fixture_text("expected_compensation.csv"),
         1e-9,
     );
-    assert_close(
-        result.compensation_matrix[0][1],
-        -0.204_081_632_653_061_2,
+    assert_matrix_csv(
+        &result.spillover_matrix,
+        &support::read_fixture_text("expected_spillover.csv"),
         1e-9,
     );
     assert!(
@@ -53,8 +53,8 @@ fn runner_matches_synthetic_spillover_fixture() {
 
 #[test]
 fn export_matrix_writes_parquet_magic_bytes() {
-    let directory = support::create_temp_dir("autospill-parquet");
-    let manifest_path = support::write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
+    let directory = support::copy_autospill_fixture_set("autospill-parquet");
+    let manifest_path = directory.join("controls.csv");
     let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
     let result = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
         .expect("autospill should succeed");
@@ -104,4 +104,28 @@ fn assert_close(actual: f64, expected: f64, tolerance: f64) {
         delta <= tolerance,
         "expected {expected} +/- {tolerance}, got {actual} (|delta|={delta})"
     );
+}
+
+fn assert_matrix_csv(actual: &[Vec<f64>], expected_csv: &str, tolerance: f64) {
+    let rows = expected_csv
+        .lines()
+        .skip(1)
+        .map(|line| {
+            line.split(',')
+                .skip(1)
+                .map(|value| {
+                    value
+                        .parse::<f64>()
+                        .expect("fixture matrix value should parse")
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actual.len(), rows.len());
+    for (actual_row, expected_row) in actual.iter().zip(rows) {
+        assert_eq!(actual_row.len(), expected_row.len());
+        for (actual_value, expected_value) in actual_row.iter().zip(expected_row) {
+            assert_close(*actual_value, expected_value, tolerance);
+        }
+    }
 }

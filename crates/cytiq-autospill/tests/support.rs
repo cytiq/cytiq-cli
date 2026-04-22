@@ -1,4 +1,5 @@
 #![allow(
+    dead_code,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::missing_panics_doc,
@@ -11,6 +12,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const DELIMITER: u8 = b'|';
 
+pub fn autospill_fixture_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill")
+}
+
 pub fn create_temp_dir(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -18,6 +23,16 @@ pub fn create_temp_dir(label: &str) -> PathBuf {
         .as_nanos();
     let directory = std::env::temp_dir().join(format!("cytiq-{label}-{unique}"));
     fs::create_dir_all(&directory).expect("temporary directory should be created");
+    directory
+}
+
+pub fn copy_autospill_fixture_set(label: &str) -> PathBuf {
+    let directory = create_temp_dir(label);
+    let fixture_dir = autospill_fixture_dir();
+    for name in ["control_a.fcs", "control_b.fcs", "controls.csv"] {
+        fs::copy(fixture_dir.join(name), directory.join(name))
+            .expect("fixture file should copy into temp dir");
+    }
     directory
 }
 
@@ -44,6 +59,10 @@ pub fn write_two_control_fixture(directory: &Path, spillover: [[f64; 2]; 2]) -> 
 
 pub fn write_text(path: &Path, contents: &str) {
     fs::write(path, contents).expect("text fixture should be written");
+}
+
+pub fn read_fixture_text(name: &str) -> String {
+    fs::read_to_string(autospill_fixture_dir().join(name)).expect("fixture text should exist")
 }
 
 fn build_control_bytes(primary_index: usize, spillover_row: [f64; 2]) -> Vec<u8> {

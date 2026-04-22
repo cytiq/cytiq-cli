@@ -410,6 +410,7 @@ pub(crate) fn write_autospill_debug_artifacts(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn write_autospread_debug_artifacts(
     debug_dir: &Path,
     loaded: &LoadedControls,

@@ -125,6 +125,7 @@ fn main() -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run() -> Result<(), AutospillError> {
     let cli = Cli::parse();
     match cli.command {

@@ -5,14 +5,13 @@
 )]
 
 use std::collections::HashSet;
-use std::env;
 use std::path::{Path, PathBuf};
-use std::thread;
 
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
 use log::{debug, info};
 use nalgebra::DMatrix;
 use ndarray::Array2;
+use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::error::AutospillError;
@@ -885,6 +884,7 @@ fn estimate_spillover(
     ))
 }
 
+#[allow(clippy::too_many_lines)]
 fn refine_spillover(
     loaded: &LoadedControls,
     gates: &[GateComputation],
@@ -957,8 +957,7 @@ fn refine_spillover(
             delta_change,
         });
         debug!(
-            "refinement iteration {}: scale={:?}, lambda={:.6}, delta={:.6}, delta_max={:.6}, delta_change={:.6}",
-            iteration, scale, lambda, delta, delta_max, delta_change
+            "refinement iteration {iteration}: scale={scale:?}, lambda={lambda:.6}, delta={delta:.6}, delta_max={delta_max:.6}, delta_change={delta_change:.6}"
         );
 
         if scale == RefinementScale::Linear && delta_max < delta_threshold {
@@ -999,8 +998,7 @@ fn refine_spillover(
             }
 
             info!(
-                "spillover refinement converged after {} iterations with final delta_max {:.6}",
-                iteration, delta_max
+                "spillover refinement converged after {iteration} iterations with final delta_max {delta_max:.6}"
             );
             return Ok((
                 spillover_current,
@@ -1143,7 +1141,7 @@ fn estimate_spread_matrix(
 
         let mut coefficients = vec![0.0; detector_count];
         let mut non_zero_coefficients = 0_usize;
-        for detector_index in 0..detector_count {
+        for (detector_index, coefficient_slot) in coefficients.iter_mut().enumerate() {
             if detector_index == control.primary_detector_index {
                 continue;
             }
@@ -1198,7 +1196,7 @@ fn estimate_spread_matrix(
             if coefficient > 0.0 {
                 non_zero_coefficients += 1;
             }
-            coefficients[detector_index] = coefficient;
+            *coefficient_slot = coefficient;
         }
 
         let stats = SpreadStats {
@@ -1323,10 +1321,9 @@ where
     T: Sync,
     U: Send,
     E: Send,
-    F: Fn(usize, &T) -> Result<U, E> + Sync,
+    F: Fn(usize, &T) -> Result<U, E> + Sync + Send,
 {
-    let worker_count = configured_worker_count(items.len());
-    if worker_count == 1 {
+    if items.len() < 2 {
         return items
             .iter()
             .enumerate()
@@ -1334,52 +1331,14 @@ where
             .collect();
     }
 
-    let chunk_size = items.len().div_ceil(worker_count);
-    debug!(
-        "parallelizing {stage} across {worker_count} worker threads for {} tasks",
-        items.len()
-    );
-    thread::scope(|scope| {
-        let worker = &worker;
-        let handles = items
-            .chunks(chunk_size)
-            .enumerate()
-            .map(|(chunk_index, chunk)| {
-                let start = chunk_index * chunk_size;
-                scope.spawn(move || {
-                    chunk
-                        .iter()
-                        .enumerate()
-                        .map(|(offset, item)| worker(start + offset, item))
-                        .collect::<Result<Vec<_>, E>>()
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut results = Vec::with_capacity(items.len());
-        for handle in handles {
-            let chunk_values = match handle.join() {
-                Ok(values) => values,
-                Err(payload) => std::panic::resume_unwind(payload),
-            }?;
-            results.extend(chunk_values);
-        }
-        Ok(results)
-    })
-}
-
-fn configured_worker_count(task_count: usize) -> usize {
-    if task_count < 2 {
-        return 1;
-    }
-
-    let detected = thread::available_parallelism().map_or(1, |parallelism| parallelism.get());
-    let requested = env::var("CYTIQ_THREADS")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(detected);
-    requested.min(detected).min(task_count).max(1)
+    debug!("parallelizing {stage} with rayon for {} tasks", items.len());
+    items
+        .par_iter()
+        .enumerate()
+        .map(|(index, item)| worker(index, item))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn dmat_to_array2(matrix: &DMatrix<f64>) -> Array2<f64> {
@@ -1428,4 +1387,37 @@ pub(crate) fn quantile_bins(values: &[f64], requested_bins: usize) -> Vec<Vec<us
 
 pub(crate) fn sqrt_like_transform(value: f64) -> f64 {
     value.signum() * ((value.abs() + 1.0).sqrt() - 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parallel_try_map;
+
+    #[test]
+    fn parallel_try_map_preserves_input_order() {
+        let values = [7, 3, 9, 1];
+        let mapped = parallel_try_map(&values, "test", |index, value| {
+            Ok::<_, &'static str>(format!("{index}:{value}"))
+        })
+        .expect("parallel map should succeed");
+
+        assert_eq!(mapped, vec!["0:7", "1:3", "2:9", "3:1"]);
+    }
+
+    #[test]
+    fn parallel_try_map_collects_errors_in_input_order() {
+        let values = [0, 1, 2];
+        let error = parallel_try_map(&values, "test", |index, value| {
+            if *value == 1 {
+                Err("expected error")
+            } else if index == 2 {
+                Err("later error")
+            } else {
+                Ok(*value)
+            }
+        })
+        .expect_err("parallel map should surface the first ordered error");
+
+        assert_eq!(error, "expected error");
+    }
 }

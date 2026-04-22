@@ -49,25 +49,31 @@ cytiq autospread \
   --debug-dir ./debug
 ```
 
+Logging:
+- default level is `info` on an interactive terminal and `warn` otherwise
+- override with `CYTIQ_LOG=debug` or `RUST_LOG=debug`
+- logs are written to stderr
+
 ### Controls Manifest
 
 The controls manifest is a CSV with the following columns:
 
 ```csv
-filename,dye,primary_channel,antigen,control_kind,wavelength
-control_a.fcs,FITC,FL1-A,CD3,single_color,530
-control_b.fcs,PE,FL2-A,CD19,single_color,585
-unstained.fcs,Autofluorescence,FL3-A,,autofluorescence,670
+filename,dye
+control_a.fcs,FITC
+control_b.fcs,PE
+unstained.fcs,Autofluorescence
 ```
 
 Rules:
 - `filename` is relative to `--input-dir`
 - `dye` values must be unique
-- `primary_channel` values must be unique
-- `antigen` is optional metadata only
-- `control_kind` is optional and defaults to `single_color`
-- `wavelength` is optional metadata used in labels/debugging
-- for `autofluorescence`, `primary_channel` may be a synthetic detector name present in `--detectors`
+- `primary_channel` is inferred from FCS metadata by matching `dye` against `$PnN` first, then `$PnS`
+- inferred channels are always exported/reported using the canonical short name from `$PnN`
+- matching is case-insensitive and strips one trailing measurement suffix such as `-A`, `-H`, or `-W`
+- `dye=Autofluorescence` is a reserved control name for synthetic autofluorescence handling
+- for `Autofluorescence`, `--detectors` is required and the synthetic channel is inferred as the only detector not present in the FCS metadata
+- legacy extra manifest columns are tolerated on read but ignored
 
 Optional detectors manifest:
 
@@ -78,7 +84,7 @@ FL2-A,PE detector,585
 FL3-A,APC detector,670
 ```
 
-If omitted, detector order defaults to the manifest `primary_channel` order.
+If omitted, detector order defaults to the inferred `primary_channel` order.
 
 Optional transform manifest:
 
@@ -92,7 +98,7 @@ PE,256,262144,4.418539922,0,-100
 
 Default `autospill` export is the compensation matrix.
 
-When detector order matches the manifest `primary_channel` order, export stays backward-compatible and square:
+When detector order matches the inferred `primary_channel` order, export stays backward-compatible and square:
 - rows and columns use the same channel names
 - channel order follows the manifest order
 

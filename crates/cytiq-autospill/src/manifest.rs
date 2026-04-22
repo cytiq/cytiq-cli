@@ -5,24 +5,10 @@ use serde::Deserialize;
 
 use crate::error::AutospillError;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ControlKind {
-    #[default]
-    SingleColor,
-    Autofluorescence,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct ControlsManifestRow {
     pub filename: String,
     pub dye: String,
-    pub primary_channel: String,
-    #[serde(default, deserialize_with = "empty_string_is_none")]
-    pub antigen: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_control_kind")]
-    pub control_kind: ControlKind,
-    #[serde(default)]
-    pub wavelength: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -132,7 +118,6 @@ fn validate_controls_manifest(rows: &[ControlsManifestRow]) -> Result<(), Autosp
     }
 
     let mut seen_dyes = HashSet::new();
-    let mut seen_channels = HashSet::new();
     for (index, row) in rows.iter().enumerate() {
         let row_number = index + 1;
         if row.filename.trim().is_empty() {
@@ -153,20 +138,9 @@ fn validate_controls_manifest(rows: &[ControlsManifestRow]) -> Result<(), Autosp
                 field: "dye",
             });
         }
-        if row.primary_channel.trim().is_empty() {
-            return Err(AutospillError::EmptyManifestField {
-                row: row_number,
-                field: "primary_channel",
-            });
-        }
         if !seen_dyes.insert(row.dye.clone()) {
             return Err(AutospillError::DuplicateDye {
                 value: row.dye.clone(),
-            });
-        }
-        if !seen_channels.insert(row.primary_channel.clone()) {
-            return Err(AutospillError::DuplicatePrimaryChannel {
-                value: row.primary_channel.clone(),
             });
         }
     }
@@ -233,72 +207,59 @@ where
     }))
 }
 
-fn deserialize_control_kind<'de, D>(deserializer: D) -> Result<ControlKind, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<String>::deserialize(deserializer)?;
-    let Some(value) = value else {
-        return Ok(ControlKind::SingleColor);
-    };
-
-    match value.trim() {
-        "" | "single_color" => Ok(ControlKind::SingleColor),
-        "autofluorescence" => Ok(ControlKind::Autofluorescence),
-        other => Err(serde::de::Error::custom(format!(
-            "unsupported control_kind `{other}`"
-        ))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ControlKind, ControlsManifestRow, DetectorSpec, TransformSpec};
+    use std::io::Cursor;
+
+    use super::{ControlsManifestRow, DetectorSpec, TransformSpec};
     use crate::error::AutospillError;
 
     fn validate(rows: &[ControlsManifestRow]) -> Result<(), AutospillError> {
         super::validate_controls_manifest(rows)
     }
 
-    fn row(filename: &str, dye: &str, channel: &str) -> ControlsManifestRow {
+    fn row(filename: &str, dye: &str) -> ControlsManifestRow {
         ControlsManifestRow {
             filename: filename.to_owned(),
             dye: dye.to_owned(),
-            primary_channel: channel.to_owned(),
-            antigen: None,
-            control_kind: ControlKind::SingleColor,
-            wavelength: None,
         }
     }
 
     #[test]
     fn rejects_duplicate_dyes() {
-        let rows = vec![row("a.fcs", "FITC", "FL1-A"), row("b.fcs", "FITC", "FL2-A")];
+        let rows = vec![row("a.fcs", "FITC"), row("b.fcs", "FITC")];
         let error = validate(&rows).expect_err("duplicate dye should fail");
         assert!(matches!(error, AutospillError::DuplicateDye { .. }));
     }
 
     #[test]
-    fn rejects_duplicate_primary_channels() {
-        let rows = vec![row("a.fcs", "FITC", "FL1-A"), row("b.fcs", "PE", "FL1-A")];
-        let error = validate(&rows).expect_err("duplicate primary channel should fail");
+    fn rejects_empty_dye() {
+        let rows = vec![row("a.fcs", "")];
+        let error = validate(&rows).expect_err("empty dye should fail");
         assert!(matches!(
             error,
-            AutospillError::DuplicatePrimaryChannel { .. }
+            AutospillError::EmptyManifestField { field: "dye", .. }
         ));
     }
 
     #[test]
-    fn rejects_empty_primary_channel() {
-        let rows = vec![row("a.fcs", "FITC", "")];
-        let error = validate(&rows).expect_err("empty primary channel should fail");
-        assert!(matches!(
-            error,
-            AutospillError::EmptyManifestField {
-                field: "primary_channel",
-                ..
-            }
+    fn deserializes_legacy_extra_columns() {
+        let mut reader = csv::Reader::from_reader(Cursor::new(
+            "filename,dye,primary_channel,antigen,control_kind,wavelength\ncontrol_a.fcs,FITC,FL1-A,CD3,single_color,530\n",
         ));
+        let row: ControlsManifestRow = reader
+            .deserialize()
+            .next()
+            .expect("row should exist")
+            .expect("row should deserialize");
+
+        assert_eq!(
+            row,
+            ControlsManifestRow {
+                filename: "control_a.fcs".to_owned(),
+                dye: "FITC".to_owned(),
+            }
+        );
     }
 
     #[test]

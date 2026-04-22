@@ -140,6 +140,33 @@ fn parses_escaped_text_delimiter() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn parses_whitespace_padded_layout_keywords() -> Result<(), Box<dyn Error>> {
+    let bytes = build_fcs(
+        "FCS3.1",
+        vec![
+            ("$BYTEORD", "1,2,3,4   "),
+            ("$DATATYPE", "I   "),
+            ("$MODE", "L   "),
+            ("$NEXTDATA", "00000000"),
+            ("$PAR", "1   "),
+            ("$TOT", "1               "),
+            ("$P1B", "16   "),
+            ("$P1E", "0,0"),
+            ("$P1N", "Time"),
+            ("$P1R", "1024"),
+        ],
+        None,
+        encode_u16_rows(&[[42]], true),
+        None,
+    );
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    assert_uint_column(dataset.data.column(0), &[42]);
+
+    Ok(())
+}
+
+#[test]
 fn rejects_duplicate_keywords() {
     let bytes = build_fcs(
         "FCS3.1",

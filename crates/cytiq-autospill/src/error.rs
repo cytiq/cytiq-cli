@@ -36,7 +36,7 @@ pub enum AutospillError {
     AbsoluteManifestFilename { row: usize, filename: String },
     #[error("duplicate `dye` value `{value}` in controls manifest")]
     DuplicateDye { value: String },
-    #[error("duplicate `primary_channel` value `{value}` in controls manifest")]
+    #[error("duplicate inferred `primary_channel` value `{value}` across controls")]
     DuplicatePrimaryChannel { value: String },
     #[error("duplicate detector channel `{value}` in detectors manifest")]
     DuplicateDetectorChannel { value: String },
@@ -52,6 +52,33 @@ pub enum AutospillError {
     },
     #[error("control `{path}` has no events")]
     EmptyControl { path: PathBuf },
+    #[error(
+        "could not infer `primary_channel` for dye `{dye}` in `{path}`; available channels: {available_channels:?}"
+    )]
+    PrimaryChannelNotFound {
+        path: PathBuf,
+        dye: String,
+        available_channels: Vec<String>,
+    },
+    #[error(
+        "dye `{dye}` in `{path}` matched multiple channels while inferring `primary_channel`: {matches:?}"
+    )]
+    AmbiguousPrimaryChannel {
+        path: PathBuf,
+        dye: String,
+        matches: Vec<String>,
+    },
+    #[error(
+        "autofluorescence control `{path}` requires `--detectors` so a synthetic `primary_channel` can be inferred"
+    )]
+    AutofluorescenceRequiresDetectors { path: PathBuf },
+    #[error(
+        "autofluorescence control `{path}` requires exactly one synthetic detector absent from the FCS metadata, found {candidates:?}"
+    )]
+    AutofluorescenceDetectorResolution {
+        path: PathBuf,
+        candidates: Vec<String>,
+    },
     #[error("channel `{channel}` was not found in `{path}`")]
     MissingChannel { path: PathBuf, channel: String },
     #[error("detector channel `{channel}` was not declared")]

@@ -11,7 +11,7 @@ use cytiq_autospill::{
 
 #[test]
 fn runner_matches_synthetic_spillover_fixture() {
-    let directory = support::autospill_fixture_dir();
+    let directory = support::copy_autospill_fixture_set("autospill-fixture");
     let manifest_path = directory.join("controls.csv");
     let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
 
@@ -71,26 +71,101 @@ fn export_matrix_writes_parquet_magic_bytes() {
 }
 
 #[test]
-fn runner_reports_missing_primary_channel() {
+fn runner_reports_unmatched_primary_channel_from_fcs_metadata() {
     let directory = support::create_temp_dir("autospill-missing-channel");
-    let manifest_path = support::write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
-    support::write_text(
-        &manifest_path,
-        "filename,dye,primary_channel\ncontrol_a.fcs,FITC,FL1-A\ncontrol_b.fcs,PE,FL9-A\n",
+    let detector_labels = vec![None, None];
+    support::write_control_file(
+        &directory,
+        "control_a.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FL1-A", "FL2-A"],
+        &detector_labels,
     );
+    let manifest_path = support::write_manifest_rows(&directory, &[("control_a.fcs", "FITC")]);
     let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
 
     let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
         .expect_err("missing channel should fail");
-    assert!(
-        matches!(
-            error,
-            AutospillError::MissingChannel { ref channel, .. } if channel == "FL9-A"
-        ) || matches!(
-            error,
-            AutospillError::MissingDetector { ref channel } if channel == "FL9-A"
-        )
+    assert!(matches!(
+        error,
+        AutospillError::PrimaryChannelNotFound { ref dye, .. } if dye == "FITC"
+    ));
+}
+
+#[test]
+fn runner_reports_ambiguous_primary_channel_from_fcs_metadata() {
+    let directory = support::create_temp_dir("autospill-ambiguous-channel");
+    let detector_labels = vec![None, None];
+    support::write_control_file(
+        &directory,
+        "control_fitc.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FITC-A", "FITC-H"],
+        &detector_labels,
     );
+    let manifest_path = support::write_manifest_rows(&directory, &[("control_fitc.fcs", "FITC")]);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+
+    let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
+        .expect_err("ambiguous channel should fail");
+    assert!(matches!(
+        error,
+        AutospillError::AmbiguousPrimaryChannel { ref dye, .. } if dye == "FITC"
+    ));
+}
+
+#[test]
+fn runner_infers_primary_channel_from_short_name() {
+    let directory = support::create_temp_dir("autospill-short-name");
+    let manifest_path = support::write_control_fixture_set(
+        &directory,
+        &["FITC", "PE"],
+        &["FITC-A", "PE-A"],
+        &["FITC-A", "PE-A"],
+        &[vec![1.0, 0.2], vec![0.1, 1.0]],
+        None,
+    );
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+
+    let result = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
+        .expect("autospill should infer short names");
+
+    assert_eq!(result.primary_channels, vec!["FITC-A", "PE-A"]);
+}
+
+#[test]
+fn runner_reports_duplicate_inferred_primary_channels() {
+    let directory = support::create_temp_dir("autospill-duplicate-channel");
+    support::write_control_file(
+        &directory,
+        "control_fitc.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FL1-A", "FL2-A"],
+        &[Some("FITC".to_owned()), None],
+    );
+    support::write_control_file(
+        &directory,
+        "control_pe.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FL1-A", "FL2-A"],
+        &[Some("PE".to_owned()), None],
+    );
+    let manifest_path = support::write_manifest_rows(
+        &directory,
+        &[("control_fitc.fcs", "FITC"), ("control_pe.fcs", "PE")],
+    );
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+
+    let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
+        .expect_err("duplicate inferred primary channel should fail");
+    assert!(matches!(
+        error,
+        AutospillError::DuplicatePrimaryChannel { ref value } if value == "FL1-A"
+    ));
 }
 
 #[test]
@@ -151,6 +226,44 @@ fn runner_supports_autofluorescence_controls() {
     assert_close(result.spillover_matrix[2][2], 1.0, 1e-9);
     assert!(result.spillover_matrix[2][0] > 0.0);
     assert!(result.spillover_matrix[2][1] > 0.0);
+}
+
+#[test]
+fn runner_requires_detectors_for_autofluorescence_controls() {
+    let directory = support::create_temp_dir("autospill-autofluorescence-no-detectors");
+    let (manifest_path, _) = support::write_autofluorescence_fixture(&directory);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+
+    let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
+        .expect_err("autofluorescence without detectors should fail");
+    assert!(matches!(
+        error,
+        AutospillError::AutofluorescenceRequiresDetectors { .. }
+    ));
+}
+
+#[test]
+fn runner_reports_ambiguous_autofluorescence_detector() {
+    let directory = support::create_temp_dir("autospill-autofluorescence-ambiguous");
+    let (manifest_path, detectors_path) = support::write_autofluorescence_fixture(&directory);
+    support::write_text(
+        &detectors_path,
+        "channel,label,wavelength\nFL1-A,FITC detector,530\nFL2-A,PE detector,585\nAF-A,Autofluorescence A,670\nAF-B,Autofluorescence B,710\n",
+    );
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let config = AutospillConfig {
+        detectors,
+        ..AutospillConfig::default()
+    };
+
+    let error = AutospillRunner::run(&manifest, &directory, &config)
+        .expect_err("ambiguous autofluorescence detector should fail");
+    assert!(matches!(
+        error,
+        AutospillError::AutofluorescenceDetectorResolution { ref candidates, .. }
+            if candidates == &vec!["AF-A".to_owned(), "AF-B".to_owned()]
+    ));
 }
 
 #[test]

@@ -46,35 +46,34 @@ pub fn create_temp_dir(label: &str) -> PathBuf {
 
 pub fn copy_autospill_fixture_set(label: &str) -> PathBuf {
     let directory = create_temp_dir(label);
-    copy_fixture_set(&autospill_fixture_dir(), &directory);
+    let _ = write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
     directory
 }
 
 pub fn copy_autospread_fixture_set(label: &str) -> PathBuf {
     let directory = create_temp_dir(label);
-    copy_fixture_set(&autospread_fixture_dir(), &directory);
+    let _ = write_autospread_fixture(&directory);
     directory
 }
 
 pub fn write_two_control_fixture(directory: &Path, spillover: [[f64; 2]; 2]) -> PathBuf {
+    let detector_labels =
+        detector_labels(&DEFAULT_DYES, &DEFAULT_PRIMARY_CHANNELS, &DEFAULT_DETECTORS);
     fs::write(
         directory.join("control_a.fcs"),
-        build_control_bytes(0, &spillover[0], None, &DEFAULT_DETECTORS),
+        build_control_bytes(0, &spillover[0], None, &DEFAULT_DETECTORS, &detector_labels),
     )
     .expect("first control should be written");
     fs::write(
         directory.join("control_b.fcs"),
-        build_control_bytes(1, &spillover[1], None, &DEFAULT_DETECTORS),
+        build_control_bytes(1, &spillover[1], None, &DEFAULT_DETECTORS, &detector_labels),
     )
     .expect("second control should be written");
 
-    let manifest_path = directory.join("controls.csv");
-    fs::write(
-        &manifest_path,
-        "filename,dye,primary_channel,antigen\ncontrol_a.fcs,FITC,FL1-A,CD3\ncontrol_b.fcs,PE,FL2-A,CD19\n",
+    write_manifest_rows(
+        directory,
+        &[("control_a.fcs", "FITC"), ("control_b.fcs", "PE")],
     )
-    .expect("manifest should be written");
-    manifest_path
 }
 
 pub fn write_rectangular_autospill_fixture(directory: &Path) -> (PathBuf, PathBuf) {
@@ -104,26 +103,50 @@ pub fn write_autospread_fixture(directory: &Path) -> (PathBuf, PathBuf) {
 }
 
 pub fn write_autofluorescence_fixture(directory: &Path) -> (PathBuf, PathBuf) {
+    let detector_labels = detector_labels(
+        &DEFAULT_DYES,
+        &DEFAULT_PRIMARY_CHANNELS,
+        &AUTOFLUORESCENCE_REAL_DETECTORS,
+    );
     fs::write(
         directory.join("control_fitc.fcs"),
-        build_control_bytes(0, &[1.0, 0.2], None, &AUTOFLUORESCENCE_REAL_DETECTORS),
+        build_control_bytes(
+            0,
+            &[1.0, 0.2],
+            None,
+            &AUTOFLUORESCENCE_REAL_DETECTORS,
+            &detector_labels,
+        ),
     )
     .expect("fitc control should be written");
     fs::write(
         directory.join("control_pe.fcs"),
-        build_control_bytes(1, &[0.1, 1.0], None, &AUTOFLUORESCENCE_REAL_DETECTORS),
+        build_control_bytes(
+            1,
+            &[0.1, 1.0],
+            None,
+            &AUTOFLUORESCENCE_REAL_DETECTORS,
+            &detector_labels,
+        ),
     )
     .expect("pe control should be written");
     fs::write(
         directory.join("unstained.fcs"),
-        build_autofluorescence_control_bytes(&AUTOFLUORESCENCE_REAL_DETECTORS, &[0.6, 0.4]),
+        build_autofluorescence_control_bytes(
+            &AUTOFLUORESCENCE_REAL_DETECTORS,
+            &[0.6, 0.4],
+            &detector_labels,
+        ),
     )
     .expect("autofluorescence control should be written");
 
-    let manifest_path = directory.join("controls.csv");
-    write_text(
-        &manifest_path,
-        "filename,dye,primary_channel,antigen,control_kind\ncontrol_fitc.fcs,FITC,FL1-A,Marker1,single_color\ncontrol_pe.fcs,PE,FL2-A,Marker2,single_color\nunstained.fcs,Autofluorescence,AF-A,,autofluorescence\n",
+    let manifest_path = write_manifest_rows(
+        directory,
+        &[
+            ("control_fitc.fcs", "FITC"),
+            ("control_pe.fcs", "PE"),
+            ("unstained.fcs", "Autofluorescence"),
+        ],
     );
     let detectors = write_detector_manifest(directory, &AUTOFLUORESCENCE_DETECTORS);
     (manifest_path, detectors)
@@ -165,6 +188,7 @@ pub fn write_control_fixture_set(
     if let Some(spread_rows) = spread_rows {
         assert_eq!(spread_rows.len(), dyes.len());
     }
+    let detector_labels = detector_labels(dyes, primary_channels, detectors);
 
     for (control_index, dye) in dyes.iter().enumerate() {
         let primary_detector_index = detectors
@@ -177,23 +201,51 @@ pub fn write_control_fixture_set(
             &spillover_rows[control_index],
             spread_rows.map(|rows| rows[control_index].as_slice()),
             detectors,
+            &detector_labels,
         );
         fs::write(directory.join(file_name), bytes).expect("control should be written");
     }
 
+    let rows = dyes
+        .iter()
+        .map(|dye| (format!("control_{}.fcs", slug(dye)), (*dye).to_owned()))
+        .collect::<Vec<_>>();
+    let borrowed_rows = rows
+        .iter()
+        .map(|(filename, dye)| (filename.as_str(), dye.as_str()))
+        .collect::<Vec<_>>();
+    write_manifest_rows(directory, &borrowed_rows)
+}
+
+pub fn write_manifest_rows(directory: &Path, rows: &[(&str, &str)]) -> PathBuf {
     let manifest_path = directory.join("controls.csv");
-    let mut manifest = String::from("filename,dye,primary_channel,antigen\n");
-    for ((dye, primary_channel), control_index) in
-        dyes.iter().zip(primary_channels.iter()).zip(0..dyes.len())
-    {
-        manifest.push_str(&format!(
-            "control_{}.fcs,{dye},{primary_channel},Marker{}\n",
-            slug(dye),
-            control_index + 1
-        ));
+    let mut manifest = String::from("filename,dye\n");
+    for (filename, dye) in rows {
+        manifest.push_str(&format!("{filename},{dye}\n"));
     }
     write_text(&manifest_path, &manifest);
     manifest_path
+}
+
+pub fn write_control_file(
+    directory: &Path,
+    file_name: &str,
+    primary_detector_index: usize,
+    spillover_row: &[f64],
+    detectors: &[&str],
+    detector_labels: &[Option<String>],
+) {
+    fs::write(
+        directory.join(file_name),
+        build_control_bytes(
+            primary_detector_index,
+            spillover_row,
+            None,
+            detectors,
+            detector_labels,
+        ),
+    )
+    .expect("control should be written");
 }
 
 pub fn write_text(path: &Path, contents: &str) {
@@ -206,17 +258,6 @@ pub fn read_fixture_text(name: &str) -> String {
 
 pub fn read_autospread_fixture_text(name: &str) -> String {
     fs::read_to_string(autospread_fixture_dir().join(name)).expect("fixture text should exist")
-}
-
-fn copy_fixture_set(source_dir: &Path, destination_dir: &Path) {
-    for entry in fs::read_dir(source_dir).expect("fixture directory should exist") {
-        let entry = entry.expect("fixture dir entry should read");
-        let source_path = entry.path();
-        if source_path.is_file() {
-            fs::copy(&source_path, destination_dir.join(entry.file_name()))
-                .expect("fixture file should copy into temp dir");
-        }
-    }
 }
 
 fn fixture_dir(name: &str) -> PathBuf {
@@ -254,8 +295,10 @@ fn build_control_bytes(
     spillover_row: &[f64],
     spread_row: Option<&[f64]>,
     detectors: &[&str],
+    detector_labels: &[Option<String>],
 ) -> Vec<u8> {
     assert_eq!(spillover_row.len(), detectors.len());
+    assert_eq!(detector_labels.len(), detectors.len());
     if let Some(spread_row) = spread_row {
         assert_eq!(spread_row.len(), detectors.len());
     }
@@ -309,13 +352,18 @@ fn build_control_bytes(
 
     build_fcs(
         "FCS3.1",
-        build_parameter_pairs(detectors, rows.len()),
+        build_parameter_pairs(detectors, detector_labels, rows.len()),
         encode_u16_rows(&rows),
     )
 }
 
-fn build_autofluorescence_control_bytes(detectors: &[&str], coefficients: &[f64]) -> Vec<u8> {
+fn build_autofluorescence_control_bytes(
+    detectors: &[&str],
+    coefficients: &[f64],
+    detector_labels: &[Option<String>],
+) -> Vec<u8> {
     assert_eq!(detectors.len(), coefficients.len());
+    assert_eq!(detector_labels.len(), detectors.len());
 
     let mut rows = Vec::<Vec<u16>>::new();
     for index in 0..120 {
@@ -339,12 +387,16 @@ fn build_autofluorescence_control_bytes(detectors: &[&str], coefficients: &[f64]
 
     build_fcs(
         "FCS3.1",
-        build_parameter_pairs(detectors, rows.len()),
+        build_parameter_pairs(detectors, detector_labels, rows.len()),
         encode_u16_rows(&rows),
     )
 }
 
-fn build_parameter_pairs(detectors: &[&str], row_count: usize) -> Vec<(String, String)> {
+fn build_parameter_pairs(
+    detectors: &[&str],
+    detector_labels: &[Option<String>],
+    row_count: usize,
+) -> Vec<(String, String)> {
     let total_parameters = detectors.len() + 2;
     let mut pairs = vec![
         ("$BYTEORD".to_owned(), "1,2,3,4".to_owned()),
@@ -364,10 +416,33 @@ fn build_parameter_pairs(detectors: &[&str], row_count: usize) -> Vec<(String, S
         pairs.push((format!("$P{parameter_index}B"), "16".to_owned()));
         pairs.push((format!("$P{parameter_index}E"), "0,0".to_owned()));
         pairs.push((format!("$P{parameter_index}N"), (*name).to_owned()));
+        if let Some(label) = detector_labels
+            .get(index.saturating_sub(2))
+            .and_then(|label| label.as_deref())
+            .filter(|_| index >= 2)
+        {
+            pairs.push((format!("$P{parameter_index}S"), label.to_owned()));
+        }
         pairs.push((format!("$P{parameter_index}R"), "65535".to_owned()));
     }
 
     pairs
+}
+
+fn detector_labels(
+    dyes: &[&str],
+    primary_channels: &[&str],
+    detectors: &[&str],
+) -> Vec<Option<String>> {
+    detectors
+        .iter()
+        .map(|detector| {
+            primary_channels
+                .iter()
+                .position(|channel| channel == detector)
+                .map(|index| dyes[index].to_owned())
+        })
+        .collect()
 }
 
 fn build_fcs(version: &str, primary_pairs: Vec<(String, String)>, data: Vec<u8>) -> Vec<u8> {

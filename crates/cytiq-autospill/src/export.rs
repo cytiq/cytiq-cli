@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
+use log::debug;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 
@@ -66,6 +67,12 @@ pub(crate) fn export_named_matrix(
         .ok_or_else(|| AutospillError::UnsupportedOutputFormat {
             path: path.to_path_buf(),
         })?;
+    debug!(
+        "exporting matrix with {} rows and {} columns to {}",
+        row_labels.len(),
+        column_labels.len(),
+        path.display()
+    );
 
     match extension.as_str() {
         "csv" => write_delimited_matrix(row_header, row_labels, column_labels, matrix, path, b','),
@@ -112,6 +119,11 @@ fn write_delimited_matrix(
     path: &Path,
     delimiter: u8,
 ) -> Result<(), AutospillError> {
+    debug!(
+        "writing delimited matrix to {} with delimiter {:?}",
+        path.display(),
+        char::from(delimiter)
+    );
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
         .from_path(path)
@@ -147,6 +159,7 @@ fn write_delimited_matrix(
             path: path.to_path_buf(),
             source,
         })?;
+    debug!("finished writing delimited matrix to {}", path.display());
     Ok(())
 }
 
@@ -157,6 +170,7 @@ fn write_parquet_matrix(
     matrix: &[Vec<f64>],
     path: &Path,
 ) -> Result<(), AutospillError> {
+    debug!("writing parquet matrix to {}", path.display());
     let file = File::create(path).map_err(|source| AutospillError::CreateOutputFile {
         path: path.to_path_buf(),
         source,
@@ -207,6 +221,7 @@ fn write_parquet_matrix(
             source,
         })?;
 
+    debug!("finished writing parquet matrix to {}", path.display());
     Ok(())
 }
 

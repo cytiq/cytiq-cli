@@ -7,14 +7,15 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use cytiq_fcs::{ColumnData, FcsReader, Parameter};
+use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
+use log::{debug, info};
 use nalgebra::DMatrix;
 use ndarray::Array2;
 use serde::Serialize;
 
 use crate::error::AutospillError;
 use crate::gating::{GateComputation, gate_events};
-use crate::manifest::{ControlKind, ControlsManifestRow, DetectorSpec, TransformSpec};
+use crate::manifest::{ControlsManifestRow, DetectorSpec, TransformSpec};
 use crate::plotting::{write_autospill_debug_artifacts, write_autospread_debug_artifacts};
 use crate::regression::{
     RegressionResult, ordinary_linear_regression, ordinary_linear_regression_without_intercept,
@@ -38,6 +39,7 @@ const PSEUDO_INVERSE_EPSILON: f64 = 1e-10;
 const AUTOSPREAD_MIN_BINS: usize = 8;
 const AUTOSPREAD_MAX_BINS: usize = 256;
 const AUTOSPREAD_TARGET_BIN_SIZE: usize = 8;
+const AUTOFLUORESCENCE_DYE: &str = "autofluorescence";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MatrixKind {
@@ -183,6 +185,7 @@ pub struct AutospreadRunner;
 pub(crate) struct ControlData {
     pub(crate) row: ControlsManifestRow,
     pub(crate) path: PathBuf,
+    pub(crate) primary_channel: String,
     pub(crate) detector_events: Array2<f64>,
     pub(crate) scatter: Vec<[f64; 2]>,
     pub(crate) primary_detector_index: usize,
@@ -196,6 +199,16 @@ pub(crate) struct LoadedControls {
     pub(crate) detectors: Vec<DetectorSpec>,
     pub(crate) dye_transforms: Vec<BiExponentialTransform>,
     pub(crate) controls: Vec<ControlData>,
+}
+
+#[derive(Clone, Debug)]
+struct PreparedControl {
+    row: ControlsManifestRow,
+    path: PathBuf,
+    dataset: FcsDataset,
+    primary_channel: String,
+    dye_index: usize,
+    is_autofluorescence: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -222,7 +235,18 @@ impl AutospillRunner {
         input_dir: impl AsRef<Path>,
         config: &AutospillConfig,
     ) -> Result<AutospillResult, AutospillError> {
+        info!(
+            "autospill pipeline: loading {} controls from {}",
+            manifest_rows.len(),
+            input_dir.as_ref().display()
+        );
         let loaded = load_controls(manifest_rows, input_dir.as_ref(), config)?;
+        info!(
+            "autospill pipeline: loaded {} controls across {} detectors",
+            loaded.controls.len(),
+            loaded.detectors.len()
+        );
+        info!("autospill pipeline: computing FSC/SSC gates");
         let gates = loaded
             .controls
             .iter()
@@ -240,7 +264,7 @@ impl AutospillRunner {
             .zip(&gates)
             .map(|(control, gate)| GateStats {
                 dye: control.row.dye.clone(),
-                primary_channel: control.row.primary_channel.clone(),
+                primary_channel: control.primary_channel.clone(),
                 total_events: control.detector_events.nrows(),
                 gated_events: gate.gated_indices.len(),
                 strict_points: gate.strict_points,
@@ -249,8 +273,10 @@ impl AutospillRunner {
             })
             .collect::<Vec<_>>();
 
+        info!("autospill pipeline: estimating initial spillover matrix");
         let initial_spillover =
             estimate_spillover(&loaded.controls, &gates, loaded.detectors.len())?;
+        info!("autospill pipeline: refining spillover/compensation matrices");
         let (spillover_matrix, compensation_matrix, convergence, compensation_error) =
             refine_spillover(&loaded, &gates, &initial_spillover)?;
 
@@ -275,9 +301,14 @@ impl AutospillRunner {
         };
 
         if let Some(debug_dir) = config.debug_dir.as_deref() {
+            info!(
+                "autospill pipeline: writing debug artifacts to {}",
+                debug_dir.display()
+            );
             write_autospill_debug_artifacts(debug_dir, &loaded, &gates, &result)?;
         }
 
+        info!("autospill pipeline: completed successfully");
         Ok(result)
     }
 }
@@ -294,6 +325,11 @@ impl AutospreadRunner {
         input_dir: impl AsRef<Path>,
         config: &AutospreadConfig,
     ) -> Result<AutospreadResult, AutospillError> {
+        info!(
+            "autospread pipeline: loading {} controls from {}",
+            manifest_rows.len(),
+            input_dir.as_ref().display()
+        );
         let loaded = load_controls(
             manifest_rows,
             input_dir.as_ref(),
@@ -306,6 +342,12 @@ impl AutospreadRunner {
                 debug_dir: config.debug_dir.clone(),
             },
         )?;
+        info!(
+            "autospread pipeline: loaded {} controls across {} detectors",
+            loaded.controls.len(),
+            loaded.detectors.len()
+        );
+        info!("autospread pipeline: computing FSC/SSC gates");
         let gates = loaded
             .controls
             .iter()
@@ -323,7 +365,7 @@ impl AutospreadRunner {
             .zip(&gates)
             .map(|(control, gate)| GateStats {
                 dye: control.row.dye.clone(),
-                primary_channel: control.row.primary_channel.clone(),
+                primary_channel: control.primary_channel.clone(),
                 total_events: control.detector_events.nrows(),
                 gated_events: gate.gated_indices.len(),
                 strict_points: gate.strict_points,
@@ -332,6 +374,7 @@ impl AutospreadRunner {
             })
             .collect::<Vec<_>>();
 
+        info!("autospread pipeline: estimating spread matrix");
         let (spread_matrix, spread_stats) =
             estimate_spread_matrix(&loaded.controls, &gates, loaded.detectors.len())?;
 
@@ -350,9 +393,14 @@ impl AutospreadRunner {
         };
 
         if let Some(debug_dir) = config.debug_dir.as_deref() {
+            info!(
+                "autospread pipeline: writing debug artifacts to {}",
+                debug_dir.display()
+            );
             write_autospread_debug_artifacts(debug_dir, &loaded, &gates, &result)?;
         }
 
+        info!("autospread pipeline: completed successfully");
         Ok(result)
     }
 }
@@ -367,34 +415,7 @@ fn load_controls(
         .iter()
         .map(|row| row.dye.clone())
         .collect::<Vec<_>>();
-    let primary_channels = manifest_rows
-        .iter()
-        .map(|row| row.primary_channel.clone())
-        .collect::<Vec<_>>();
-    let detectors = if config.detectors.is_empty() {
-        manifest_rows
-            .iter()
-            .map(|row| DetectorSpec {
-                channel: row.primary_channel.clone(),
-                label: None,
-                wavelength: row.wavelength,
-            })
-            .collect::<Vec<_>>()
-    } else {
-        config.detectors.clone()
-    };
-    let detector_names = detectors
-        .iter()
-        .map(|detector| detector.channel.clone())
-        .collect::<Vec<_>>();
-    let synthetic_autofluorescence_channels = manifest_rows
-        .iter()
-        .filter(|row| row.control_kind == ControlKind::Autofluorescence)
-        .map(|row| row.primary_channel.clone())
-        .collect::<HashSet<_>>();
-    let dye_transforms = resolve_transforms(&dyes, &config.transforms);
-
-    let controls = manifest_rows
+    let prepared_controls = manifest_rows
         .iter()
         .enumerate()
         .map(|(dye_index, row)| {
@@ -403,6 +424,12 @@ fn load_controls(
                 return Err(AutospillError::MissingControlFile { path });
             }
 
+            debug!(
+                "loading control `{}` for dye `{}` from {}",
+                row.filename,
+                row.dye,
+                path.display()
+            );
             let dataset = FcsReader::open(&path)
                 .and_then(FcsReader::read)
                 .map_err(|source| AutospillError::FcsRead {
@@ -413,13 +440,90 @@ fn load_controls(
             if event_count == 0 {
                 return Err(AutospillError::EmptyControl { path });
             }
+            let primary_channel =
+                infer_primary_channel(&row.dye, &path, &dataset.parameters, &config.detectors)?;
+            debug!(
+                "resolved control `{}` primary channel to `{}` with {} parameters and {} events",
+                row.dye,
+                primary_channel,
+                dataset.parameters.len(),
+                event_count
+            );
 
-            let primary_detector_index = detector_names
-                .iter()
-                .position(|channel| channel == &row.primary_channel)
-                .ok_or_else(|| AutospillError::MissingDetector {
-                    channel: row.primary_channel.clone(),
-                })?;
+            Ok(PreparedControl {
+                row: row.clone(),
+                path,
+                dataset,
+                primary_channel,
+                dye_index,
+                is_autofluorescence: is_autofluorescence_dye(&row.dye),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let primary_channels = prepared_controls
+        .iter()
+        .map(|control| control.primary_channel.clone())
+        .collect::<Vec<_>>();
+    validate_unique_primary_channels(&primary_channels)?;
+    debug!(
+        "validated {} unique inferred primary channels",
+        primary_channels.len()
+    );
+
+    let detectors = if config.detectors.is_empty() {
+        info!("detector order not provided; using inferred primary-channel order");
+        primary_channels
+            .iter()
+            .map(|channel| DetectorSpec {
+                channel: channel.clone(),
+                label: None,
+                wavelength: None,
+            })
+            .collect::<Vec<_>>()
+    } else {
+        info!(
+            "using {} explicit detectors from configuration",
+            config.detectors.len()
+        );
+        config.detectors.clone()
+    };
+    let detector_names = detectors
+        .iter()
+        .map(|detector| detector.channel.clone())
+        .collect::<Vec<_>>();
+    debug!("resolved detector order: {}", detector_names.join(", "));
+    let synthetic_autofluorescence_channels = prepared_controls
+        .iter()
+        .filter(|control| control.is_autofluorescence)
+        .map(|control| control.primary_channel.clone())
+        .collect::<HashSet<_>>();
+    let dye_transforms = resolve_transforms(&dyes, &config.transforms);
+    debug!(
+        "resolved {} dye transforms for {} dyes",
+        dye_transforms.len(),
+        dyes.len()
+    );
+
+    let controls = prepared_controls
+        .into_iter()
+        .map(|control| {
+            let PreparedControl {
+                row,
+                path,
+                dataset,
+                primary_channel,
+                dye_index,
+                is_autofluorescence,
+            } = control;
+
+            let event_count = dataset.data.columns.first().map_or(0, ColumnData::len);
+            let primary_detector_index = resolve_primary_detector_index(
+                &dataset.parameters,
+                &primary_channel,
+                &detector_names,
+                is_autofluorescence,
+            )?;
             let fsc_index =
                 find_parameter_index(&dataset.parameters, &config.fsc).ok_or_else(|| {
                     AutospillError::MissingChannel {
@@ -448,7 +552,7 @@ fn load_controls(
                     })
                 })
                 .collect::<Vec<_>>();
-            let autofluorescence_proxy = if row.control_kind == ControlKind::Autofluorescence {
+            let autofluorescence_proxy = if is_autofluorescence {
                 autofluorescence_proxy(
                     &detector_names,
                     &resolved_detector_columns,
@@ -465,9 +569,7 @@ fn load_controls(
                     if let Some(column) = column {
                         Ok(column)
                     } else if synthetic_autofluorescence_channels.contains(channel) {
-                        if row.control_kind == ControlKind::Autofluorescence
-                            && channel == &row.primary_channel
-                        {
+                        if is_autofluorescence && channel == &primary_channel {
                             Ok(autofluorescence_proxy.clone())
                         } else {
                             Ok(vec![0.0; event_count])
@@ -506,8 +608,9 @@ fn load_controls(
                 .collect::<Vec<_>>();
 
             Ok(ControlData {
-                row: row.clone(),
+                row,
                 path,
+                primary_channel,
                 detector_events,
                 scatter,
                 primary_detector_index,
@@ -516,6 +619,11 @@ fn load_controls(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    debug!(
+        "prepared {} control matrices with detector width {}",
+        controls.len(),
+        detector_names.len()
+    );
     Ok(LoadedControls {
         dyes,
         primary_channels,
@@ -523,6 +631,172 @@ fn load_controls(
         dye_transforms,
         controls,
     })
+}
+
+fn validate_unique_primary_channels(primary_channels: &[String]) -> Result<(), AutospillError> {
+    let mut seen_channels = HashSet::new();
+    for channel in primary_channels {
+        if !seen_channels.insert(channel.clone()) {
+            return Err(AutospillError::DuplicatePrimaryChannel {
+                value: channel.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn infer_primary_channel(
+    dye: &str,
+    path: &Path,
+    parameters: &[Parameter],
+    detectors: &[DetectorSpec],
+) -> Result<String, AutospillError> {
+    if is_autofluorescence_dye(dye) {
+        debug!(
+            "inferring synthetic autofluorescence primary channel for {}",
+            path.display()
+        );
+        infer_autofluorescence_primary_channel(path, parameters, detectors)
+    } else {
+        infer_primary_channel_from_dye(dye, path, parameters)
+    }
+}
+
+fn infer_primary_channel_from_dye(
+    dye: &str,
+    path: &Path,
+    parameters: &[Parameter],
+) -> Result<String, AutospillError> {
+    let normalized_dye = normalize_identifier(dye);
+    debug!(
+        "matching dye `{}` against {} FCS parameters in {}",
+        dye,
+        parameters.len(),
+        path.display()
+    );
+    let name_matches = parameters
+        .iter()
+        .filter(|parameter| normalize_identifier(&parameter.name) == normalized_dye)
+        .collect::<Vec<_>>();
+    if let Some(primary_channel) = resolve_unique_primary_channel_match(path, dye, &name_matches)? {
+        return Ok(primary_channel);
+    }
+
+    let label_matches = parameters
+        .iter()
+        .filter(|parameter| {
+            parameter
+                .label
+                .as_deref()
+                .is_some_and(|label| normalize_identifier(label) == normalized_dye)
+        })
+        .collect::<Vec<_>>();
+    if let Some(primary_channel) = resolve_unique_primary_channel_match(path, dye, &label_matches)?
+    {
+        return Ok(primary_channel);
+    }
+
+    Err(AutospillError::PrimaryChannelNotFound {
+        path: path.to_path_buf(),
+        dye: dye.to_owned(),
+        available_channels: parameters
+            .iter()
+            .map(display_parameter_identifier)
+            .collect(),
+    })
+}
+
+fn resolve_unique_primary_channel_match(
+    path: &Path,
+    dye: &str,
+    matches: &[&Parameter],
+) -> Result<Option<String>, AutospillError> {
+    match matches {
+        [] => Ok(None),
+        [parameter] => Ok(Some(parameter.name.clone())),
+        _ => Err(AutospillError::AmbiguousPrimaryChannel {
+            path: path.to_path_buf(),
+            dye: dye.to_owned(),
+            matches: matches
+                .iter()
+                .map(|parameter| display_parameter_identifier(parameter))
+                .collect(),
+        }),
+    }
+}
+
+fn infer_autofluorescence_primary_channel(
+    path: &Path,
+    parameters: &[Parameter],
+    detectors: &[DetectorSpec],
+) -> Result<String, AutospillError> {
+    if detectors.is_empty() {
+        return Err(AutospillError::AutofluorescenceRequiresDetectors {
+            path: path.to_path_buf(),
+        });
+    }
+
+    let candidates = detectors
+        .iter()
+        .filter(|detector| find_parameter_index(parameters, &detector.channel).is_none())
+        .map(|detector| detector.channel.clone())
+        .collect::<Vec<_>>();
+    debug!(
+        "autofluorescence detector candidates for {}: {}",
+        path.display(),
+        candidates.join(", ")
+    );
+    match candidates.as_slice() {
+        [channel] => Ok(channel.clone()),
+        _ => Err(AutospillError::AutofluorescenceDetectorResolution {
+            path: path.to_path_buf(),
+            candidates,
+        }),
+    }
+}
+
+fn resolve_primary_detector_index(
+    parameters: &[Parameter],
+    primary_channel: &str,
+    detector_names: &[String],
+    is_autofluorescence: bool,
+) -> Result<usize, AutospillError> {
+    let primary_detector_index = if is_autofluorescence {
+        detector_names
+            .iter()
+            .position(|channel| channel == primary_channel)
+    } else {
+        detector_names.iter().position(|channel| {
+            find_parameter_index(parameters, channel)
+                .is_some_and(|index| parameters[index].name == primary_channel)
+        })
+    };
+    primary_detector_index.ok_or_else(|| AutospillError::MissingDetector {
+        channel: primary_channel.to_owned(),
+    })
+}
+
+fn is_autofluorescence_dye(dye: &str) -> bool {
+    normalize_identifier(dye) == AUTOFLUORESCENCE_DYE
+}
+
+fn normalize_identifier(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    for suffix in ["-a", "-h", "-w"] {
+        if let Some(stripped) = normalized.strip_suffix(suffix) {
+            return stripped.to_owned();
+        }
+    }
+
+    normalized
+}
+
+fn display_parameter_identifier(parameter: &Parameter) -> String {
+    match parameter.label.as_deref() {
+        Some(label) if label != parameter.name => format!("{} [{}]", parameter.name, label),
+        _ => parameter.name.clone(),
+    }
 }
 
 fn autofluorescence_proxy(
@@ -558,6 +832,11 @@ fn estimate_spillover(
     gates: &[GateComputation],
     detector_count: usize,
 ) -> Result<DMatrix<f64>, AutospillError> {
+    debug!(
+        "estimating initial spillover from {} controls into {} detectors",
+        controls.len(),
+        detector_count
+    );
     let dye_count = controls.len();
     let mut intercepts = vec![0.0; dye_count * detector_count];
     let mut coefficients = vec![0.0; dye_count * detector_count];
@@ -584,13 +863,13 @@ fn estimate_spillover(
                 &primary_values,
                 &secondary_values,
                 &control.path,
-                &control.row.primary_channel,
+                &control.primary_channel,
                 &controls
                     .iter()
                     .find(|candidate| candidate.primary_detector_index == detector_index)
                     .map_or_else(
                         || format!("detector:{detector_index}"),
-                        |candidate| candidate.row.primary_channel.clone(),
+                        |candidate| candidate.primary_channel.clone(),
                     ),
             )?;
             intercepts[offset] = regression.intercept;
@@ -619,6 +898,11 @@ fn refine_spillover(
     ),
     AutospillError,
 > {
+    debug!(
+        "starting spillover refinement for {} controls across {} detectors",
+        loaded.controls.len(),
+        loaded.detectors.len()
+    );
     let dye_count = loaded.controls.len();
     let detector_count = loaded.detectors.len();
     let identity = DMatrix::identity(dye_count, dye_count);
@@ -673,8 +957,13 @@ fn refine_spillover(
             delta_max,
             delta_change,
         });
+        debug!(
+            "refinement iteration {}: scale={:?}, lambda={:.6}, delta={:.6}, delta_max={:.6}, delta_change={:.6}",
+            iteration, scale, lambda, delta, delta_max, delta_change
+        );
 
         if scale == RefinementScale::Linear && delta_max < delta_threshold {
+            debug!("switching refinement scale from linear to bi-exponential");
             scale = RefinementScale::BiExponential;
             delta_threshold = RS_DELTA_THRESHOLD_BIEXP;
             lambda = RS_LAMBDA_COARSE;
@@ -684,6 +973,7 @@ fn refine_spillover(
         if delta_change > -RS_DELTA_THRESHOLD_CHANGE
             && (lambda - RS_LAMBDA_COARSE).abs() <= f64::EPSILON
         {
+            debug!("switching refinement lambda from coarse to fine");
             lambda = RS_LAMBDA_FINE;
             delta = -1.0;
             delta_history.fill(-1.0);
@@ -709,6 +999,10 @@ fn refine_spillover(
                 });
             }
 
+            info!(
+                "spillover refinement converged after {} iterations with final delta_max {:.6}",
+                iteration, delta_max
+            );
             return Ok((
                 spillover_current,
                 compensation,
@@ -816,6 +1110,11 @@ fn estimate_spread_matrix(
     gates: &[GateComputation],
     detector_count: usize,
 ) -> Result<(DMatrix<f64>, Vec<SpreadStats>), AutospillError> {
+    debug!(
+        "estimating spread matrix from {} controls into {} detectors",
+        controls.len(),
+        detector_count
+    );
     let dye_count = controls.len();
     let mut values = vec![0.0; dye_count * detector_count];
     let mut stats = Vec::with_capacity(dye_count);
@@ -894,10 +1193,16 @@ fn estimate_spread_matrix(
 
         stats.push(SpreadStats {
             dye: control.row.dye.clone(),
-            primary_channel: control.row.primary_channel.clone(),
+            primary_channel: control.primary_channel.clone(),
             quantile_bins: bins.len(),
             non_zero_coefficients,
         });
+        debug!(
+            "spread stats for `{}`: {} bins, {} non-zero coefficients",
+            control.row.dye,
+            bins.len(),
+            non_zero_coefficients
+        );
     }
 
     Ok((

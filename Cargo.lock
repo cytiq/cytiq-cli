@@ -423,6 +423,7 @@ dependencies = [
  "arrow-schema",
  "csv",
  "cytiq-fcs",
+ "log",
  "nalgebra",
  "ndarray",
  "parquet",
@@ -438,12 +439,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "cytiq-autospill",
+ "log",
 ]
 
 [[package]]
 name = "cytiq-fcs"
 version = "0.1.0"
 dependencies = [
+ "log",
  "thiserror",
 ]
 

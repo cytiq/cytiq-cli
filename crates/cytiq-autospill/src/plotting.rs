@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
+use log::{debug, info};
 use plotly::common::{Mode, Title};
 use plotly::{HeatMap, Layout, Plot, Scatter};
 use serde::Serialize;
@@ -269,6 +270,10 @@ pub(crate) fn write_autospill_debug_artifacts(
     gates: &[GateComputation],
     result: &AutospillResult,
 ) -> Result<(), AutospillError> {
+    info!(
+        "writing autospill debug artifacts to {}",
+        debug_dir.display()
+    );
     fs::create_dir_all(debug_dir).map_err(|source| AutospillError::DebugOutputCreate {
         path: debug_dir.to_path_buf(),
         source,
@@ -353,7 +358,7 @@ pub(crate) fn write_autospill_debug_artifacts(
             .iter()
             .zip(gates)
             .map(|(control, gate)| ReportPanel {
-                title: format!("{} ({})", control.row.dye, control.row.primary_channel),
+                title: format!("{} ({})", control.row.dye, control.primary_channel),
                 note: Some("Gray points are all events; blue points are events kept after gating.".to_owned()),
                 plot: gate_plot(control, gate),
             })
@@ -382,6 +387,11 @@ pub(crate) fn write_autospill_debug_artifacts(
         "AutoSpill",
         &sections,
     )?;
+    debug!(
+        "wrote autospill report with {} sections and {} controls",
+        sections.len(),
+        loaded.controls.len()
+    );
 
     let summary = DebugSummary {
         mode: "autospill",
@@ -395,7 +405,9 @@ pub(crate) fn write_autospill_debug_artifacts(
             primary_channels: result.primary_channels.clone(),
         },
     };
-    write_json(&debug_dir.join("summary.json"), &summary)
+    write_json(&debug_dir.join("summary.json"), &summary)?;
+    info!("autospill debug artifacts ready in {}", debug_dir.display());
+    Ok(())
 }
 
 pub(crate) fn write_autospread_debug_artifacts(
@@ -404,6 +416,10 @@ pub(crate) fn write_autospread_debug_artifacts(
     gates: &[GateComputation],
     result: &AutospreadResult,
 ) -> Result<(), AutospillError> {
+    info!(
+        "writing autospread debug artifacts to {}",
+        debug_dir.display()
+    );
     fs::create_dir_all(debug_dir).map_err(|source| AutospillError::DebugOutputCreate {
         path: debug_dir.to_path_buf(),
         source,
@@ -451,7 +467,7 @@ pub(crate) fn write_autospread_debug_artifacts(
             .iter()
             .zip(gates)
             .map(|(control, gate)| ReportPanel {
-                title: format!("{} ({})", control.row.dye, control.row.primary_channel),
+                title: format!("{} ({})", control.row.dye, control.primary_channel),
                 note: Some(
                     "Gray points are all events; blue points are events kept after gating."
                         .to_owned(),
@@ -483,6 +499,11 @@ pub(crate) fn write_autospread_debug_artifacts(
         "AutoSpread",
         &sections,
     )?;
+    debug!(
+        "wrote autospread report with {} sections and {} controls",
+        sections.len(),
+        loaded.controls.len()
+    );
 
     let summary = DebugSummary {
         mode: "autospread",
@@ -496,7 +517,12 @@ pub(crate) fn write_autospread_debug_artifacts(
             primary_channels: result.primary_channels.clone(),
         },
     };
-    write_json(&debug_dir.join("summary.json"), &summary)
+    write_json(&debug_dir.join("summary.json"), &summary)?;
+    info!(
+        "autospread debug artifacts ready in {}",
+        debug_dir.display()
+    );
+    Ok(())
 }
 
 fn gate_plot(control: &ControlData, gate: &GateComputation) -> Plot {
@@ -770,6 +796,7 @@ fn write_report(
     eyebrow: &str,
     sections: &[ReportSection],
 ) -> Result<(), AutospillError> {
+    debug!("rendering HTML report to {}", path.display());
     let mut html = String::new();
     let _ = write!(
         html,
@@ -835,7 +862,9 @@ fn write_report(
     fs::write(path, html).map_err(|source| AutospillError::DebugWrite {
         path: path.to_path_buf(),
         source,
-    })
+    })?;
+    debug!("wrote HTML report to {}", path.display());
+    Ok(())
 }
 
 fn render_autospill_summary(result: &AutospillResult) -> String {
@@ -993,6 +1022,7 @@ fn render_convergence_steps_table(convergence: &crate::runner::ConvergenceSummar
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AutospillError> {
+    debug!("writing JSON summary to {}", path.display());
     let bytes = serde_json::to_vec_pretty(value).map_err(|source| AutospillError::DebugWrite {
         path: path.to_path_buf(),
         source: std::io::Error::other(source),
@@ -1000,7 +1030,9 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AutospillError
     fs::write(path, bytes).map_err(|source| AutospillError::DebugWrite {
         path: path.to_path_buf(),
         source,
-    })
+    })?;
+    debug!("wrote JSON summary to {}", path.display());
+    Ok(())
 }
 
 fn html_escape(value: &str) -> String {

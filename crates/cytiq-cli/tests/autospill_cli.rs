@@ -30,10 +30,7 @@ fn cli_writes_csv_tsv_and_parquet_outputs() {
 fn cli_fails_when_manifest_references_missing_control() {
     let directory = support::create_temp_dir("cytiq-cli-missing-file");
     let manifest_path = directory.join("controls.csv");
-    support::write_text(
-        &manifest_path,
-        "filename,dye,primary_channel\nmissing.fcs,FITC,FL1-A\n",
-    );
+    support::write_text(&manifest_path, "filename,dye\nmissing.fcs,FITC\n");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -54,12 +51,27 @@ fn cli_fails_when_manifest_references_missing_control() {
 }
 
 #[test]
-fn cli_fails_on_duplicate_primary_channel() {
+fn cli_fails_on_duplicate_inferred_primary_channel() {
     let directory = support::create_temp_dir("cytiq-cli-duplicate-channel");
-    let manifest_path = directory.join("controls.csv");
-    support::write_text(
-        &manifest_path,
-        "filename,dye,primary_channel\ncontrol_a.fcs,FITC,FL1-A\ncontrol_b.fcs,PE,FL1-A\n",
+    support::write_control_file(
+        &directory,
+        "control_fitc.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FL1-A", "FL2-A"],
+        &[Some("FITC".to_owned()), None],
+    );
+    support::write_control_file(
+        &directory,
+        "control_pe.fcs",
+        0,
+        &[1.0, 0.2],
+        &["FL1-A", "FL2-A"],
+        &[Some("PE".to_owned()), None],
+    );
+    let manifest_path = support::write_manifest_rows(
+        &directory,
+        &[("control_fitc.fcs", "FITC"), ("control_pe.fcs", "PE")],
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -77,7 +89,7 @@ fn cli_fails_on_duplicate_primary_channel() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("duplicate `primary_channel`"));
+    assert!(stderr.contains("duplicate inferred `primary_channel`"));
 }
 
 #[test]

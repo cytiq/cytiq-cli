@@ -3,5 +3,13 @@ name = "cytiq-cli"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "cytiq"
+path = "src/main.rs"
+
 [dependencies]
-cytiq-core = { path = "../cytiq-core" }
+clap = { version = "4.5.38", features = ["derive"] }
+cytiq-autospill = { path = "../cytiq-autospill" }
+
+[lints]
+workspace = true

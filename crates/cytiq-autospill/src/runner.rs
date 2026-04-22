@@ -5,7 +5,9 @@
 )]
 
 use std::collections::HashSet;
+use std::env;
 use std::path::{Path, PathBuf};
+use std::thread;
 
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
 use log::{debug, info};
@@ -19,7 +21,7 @@ use crate::manifest::{ControlsManifestRow, DetectorSpec, TransformSpec};
 use crate::plotting::{write_autospill_debug_artifacts, write_autospread_debug_artifacts};
 use crate::regression::{
     RegressionResult, ordinary_linear_regression, ordinary_linear_regression_without_intercept,
-    robust_linear_regression, robust_standard_deviation, sample_standard_deviation, skewness,
+    robust_linear_regression, robust_standard_deviation, sample_standard_deviation_iter, skewness,
     trim_joint_pairs,
 };
 use crate::transform::{BiExponentialTransform, resolve_transforms, transformed_slope_to_linear};
@@ -247,16 +249,12 @@ impl AutospillRunner {
             loaded.detectors.len()
         );
         info!("autospill pipeline: computing FSC/SSC gates");
-        let gates = loaded
-            .controls
-            .iter()
-            .map(|control| {
-                gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
-                    path: control.path.clone(),
-                    reason,
-                })
+        let gates = parallel_try_map(&loaded.controls, "FSC/SSC gating", |_, control| {
+            gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
+                path: control.path.clone(),
+                reason,
             })
-            .collect::<Result<Vec<_>, _>>()?;
+        })?;
 
         let gate_stats = loaded
             .controls
@@ -348,16 +346,12 @@ impl AutospreadRunner {
             loaded.detectors.len()
         );
         info!("autospread pipeline: computing FSC/SSC gates");
-        let gates = loaded
-            .controls
-            .iter()
-            .map(|control| {
-                gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
-                    path: control.path.clone(),
-                    reason,
-                })
+        let gates = parallel_try_map(&loaded.controls, "FSC/SSC gating", |_, control| {
+            gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
+                path: control.path.clone(),
+                reason,
             })
-            .collect::<Result<Vec<_>, _>>()?;
+        })?;
 
         let gate_stats = loaded
             .controls
@@ -415,10 +409,8 @@ fn load_controls(
         .iter()
         .map(|row| row.dye.clone())
         .collect::<Vec<_>>();
-    let prepared_controls = manifest_rows
-        .iter()
-        .enumerate()
-        .map(|(dye_index, row)| {
+    let prepared_controls =
+        parallel_try_map(manifest_rows, "control loading", |dye_index, row| {
             let path = input_dir.join(&row.filename);
             if !path.is_file() {
                 return Err(AutospillError::MissingControlFile { path });
@@ -458,8 +450,7 @@ fn load_controls(
                 dye_index,
                 is_autofluorescence: is_autofluorescence_dye(&row.dye),
             })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+        })?;
 
     let primary_channels = prepared_controls
         .iter()
@@ -838,46 +829,55 @@ fn estimate_spillover(
         detector_count
     );
     let dye_count = controls.len();
-    let mut intercepts = vec![0.0; dye_count * detector_count];
-    let mut coefficients = vec![0.0; dye_count * detector_count];
-
-    for (control, gate) in controls.iter().zip(gates) {
-        let primary_values = gated_column(
-            &control.detector_events,
-            &gate.gated_indices,
-            control.primary_detector_index,
-        );
-        for detector_index in 0..detector_count {
-            let offset = control.dye_index * detector_count + detector_index;
-            if detector_index == control.primary_detector_index {
-                coefficients[offset] = 1.0;
-                continue;
-            }
-
-            let secondary_values = gated_column(
+    let detector_primary_channels = (0..detector_count)
+        .map(|detector_index| {
+            controls
+                .iter()
+                .find(|candidate| candidate.primary_detector_index == detector_index)
+                .map_or_else(
+                    || format!("detector:{detector_index}"),
+                    |candidate| candidate.primary_channel.clone(),
+                )
+        })
+        .collect::<Vec<_>>();
+    let coefficient_rows = parallel_try_map(
+        controls,
+        "initial spillover estimation",
+        |index, control| {
+            let gate = &gates[index];
+            let primary_values = gated_column(
                 &control.detector_events,
                 &gate.gated_indices,
-                detector_index,
+                control.primary_detector_index,
             );
-            let regression = fit_pair_regression(
-                &primary_values,
-                &secondary_values,
-                &control.path,
-                &control.primary_channel,
-                &controls
-                    .iter()
-                    .find(|candidate| candidate.primary_detector_index == detector_index)
-                    .map_or_else(
-                        || format!("detector:{detector_index}"),
-                        |candidate| candidate.primary_channel.clone(),
-                    ),
-            )?;
-            intercepts[offset] = regression.intercept;
-            coefficients[offset] = regression.slope;
-        }
-    }
+            let mut coefficients = vec![0.0; detector_count];
+            coefficients[control.primary_detector_index] = 1.0;
 
-    let _ = intercepts;
+            for detector_index in 0..detector_count {
+                if detector_index == control.primary_detector_index {
+                    continue;
+                }
+
+                let secondary_values = gated_column(
+                    &control.detector_events,
+                    &gate.gated_indices,
+                    detector_index,
+                );
+                let regression = fit_pair_regression(
+                    &primary_values,
+                    &secondary_values,
+                    &control.path,
+                    &control.primary_channel,
+                    &detector_primary_channels[detector_index],
+                )?;
+                coefficients[detector_index] = regression.slope;
+            }
+
+            Ok(coefficients)
+        },
+    )?;
+    let coefficients = coefficient_rows.into_iter().flatten().collect::<Vec<_>>();
+
     Ok(DMatrix::from_row_slice(
         dye_count,
         detector_count,
@@ -931,8 +931,7 @@ fn refine_spillover(
         let slope_error = compensation_error.slopes.clone() - identity.clone();
 
         let previous_delta = delta;
-        delta =
-            sample_standard_deviation(slope_error.iter().copied().collect::<Vec<_>>().as_slice());
+        delta = sample_standard_deviation_iter(slope_error.iter().copied());
         let delta_max = slope_error
             .iter()
             .map(|value| value.abs())
@@ -1025,78 +1024,91 @@ fn compensation_error(
     scale: RefinementScale,
 ) -> Result<RegressionMatrices, AutospillError> {
     let dye_count = loaded.controls.len();
-    let mut slopes = vec![0.0; dye_count * dye_count];
-    let mut skew_values = vec![0.0; dye_count * dye_count];
     let compensation_array = dmat_to_array2(compensation);
-
-    for (control, gate) in loaded.controls.iter().zip(gates) {
-        let unmixed_linear = control.detector_events.dot(&compensation_array);
-        let primary_linear = gated_column(&unmixed_linear, &gate.gated_indices, control.dye_index);
-        let primary_values = match scale {
-            RefinementScale::Linear => primary_linear.clone(),
-            RefinementScale::BiExponential => primary_linear
-                .iter()
-                .map(|value| loaded.dye_transforms[control.dye_index].apply(*value))
-                .collect(),
-        };
-
-        for secondary_index in 0..dye_count {
-            let offset = control.dye_index * dye_count + secondary_index;
-            if secondary_index == control.dye_index {
-                slopes[offset] = 1.0;
-                continue;
-            }
-
-            let secondary_linear =
-                gated_column(&unmixed_linear, &gate.gated_indices, secondary_index);
-            let secondary_values = match scale {
-                RefinementScale::Linear => secondary_linear.clone(),
-                RefinementScale::BiExponential => secondary_linear
+    let row_results = parallel_try_map(
+        &loaded.controls,
+        "compensation error estimation",
+        |index, control| {
+            let gate = &gates[index];
+            let unmixed_linear = control.detector_events.dot(&compensation_array);
+            let primary_linear =
+                gated_column(&unmixed_linear, &gate.gated_indices, control.dye_index);
+            let primary_values = match scale {
+                RefinementScale::Linear => primary_linear.clone(),
+                RefinementScale::BiExponential => primary_linear
                     .iter()
-                    .map(|value| loaded.dye_transforms[secondary_index].apply(*value))
+                    .map(|value| loaded.dye_transforms[control.dye_index].apply(*value))
                     .collect(),
             };
-            let regression = fit_pair_regression(
-                &primary_values,
-                &secondary_values,
-                &control.path,
-                &control.row.dye,
-                &loaded.dyes[secondary_index],
-            )?;
 
-            match scale {
-                RefinementScale::Linear => {
-                    slopes[offset] = regression.slope;
-                    skew_values[offset] = skewness(&secondary_values);
+            let mut slopes = vec![0.0; dye_count];
+            let mut skew_values = vec![0.0; dye_count];
+            slopes[control.dye_index] = 1.0;
+
+            for secondary_index in 0..dye_count {
+                if secondary_index == control.dye_index {
+                    continue;
                 }
-                RefinementScale::BiExponential => {
-                    let (trimmed_primary, trimmed_secondary) =
-                        trim_joint_pairs(&primary_values, &secondary_values, RLM_TRIM_FACTOR);
-                    let primary_low = trimmed_primary
+
+                let secondary_linear =
+                    gated_column(&unmixed_linear, &gate.gated_indices, secondary_index);
+                let secondary_values = match scale {
+                    RefinementScale::Linear => secondary_linear.clone(),
+                    RefinementScale::BiExponential => secondary_linear
                         .iter()
-                        .copied()
-                        .fold(f64::INFINITY, f64::min);
-                    let primary_high = trimmed_primary
-                        .iter()
-                        .copied()
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    slopes[offset] = transformed_slope_to_linear(
-                        &loaded.dye_transforms[secondary_index],
-                        &loaded.dye_transforms[control.dye_index],
-                        regression.intercept,
-                        regression.slope,
-                        primary_low,
-                        primary_high,
-                    );
-                    skew_values[offset] = skewness(
-                        &trimmed_secondary
+                        .map(|value| loaded.dye_transforms[secondary_index].apply(*value))
+                        .collect(),
+                };
+                let regression = fit_pair_regression(
+                    &primary_values,
+                    &secondary_values,
+                    &control.path,
+                    &control.row.dye,
+                    &loaded.dyes[secondary_index],
+                )?;
+
+                match scale {
+                    RefinementScale::Linear => {
+                        slopes[secondary_index] = regression.slope;
+                        skew_values[secondary_index] = skewness(&secondary_values);
+                    }
+                    RefinementScale::BiExponential => {
+                        let (trimmed_primary, trimmed_secondary) =
+                            trim_joint_pairs(&primary_values, &secondary_values, RLM_TRIM_FACTOR);
+                        let primary_low = trimmed_primary
                             .iter()
-                            .map(|value| loaded.dye_transforms[secondary_index].inverse(*value))
-                            .collect::<Vec<_>>(),
-                    );
+                            .copied()
+                            .fold(f64::INFINITY, f64::min);
+                        let primary_high = trimmed_primary
+                            .iter()
+                            .copied()
+                            .fold(f64::NEG_INFINITY, f64::max);
+                        slopes[secondary_index] = transformed_slope_to_linear(
+                            &loaded.dye_transforms[secondary_index],
+                            &loaded.dye_transforms[control.dye_index],
+                            regression.intercept,
+                            regression.slope,
+                            primary_low,
+                            primary_high,
+                        );
+                        skew_values[secondary_index] = skewness(
+                            &trimmed_secondary
+                                .iter()
+                                .map(|value| loaded.dye_transforms[secondary_index].inverse(*value))
+                                .collect::<Vec<_>>(),
+                        );
+                    }
                 }
             }
-        }
+
+            Ok((slopes, skew_values))
+        },
+    )?;
+    let mut slopes = Vec::with_capacity(dye_count * dye_count);
+    let mut skew_values = Vec::with_capacity(dye_count * dye_count);
+    for (control_slopes, control_skew_values) in row_results {
+        slopes.extend(control_slopes);
+        skew_values.extend(control_skew_values);
     }
 
     Ok(RegressionMatrices {
@@ -1116,10 +1128,8 @@ fn estimate_spread_matrix(
         detector_count
     );
     let dye_count = controls.len();
-    let mut values = vec![0.0; dye_count * detector_count];
-    let mut stats = Vec::with_capacity(dye_count);
-
-    for (control, gate) in controls.iter().zip(gates) {
+    let row_results = parallel_try_map(controls, "spread matrix estimation", |index, control| {
+        let gate = &gates[index];
         let primary_values = gated_column(
             &control.detector_events,
             &gate.gated_indices,
@@ -1131,9 +1141,9 @@ fn estimate_spread_matrix(
             return Err(AutospillError::AutospreadFailed);
         }
 
+        let mut coefficients = vec![0.0; detector_count];
         let mut non_zero_coefficients = 0_usize;
         for detector_index in 0..detector_count {
-            let offset = control.dye_index * detector_count + detector_index;
             if detector_index == control.primary_detector_index {
                 continue;
             }
@@ -1148,11 +1158,11 @@ fn estimate_spread_matrix(
             for bin in &bins {
                 let primary_bin = bin
                     .iter()
-                    .map(|&index| primary_values[index])
+                    .map(|&bin_index| primary_values[bin_index])
                     .collect::<Vec<_>>();
                 let secondary_bin = bin
                     .iter()
-                    .map(|&index| secondary_values[index])
+                    .map(|&bin_index| secondary_values[bin_index])
                     .collect::<Vec<_>>();
                 if primary_bin.len() < 3 || secondary_bin.len() < 3 {
                     continue;
@@ -1188,21 +1198,29 @@ fn estimate_spread_matrix(
             if coefficient > 0.0 {
                 non_zero_coefficients += 1;
             }
-            values[offset] = coefficient;
+            coefficients[detector_index] = coefficient;
         }
 
-        stats.push(SpreadStats {
+        let stats = SpreadStats {
             dye: control.row.dye.clone(),
             primary_channel: control.primary_channel.clone(),
             quantile_bins: bins.len(),
             non_zero_coefficients,
-        });
+        };
         debug!(
             "spread stats for `{}`: {} bins, {} non-zero coefficients",
             control.row.dye,
             bins.len(),
             non_zero_coefficients
         );
+
+        Ok((coefficients, stats))
+    })?;
+    let mut values = Vec::with_capacity(dye_count * detector_count);
+    let mut stats = Vec::with_capacity(dye_count);
+    for (coefficients, spread_stats) in row_results {
+        values.extend(coefficients);
+        stats.push(spread_stats);
     }
 
     Ok((
@@ -1298,6 +1316,70 @@ fn find_parameter_index(parameters: &[Parameter], channel: &str) -> Option<usize
                     .is_some_and(|label| label == channel)
             })
         })
+}
+
+fn parallel_try_map<T, U, E, F>(items: &[T], stage: &str, worker: F) -> Result<Vec<U>, E>
+where
+    T: Sync,
+    U: Send,
+    E: Send,
+    F: Fn(usize, &T) -> Result<U, E> + Sync,
+{
+    let worker_count = configured_worker_count(items.len());
+    if worker_count == 1 {
+        return items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| worker(index, item))
+            .collect();
+    }
+
+    let chunk_size = items.len().div_ceil(worker_count);
+    debug!(
+        "parallelizing {stage} across {worker_count} worker threads for {} tasks",
+        items.len()
+    );
+    thread::scope(|scope| {
+        let worker = &worker;
+        let handles = items
+            .chunks(chunk_size)
+            .enumerate()
+            .map(|(chunk_index, chunk)| {
+                let start = chunk_index * chunk_size;
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(offset, item)| worker(start + offset, item))
+                        .collect::<Result<Vec<_>, E>>()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut results = Vec::with_capacity(items.len());
+        for handle in handles {
+            let chunk_values = match handle.join() {
+                Ok(values) => values,
+                Err(payload) => std::panic::resume_unwind(payload),
+            }?;
+            results.extend(chunk_values);
+        }
+        Ok(results)
+    })
+}
+
+fn configured_worker_count(task_count: usize) -> usize {
+    if task_count < 2 {
+        return 1;
+    }
+
+    let detected = thread::available_parallelism().map_or(1, |parallelism| parallelism.get());
+    let requested = env::var("CYTIQ_THREADS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(detected);
+    requested.min(detected).min(task_count).max(1)
 }
 
 fn dmat_to_array2(matrix: &DMatrix<f64>) -> Array2<f64> {

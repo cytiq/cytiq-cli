@@ -186,10 +186,10 @@ pub(crate) fn trim_joint_pairs(
 
     let trim_n = ((primary.len() as f64) * trim_factor).round() as usize;
     let trim_n = trim_n.clamp(1, primary.len());
-    let primary_low = nth_sorted(primary, trim_n - 1, false);
-    let primary_high = nth_sorted(primary, trim_n - 1, true);
-    let secondary_low = nth_sorted(secondary, trim_n - 1, false);
-    let secondary_high = nth_sorted(secondary, trim_n - 1, true);
+    let primary_bounds = sorted_trim_bounds(primary, trim_n - 1);
+    let secondary_bounds = sorted_trim_bounds(secondary, trim_n - 1);
+    let (primary_low, primary_high) = primary_bounds;
+    let (secondary_low, secondary_high) = secondary_bounds;
 
     let mut trimmed_primary = Vec::new();
     let mut trimmed_secondary = Vec::new();
@@ -277,20 +277,27 @@ pub(crate) fn robust_standard_deviation(values: &[f64]) -> f64 {
     percentile(values, 0.84) - median(values)
 }
 
-pub(crate) fn sample_standard_deviation(values: &[f64]) -> f64 {
-    if values.len() < 2 {
-        return 0.0;
+pub(crate) fn sample_standard_deviation_iter<I>(values: I) -> f64
+where
+    I: IntoIterator<Item = f64>,
+{
+    let mut count = 0_usize;
+    let mut mean = 0.0;
+    let mut squared_distance_sum = 0.0;
+
+    for value in values {
+        count += 1;
+        let delta = value - mean;
+        mean += delta / (count as f64);
+        let delta_next = value - mean;
+        squared_distance_sum += delta * delta_next;
     }
-    let mean = values.iter().sum::<f64>() / (values.len() as f64);
-    let variance = values
-        .iter()
-        .map(|value| {
-            let centered = value - mean;
-            centered * centered
-        })
-        .sum::<f64>()
-        / ((values.len() as f64) - 1.0);
-    variance.sqrt()
+
+    if count < 2 {
+        0.0
+    } else {
+        (squared_distance_sum / ((count as f64) - 1.0)).sqrt()
+    }
 }
 
 fn weighted_fit(x: &[f64], y: &[f64], weights: &[f64]) -> Option<(f64, f64)> {
@@ -341,14 +348,11 @@ fn scaled_mad(values: &[f64]) -> f64 {
     1.4826 * median(&deviations)
 }
 
-fn nth_sorted(values: &[f64], index: usize, descending: bool) -> f64 {
+fn sorted_trim_bounds(values: &[f64], index: usize) -> (f64, f64) {
     let mut sorted = values.to_vec();
-    if descending {
-        sorted.sort_by(|left, right| right.total_cmp(left));
-    } else {
-        sorted.sort_by(f64::total_cmp);
-    }
-    sorted[index]
+    sorted.sort_by(f64::total_cmp);
+    let high_index = sorted.len().saturating_sub(index + 1);
+    (sorted[index], sorted[high_index])
 }
 
 #[cfg(test)]

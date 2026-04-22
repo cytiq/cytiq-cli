@@ -54,6 +54,11 @@ Logging:
 - override with `CYTIQ_LOG=debug` or `RUST_LOG=debug`
 - logs are written to stderr
 
+Performance:
+- independent control loading, gating, spillover rows, spread rows, and refinement error passes use worker threads
+- worker count defaults to the detected CPU parallelism
+- override with `CYTIQ_THREADS=4` to cap the number of worker threads
+
 ### Controls Manifest
 
 The controls manifest is a CSV with the following columns:

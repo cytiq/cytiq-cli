@@ -7,7 +7,6 @@ This repository is a small Rust workspace named `cytiq`. Keep contributor guidan
 ## Project Structure
 
 - `crates/cytiq-cli/` contains the CLI binary entry point.
-- `crates/cytiq-core/` contains reusable application logic.
 - `data/` contains checked-in sample and research assets such as `data/data.fcs` and `data/CD22/`.
 - `docker/Dockerfile` is the place for container build logic.
 
@@ -38,7 +37,7 @@ Follow Rust 2024 conventions and let `rustfmt` control formatting. Use:
 - `PascalCase` for structs, enums, and traits
 - `SCREAMING_SNAKE_CASE` for constants
 
-Keep `cytiq-cli` thin and move reusable logic into `cytiq-core` or another focused crate. Add brief comments only where the intent is not obvious from the code.
+Keep `cytiq-cli` thin and move reusable logic into a focused library crate. Add brief comments only where the intent is not obvious from the code.
 
 ## Testing
 

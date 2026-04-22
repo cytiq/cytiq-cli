@@ -27,11 +27,11 @@ const AUTOFLUORESCENCE_DETECTORS: [&str; 3] = ["FL1-A", "FL2-A", "AF-A"];
 const AUTOFLUORESCENCE_REAL_DETECTORS: [&str; 2] = ["FL1-A", "FL2-A"];
 
 pub fn autospill_fixture_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill")
+    fixture_dir("autospill")
 }
 
 pub fn autospread_fixture_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospread")
+    fixture_dir("autospread")
 }
 
 pub fn create_temp_dir(label: &str) -> PathBuf {
@@ -217,6 +217,36 @@ fn copy_fixture_set(source_dir: &Path, destination_dir: &Path) {
                 .expect("fixture file should copy into temp dir");
         }
     }
+}
+
+fn fixture_dir(name: &str) -> PathBuf {
+    for start in fixture_search_roots() {
+        for candidate in start
+            .ancestors()
+            .map(|ancestor| ancestor.join("data").join("fixtures").join(name))
+        {
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+
+    panic!("fixture directory should exist: data/fixtures/{name}");
+}
+
+fn fixture_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        roots.push(current_dir);
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        roots.push(current_exe);
+    }
+
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    roots
 }
 
 fn build_control_bytes(

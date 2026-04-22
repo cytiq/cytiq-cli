@@ -441,10 +441,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cytiq-core"
-version = "0.1.0"
-
-[[package]]
 name = "cytiq-fcs"
 version = "0.1.0"
 dependencies = [

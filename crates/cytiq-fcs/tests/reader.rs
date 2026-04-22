@@ -196,9 +196,37 @@ fn rejects_header_text_offset_mismatch() {
 }
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/fixtures/fcs")
-        .join(name)
+    fixture_dir().join(name)
+}
+
+fn fixture_dir() -> PathBuf {
+    for start in fixture_search_roots() {
+        for candidate in start
+            .ancestors()
+            .map(|ancestor| ancestor.join("data").join("fixtures").join("fcs"))
+        {
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+
+    panic!("fixture directory should exist: data/fixtures/fcs");
+}
+
+fn fixture_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        roots.push(current_dir);
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        roots.push(current_exe);
+    }
+
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    roots
 }
 
 fn assert_uint_column(column: Option<&ColumnData>, expected: &[u64]) {

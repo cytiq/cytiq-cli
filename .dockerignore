@@ -1,0 +1,23 @@
+# Keep the Docker build context aligned with docker/Dockerfile.
+*
+
+!Cargo.toml
+!Cargo.lock
+!docker/
+!docker/Dockerfile
+!crates/
+
+!crates/cytiq-autospill/
+!crates/cytiq-autospill/Cargo.toml
+!crates/cytiq-autospill/src/
+!crates/cytiq-autospill/src/**
+
+!crates/cytiq-cli/
+!crates/cytiq-cli/Cargo.toml
+!crates/cytiq-cli/src/
+!crates/cytiq-cli/src/**
+
+!crates/cytiq-fcs/
+!crates/cytiq-fcs/Cargo.toml
+!crates/cytiq-fcs/src/
+!crates/cytiq-fcs/src/**

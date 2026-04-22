@@ -12,6 +12,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const DELIMITER: u8 = b'|';
 
+const DEFAULT_DYES: [&str; 2] = ["FITC", "PE"];
+const DEFAULT_PRIMARY_CHANNELS: [&str; 2] = ["FL1-A", "FL2-A"];
+const DEFAULT_DETECTORS: [&str; 2] = ["FL1-A", "FL2-A"];
+
+const RECTANGULAR_DYES: [&str; 2] = ["FITC", "PE"];
+const RECTANGULAR_PRIMARY_CHANNELS: [&str; 2] = ["FL1-A", "FL2-A"];
+const RECTANGULAR_DETECTORS: [&str; 3] = ["FL1-A", "FL2-A", "FL3-A"];
+const AUTOFLUORESCENCE_DETECTORS: [&str; 3] = ["FL1-A", "FL2-A", "AF-A"];
+const AUTOFLUORESCENCE_REAL_DETECTORS: [&str; 2] = ["FL1-A", "FL2-A"];
+
 pub fn autospill_fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill")
 }
@@ -39,12 +49,12 @@ pub fn copy_autospill_fixture_set(label: &str) -> PathBuf {
 pub fn write_two_control_fixture(directory: &Path, spillover: [[f64; 2]; 2]) -> PathBuf {
     fs::write(
         directory.join("control_a.fcs"),
-        build_control_bytes(0, spillover[0]),
+        build_control_bytes(0, &spillover[0], None, &DEFAULT_DETECTORS),
     )
     .expect("first control should be written");
     fs::write(
         directory.join("control_b.fcs"),
-        build_control_bytes(1, spillover[1]),
+        build_control_bytes(1, &spillover[1], None, &DEFAULT_DETECTORS),
     )
     .expect("second control should be written");
 
@@ -57,6 +67,127 @@ pub fn write_two_control_fixture(directory: &Path, spillover: [[f64; 2]; 2]) -> 
     manifest_path
 }
 
+pub fn write_rectangular_autospill_fixture(directory: &Path) -> (PathBuf, PathBuf) {
+    let manifest = write_control_fixture_set(
+        directory,
+        &RECTANGULAR_DYES,
+        &RECTANGULAR_PRIMARY_CHANNELS,
+        &RECTANGULAR_DETECTORS,
+        &[vec![1.0, 0.2, 0.05], vec![0.1, 1.0, 0.03]],
+        None,
+    );
+    let detectors = write_detector_manifest(directory, &RECTANGULAR_DETECTORS);
+    (manifest, detectors)
+}
+
+pub fn write_autospread_fixture(directory: &Path) -> (PathBuf, PathBuf) {
+    let manifest = write_control_fixture_set(
+        directory,
+        &RECTANGULAR_DYES,
+        &RECTANGULAR_PRIMARY_CHANNELS,
+        &RECTANGULAR_DETECTORS,
+        &[vec![1.0, 0.2, 0.05], vec![0.1, 1.0, 0.03]],
+        Some(&[vec![0.0, 0.08, 0.05], vec![0.06, 0.0, 0.04]]),
+    );
+    let detectors = write_detector_manifest(directory, &RECTANGULAR_DETECTORS);
+    (manifest, detectors)
+}
+
+pub fn write_autofluorescence_fixture(directory: &Path) -> (PathBuf, PathBuf) {
+    fs::write(
+        directory.join("control_fitc.fcs"),
+        build_control_bytes(0, &[1.0, 0.2], None, &AUTOFLUORESCENCE_REAL_DETECTORS),
+    )
+    .expect("fitc control should be written");
+    fs::write(
+        directory.join("control_pe.fcs"),
+        build_control_bytes(1, &[0.1, 1.0], None, &AUTOFLUORESCENCE_REAL_DETECTORS),
+    )
+    .expect("pe control should be written");
+    fs::write(
+        directory.join("unstained.fcs"),
+        build_autofluorescence_control_bytes(&AUTOFLUORESCENCE_REAL_DETECTORS, &[0.6, 0.4]),
+    )
+    .expect("autofluorescence control should be written");
+
+    let manifest_path = directory.join("controls.csv");
+    write_text(
+        &manifest_path,
+        "filename,dye,primary_channel,antigen,control_kind\ncontrol_fitc.fcs,FITC,FL1-A,Marker1,single_color\ncontrol_pe.fcs,PE,FL2-A,Marker2,single_color\nunstained.fcs,Autofluorescence,AF-A,,autofluorescence\n",
+    );
+    let detectors = write_detector_manifest(directory, &AUTOFLUORESCENCE_DETECTORS);
+    (manifest_path, detectors)
+}
+
+pub fn write_transform_manifest(directory: &Path, channels: &[&str]) -> PathBuf {
+    let path = directory.join("transforms.csv");
+    let mut text = String::from("channel,length,max_range,pos,neg,width\n");
+    for channel in channels {
+        text.push_str(&format!("{channel},256,262144,4.418539922,0,-100\n"));
+    }
+    write_text(&path, &text);
+    path
+}
+
+pub fn write_detector_manifest(directory: &Path, detectors: &[&str]) -> PathBuf {
+    let path = directory.join("detectors.csv");
+    let mut text = String::from("channel,label,wavelength\n");
+    for (index, detector) in detectors.iter().enumerate() {
+        text.push_str(&format!(
+            "{detector},{detector},{}\n",
+            500 + (index as u32) * 10
+        ));
+    }
+    write_text(&path, &text);
+    path
+}
+
+pub fn write_control_fixture_set(
+    directory: &Path,
+    dyes: &[&str],
+    primary_channels: &[&str],
+    detectors: &[&str],
+    spillover_rows: &[Vec<f64>],
+    spread_rows: Option<&[Vec<f64>]>,
+) -> PathBuf {
+    assert_eq!(dyes.len(), primary_channels.len());
+    assert_eq!(dyes.len(), spillover_rows.len());
+    if let Some(spread_rows) = spread_rows {
+        assert_eq!(spread_rows.len(), dyes.len());
+    }
+
+    for (control_index, dye) in dyes.iter().enumerate() {
+        let primary_detector_index = detectors
+            .iter()
+            .position(|detector| detector == &primary_channels[control_index])
+            .expect("primary channel should exist in detectors");
+        let file_name = format!("control_{}.fcs", slug(dye));
+        let bytes = build_control_bytes(
+            primary_detector_index,
+            &spillover_rows[control_index],
+            spread_rows.map(|rows| rows[control_index].as_slice()),
+            detectors,
+        );
+        fs::write(directory.join(file_name), bytes).expect("control should be written");
+    }
+
+    let manifest_path = directory.join("controls.csv");
+    let mut manifest = String::from("filename,dye,primary_channel,antigen\n");
+    for ((dye, primary_channel), control_index) in dyes
+        .iter()
+        .zip(primary_channels.iter())
+        .zip(0..dyes.len())
+    {
+        manifest.push_str(&format!(
+            "control_{}.fcs,{dye},{primary_channel},Marker{}\n",
+            slug(dye),
+            control_index + 1
+        ));
+    }
+    write_text(&manifest_path, &manifest);
+    manifest_path
+}
+
 pub fn write_text(path: &Path, contents: &str) {
     fs::write(path, contents).expect("text fixture should be written");
 }
@@ -65,69 +196,132 @@ pub fn read_fixture_text(name: &str) -> String {
     fs::read_to_string(autospill_fixture_dir().join(name)).expect("fixture text should exist")
 }
 
-fn build_control_bytes(primary_index: usize, spillover_row: [f64; 2]) -> Vec<u8> {
-    let mut rows = Vec::<[u16; 4]>::new();
-    for index in 0..120 {
-        let fsc = 900 + ((index % 12) as u16) * 15 + ((index / 12) as u16) * 2;
-        let ssc = 980 + ((index % 10) as u16) * 11 + ((index / 10) as u16) * 3;
-        let primary = 1_000 + (index as u16) * 230;
-        let fl1 = if primary_index == 0 {
-            primary
-        } else {
-            (spillover_row[0] * f64::from(primary)).round() as u16
-        };
-        let fl2 = if primary_index == 1 {
-            primary
-        } else {
-            (spillover_row[1] * f64::from(primary)).round() as u16
-        };
-        rows.push([fsc, ssc, fl1, fl2]);
+fn build_control_bytes(
+    primary_detector_index: usize,
+    spillover_row: &[f64],
+    spread_row: Option<&[f64]>,
+    detectors: &[&str],
+) -> Vec<u8> {
+    assert_eq!(spillover_row.len(), detectors.len());
+    if let Some(spread_row) = spread_row {
+        assert_eq!(spread_row.len(), detectors.len());
+    }
+
+    let mut rows = Vec::<Vec<u16>>::new();
+    if let Some(spread_row) = spread_row {
+        let noise_pattern = [-3.0, -2.0, -1.0, 0.0, 0.0, 1.0, 2.0, 3.0];
+        for level in 0..48 {
+            let primary = 1_200.0 + (level as f64) * 900.0;
+            for (replicate, noise) in noise_pattern.iter().enumerate() {
+                let fsc = 900.0 + ((level % 12) as f64) * 15.0 + replicate as f64;
+                let ssc = 980.0 + ((level % 10) as f64) * 11.0 + (replicate as f64) * 0.5;
+                let mut row = vec![fsc.round() as u16, ssc.round() as u16];
+                for detector_index in 0..detectors.len() {
+                    let base = if detector_index == primary_detector_index {
+                        primary
+                    } else {
+                        spillover_row[detector_index] * primary
+                    };
+                    let spread = spread_row[detector_index] * primary.sqrt() * noise;
+                    row.push((base + spread).max(0.0).round() as u16);
+                }
+                rows.push(row);
+            }
+        }
+    } else {
+        for index in 0..120 {
+            let fsc = 900.0 + ((index % 12) as f64) * 15.0 + ((index / 12) as f64) * 2.0;
+            let ssc = 980.0 + ((index % 10) as f64) * 11.0 + ((index / 10) as f64) * 3.0;
+            let primary = 1_000.0 + (index as f64) * 230.0;
+            let mut row = vec![fsc.round() as u16, ssc.round() as u16];
+            for detector_index in 0..detectors.len() {
+                let value = if detector_index == primary_detector_index {
+                    primary
+                } else {
+                    spillover_row[detector_index] * primary
+                };
+                row.push(value.round() as u16);
+            }
+            rows.push(row);
+        }
     }
 
     for index in 0..30 {
-        rows.push([
+        let mut row = vec![
             20 + (index as u16),
             30 + ((index % 7) as u16),
-            10 + ((index % 5) as u16),
-            15 + ((index % 9) as u16),
-        ]);
+        ];
+        for detector_index in 0..detectors.len() {
+            row.push(10 + (((index + detector_index) % 9) as u16));
+        }
+        rows.push(row);
     }
 
     build_fcs(
         "FCS3.1",
-        vec![
-            ("$BYTEORD", "1,2,3,4"),
-            ("$DATATYPE", "I"),
-            ("$MODE", "L"),
-            ("$NEXTDATA", "00000000"),
-            ("$PAR", "4"),
-            ("$TOT", &rows.len().to_string()),
-            ("$P1B", "16"),
-            ("$P1E", "0,0"),
-            ("$P1N", "FSC-A"),
-            ("$P1R", "65535"),
-            ("$P2B", "16"),
-            ("$P2E", "0,0"),
-            ("$P2N", "SSC-A"),
-            ("$P2R", "65535"),
-            ("$P3B", "16"),
-            ("$P3E", "0,0"),
-            ("$P3N", "FL1-A"),
-            ("$P3R", "65535"),
-            ("$P4B", "16"),
-            ("$P4E", "0,0"),
-            ("$P4N", "FL2-A"),
-            ("$P4R", "65535"),
-        ],
+        build_parameter_pairs(detectors, rows.len()),
         encode_u16_rows(&rows),
     )
 }
 
-fn build_fcs(version: &str, primary_pairs: Vec<(&str, &str)>, data: Vec<u8>) -> Vec<u8> {
-    let mut primary = primary_pairs
-        .into_iter()
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+fn build_autofluorescence_control_bytes(detectors: &[&str], coefficients: &[f64]) -> Vec<u8> {
+    assert_eq!(detectors.len(), coefficients.len());
+
+    let mut rows = Vec::<Vec<u16>>::new();
+    for index in 0..120 {
+        let fsc = 880.0 + ((index % 12) as f64) * 14.0 + ((index / 12) as f64) * 2.0;
+        let ssc = 970.0 + ((index % 10) as f64) * 12.0 + ((index / 10) as f64) * 2.0;
+        let latent = 500.0 + (index as f64) * 80.0;
+        let mut row = vec![fsc.round() as u16, ssc.round() as u16];
+        for coefficient in coefficients {
+            row.push((latent * coefficient).round() as u16);
+        }
+        rows.push(row);
+    }
+
+    for index in 0..30 {
+        let mut row = vec![18 + (index as u16), 28 + ((index % 7) as u16)];
+        for detector_index in 0..detectors.len() {
+            row.push(8 + (((index + detector_index) % 7) as u16));
+        }
+        rows.push(row);
+    }
+
+    build_fcs(
+        "FCS3.1",
+        build_parameter_pairs(detectors, rows.len()),
+        encode_u16_rows(&rows),
+    )
+}
+
+fn build_parameter_pairs(detectors: &[&str], row_count: usize) -> Vec<(String, String)> {
+    let total_parameters = detectors.len() + 2;
+    let mut pairs = vec![
+        ("$BYTEORD".to_owned(), "1,2,3,4".to_owned()),
+        ("$DATATYPE".to_owned(), "I".to_owned()),
+        ("$MODE".to_owned(), "L".to_owned()),
+        ("$NEXTDATA".to_owned(), "00000000".to_owned()),
+        ("$PAR".to_owned(), total_parameters.to_string()),
+        ("$TOT".to_owned(), row_count.to_string()),
+    ];
+
+    let names = std::iter::once("FSC-A")
+        .chain(std::iter::once("SSC-A"))
+        .chain(detectors.iter().copied())
         .collect::<Vec<_>>();
+    for (index, name) in names.iter().enumerate() {
+        let parameter_index = index + 1;
+        pairs.push((format!("$P{parameter_index}B"), "16".to_owned()));
+        pairs.push((format!("$P{parameter_index}E"), "0,0".to_owned()));
+        pairs.push((format!("$P{parameter_index}N"), (*name).to_owned()));
+        pairs.push((format!("$P{parameter_index}R"), "65535".to_owned()));
+    }
+
+    pairs
+}
+
+fn build_fcs(version: &str, primary_pairs: Vec<(String, String)>, data: Vec<u8>) -> Vec<u8> {
+    let mut primary = primary_pairs;
     set_pair(&mut primary, "$BEGINSTEXT", "00000000");
     set_pair(&mut primary, "$ENDSTEXT", "00000000");
     set_pair(&mut primary, "$BEGINDATA", "00000000");
@@ -204,7 +398,7 @@ fn set_pair(pairs: &mut Vec<(String, String)>, key: &str, value: &str) {
     }
 }
 
-fn encode_u16_rows(rows: &[[u16; 4]]) -> Vec<u8> {
+fn encode_u16_rows(rows: &[Vec<u16>]) -> Vec<u8> {
     let mut bytes = Vec::new();
     for row in rows {
         for value in row {
@@ -212,4 +406,16 @@ fn encode_u16_rows(rows: &[[u16; 4]]) -> Vec<u8> {
         }
     }
     bytes
+}
+
+fn slug(value: &str) -> String {
+    value.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }

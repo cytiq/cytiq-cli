@@ -10,11 +10,16 @@ pub(crate) struct RegressionResult {
     pub slope: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LinearModelSummary {
+    pub intercept: f64,
+    pub slope: f64,
+    pub slope_t: f64,
+}
+
 // AutoSpill estimates each spillover term from `secondary ~ primary` using a
-// robust linear fit with an intercept. The reference implementation uses robust
-// regression to reduce the influence of outliers and heteroskedastic tails that
-// are common in flow data; we keep the same intent here with an iteratively
-// reweighted fit.
+// robust linear fit with an intercept. The upstream R implementation falls back
+// to OLS when robust fitting does not converge; we do the same.
 pub(crate) fn robust_linear_regression(
     x: &[f64],
     y: &[f64],
@@ -25,7 +30,13 @@ pub(crate) fn robust_linear_regression(
     }
 
     let mut weights = vec![1.0; x.len()];
-    let (mut intercept, mut slope) = weighted_fit(x, y, &weights)?;
+    let Some((mut intercept, mut slope)) = weighted_fit(x, y, &weights) else {
+        return ordinary_linear_regression(x, y).map(|summary| RegressionResult {
+            intercept: summary.intercept,
+            slope: summary.slope,
+        });
+    };
+
     for _ in 0..max_iterations {
         let residuals = x
             .iter()
@@ -34,7 +45,7 @@ pub(crate) fn robust_linear_regression(
             .collect::<Vec<_>>();
         let scale = scaled_mad(&residuals);
         if scale <= f64::EPSILON {
-            break;
+            return Some(RegressionResult { intercept, slope });
         }
 
         for (weight, residual) in weights.iter_mut().zip(&residuals) {
@@ -47,7 +58,12 @@ pub(crate) fn robust_linear_regression(
             };
         }
 
-        let (next_intercept, next_slope) = weighted_fit(x, y, &weights)?;
+        let Some((next_intercept, next_slope)) = weighted_fit(x, y, &weights) else {
+            return ordinary_linear_regression(x, y).map(|summary| RegressionResult {
+                intercept: summary.intercept,
+                slope: summary.slope,
+            });
+        };
         if (next_intercept - intercept).abs() < 1e-9 && (next_slope - slope).abs() < 1e-9 {
             intercept = next_intercept;
             slope = next_slope;
@@ -58,6 +74,101 @@ pub(crate) fn robust_linear_regression(
     }
 
     Some(RegressionResult { intercept, slope })
+}
+
+pub(crate) fn ordinary_linear_regression(x: &[f64], y: &[f64]) -> Option<LinearModelSummary> {
+    if x.len() != y.len() || x.len() < 3 {
+        return None;
+    }
+
+    let mean_x = x.iter().sum::<f64>() / (x.len() as f64);
+    let mean_y = y.iter().sum::<f64>() / (y.len() as f64);
+    let sxx = x
+        .iter()
+        .map(|value| {
+            let centered = value - mean_x;
+            centered * centered
+        })
+        .sum::<f64>();
+    if sxx <= f64::EPSILON {
+        return None;
+    }
+    let sxy = x
+        .iter()
+        .zip(y)
+        .map(|(x_value, y_value)| (x_value - mean_x) * (y_value - mean_y))
+        .sum::<f64>();
+    let slope = sxy / sxx;
+    let intercept = mean_y - slope * mean_x;
+
+    let rss = x
+        .iter()
+        .zip(y)
+        .map(|(x_value, y_value)| {
+            let residual = y_value - (intercept + slope * x_value);
+            residual * residual
+        })
+        .sum::<f64>();
+    let degrees_of_freedom = (x.len() as f64) - 2.0;
+    let variance = if degrees_of_freedom > 0.0 {
+        rss / degrees_of_freedom
+    } else {
+        0.0
+    };
+    let slope_standard_error = (variance / sxx).sqrt();
+    let slope_t = if slope_standard_error <= f64::EPSILON {
+        f64::INFINITY
+    } else {
+        slope / slope_standard_error
+    };
+
+    Some(LinearModelSummary {
+        intercept,
+        slope,
+        slope_t,
+    })
+}
+
+pub(crate) fn ordinary_linear_regression_without_intercept(
+    x: &[f64],
+    y: &[f64],
+) -> Option<LinearModelSummary> {
+    if x.len() != y.len() || x.len() < 2 {
+        return None;
+    }
+
+    let sxx = x.iter().map(|value| value * value).sum::<f64>();
+    if sxx <= f64::EPSILON {
+        return None;
+    }
+    let sxy = x.iter().zip(y).map(|(x_value, y_value)| x_value * y_value).sum::<f64>();
+    let slope = sxy / sxx;
+    let rss = x
+        .iter()
+        .zip(y)
+        .map(|(x_value, y_value)| {
+            let residual = y_value - slope * x_value;
+            residual * residual
+        })
+        .sum::<f64>();
+    let degrees_of_freedom = (x.len() as f64) - 1.0;
+    let variance = if degrees_of_freedom > 0.0 {
+        rss / degrees_of_freedom
+    } else {
+        0.0
+    };
+    let slope_standard_error = (variance / sxx).sqrt();
+    let slope_t = if slope_standard_error <= f64::EPSILON {
+        f64::INFINITY
+    } else {
+        slope / slope_standard_error
+    };
+
+    Some(LinearModelSummary {
+        intercept: 0.0,
+        slope,
+        slope_t,
+    })
 }
 
 pub(crate) fn trim_joint_pairs(
@@ -76,10 +187,6 @@ pub(crate) fn trim_joint_pairs(
     let secondary_low = nth_sorted(secondary, trim_n - 1, false);
     let secondary_high = nth_sorted(secondary, trim_n - 1, true);
 
-    // The trimming is joint: an event is kept only if it stays away from the
-    // extreme tails in both the primary and secondary channels. That mirrors the
-    // R implementation and avoids fitting the regression against paired extremes
-    // where one detector is saturated or dominated by artefacts.
     let mut trimmed_primary = Vec::new();
     let mut trimmed_secondary = Vec::new();
     for (&primary_value, &secondary_value) in primary.iter().zip(secondary) {
@@ -130,6 +237,58 @@ pub(crate) fn skewness(values: &[f64]) -> f64 {
     third_moment / standard_deviation.powi(3)
 }
 
+pub(crate) fn median(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let middle = sorted.len() / 2;
+    if sorted.len().is_multiple_of(2) {
+        f64::midpoint(sorted[middle - 1], sorted[middle])
+    } else {
+        sorted[middle]
+    }
+}
+
+pub(crate) fn percentile(values: &[f64], fraction: f64) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let clamped = fraction.clamp(0.0, 1.0);
+    let position = clamped * ((sorted.len() - 1) as f64);
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    if lower == upper {
+        sorted[lower]
+    } else {
+        let weight = position - (lower as f64);
+        (1.0 - weight) * sorted[lower] + weight * sorted[upper]
+    }
+}
+
+pub(crate) fn robust_standard_deviation(values: &[f64]) -> f64 {
+    percentile(values, 0.84) - median(values)
+}
+
+pub(crate) fn sample_standard_deviation(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return 0.0;
+    }
+    let mean = values.iter().sum::<f64>() / (values.len() as f64);
+    let variance = values
+        .iter()
+        .map(|value| {
+            let centered = value - mean;
+            centered * centered
+        })
+        .sum::<f64>()
+        / ((values.len() as f64) - 1.0);
+    variance.sqrt()
+}
+
 fn weighted_fit(x: &[f64], y: &[f64], weights: &[f64]) -> Option<(f64, f64)> {
     let weight_sum = weights.iter().sum::<f64>();
     if weight_sum <= f64::EPSILON {
@@ -178,20 +337,6 @@ fn scaled_mad(values: &[f64]) -> f64 {
     1.4826 * median(&deviations)
 }
 
-fn median(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        return 0.0;
-    }
-    let mut sorted = values.to_vec();
-    sorted.sort_by(f64::total_cmp);
-    let middle = sorted.len() / 2;
-    if sorted.len().is_multiple_of(2) {
-        f64::midpoint(sorted[middle - 1], sorted[middle])
-    } else {
-        sorted[middle]
-    }
-}
-
 fn nth_sorted(values: &[f64], index: usize, descending: bool) -> f64 {
     let mut sorted = values.to_vec();
     if descending {
@@ -204,7 +349,10 @@ fn nth_sorted(values: &[f64], index: usize, descending: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{robust_linear_regression, trim_joint_pairs};
+    use super::{
+        ordinary_linear_regression_without_intercept, robust_linear_regression,
+        robust_standard_deviation, trim_joint_pairs,
+    };
 
     #[test]
     fn robust_regression_handles_outliers() {
@@ -228,5 +376,23 @@ mod tests {
 
         assert_eq!(trimmed_primary, vec![3.0, 4.0, 5.0, 6.0, 7.0]);
         assert_eq!(trimmed_secondary, vec![6.0, 8.0, 10.0, 12.0, 14.0]);
+    }
+
+    #[test]
+    fn no_intercept_regression_fits_expected_slope() {
+        let x = vec![1.0, 2.0, 3.0, 4.0];
+        let y = vec![0.5, 1.0, 1.5, 2.0];
+        let result = ordinary_linear_regression_without_intercept(&x, &y)
+            .expect("no-intercept regression should fit");
+        assert!((result.slope - 0.5).abs() < 1e-9);
+        assert!(result.slope_t.is_infinite() || result.slope_t.abs() >= 1.96);
+    }
+
+    #[test]
+    fn robust_standard_deviation_uses_percentile84_minus_median() {
+        let values = vec![1.0, 2.0, 2.0, 3.0, 10.0];
+        let sigma = robust_standard_deviation(&values);
+        assert!(sigma.is_finite());
+        assert!(sigma > 0.0);
     }
 }

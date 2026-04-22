@@ -4,8 +4,9 @@ mod support;
 use std::fs;
 
 use cytiq_autospill::{
-    AutospillConfig, AutospillError, AutospillRunner, MatrixKind, export_matrix,
-    read_controls_manifest,
+    AutospillConfig, AutospillError, AutospillRunner, AutospreadConfig, AutospreadRunner,
+    MatrixKind, export_matrix, read_controls_manifest, read_detectors_manifest,
+    read_transform_manifest,
 };
 
 #[test]
@@ -84,6 +85,9 @@ fn runner_reports_missing_primary_channel() {
     assert!(matches!(
         error,
         AutospillError::MissingChannel { ref channel, .. } if channel == "FL9-A"
+    ) || matches!(
+        error,
+        AutospillError::MissingDetector { ref channel } if channel == "FL9-A"
     ));
 }
 
@@ -96,6 +100,112 @@ fn runner_reports_singular_matrix() {
     let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
         .expect_err("singular spillover matrix should fail");
     assert!(matches!(error, AutospillError::SingularMatrix));
+}
+
+#[test]
+fn runner_supports_rectangular_detector_sets() {
+    let directory = support::create_temp_dir("autospill-rectangular");
+    let (manifest_path, detectors_path) = support::write_rectangular_autospill_fixture(&directory);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let config = AutospillConfig {
+        detectors,
+        ..AutospillConfig::default()
+    };
+
+    let result = AutospillRunner::run(&manifest, &directory, &config)
+        .expect("rectangular autospill should succeed");
+
+    assert_eq!(result.dyes, vec!["FITC", "PE"]);
+    assert_eq!(result.detectors, vec!["FL1-A", "FL2-A", "FL3-A"]);
+    assert_eq!(result.spillover_matrix.len(), 2);
+    assert_eq!(result.spillover_matrix[0].len(), 3);
+    assert_eq!(result.compensation_matrix.len(), 3);
+    assert_eq!(result.compensation_matrix[0].len(), 2);
+    assert_close(result.spillover_matrix[0][1], 0.2, 1e-6);
+    assert_close(result.spillover_matrix[0][2], 0.05, 1e-5);
+    assert_close(result.spillover_matrix[1][0], 0.1, 1e-6);
+    assert_close(result.spillover_matrix[1][2], 0.03, 1e-5);
+}
+
+#[test]
+fn runner_supports_autofluorescence_controls() {
+    let directory = support::create_temp_dir("autospill-autofluorescence");
+    let (manifest_path, detectors_path) = support::write_autofluorescence_fixture(&directory);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let config = AutospillConfig {
+        detectors,
+        ..AutospillConfig::default()
+    };
+
+    let result = AutospillRunner::run(&manifest, &directory, &config)
+        .expect("autospill with autofluorescence should succeed");
+
+    assert_eq!(result.dyes, vec!["FITC", "PE", "Autofluorescence"]);
+    assert_eq!(result.detectors, vec!["FL1-A", "FL2-A", "AF-A"]);
+    assert_eq!(result.spillover_matrix.len(), 3);
+    assert_eq!(result.spillover_matrix[2].len(), 3);
+    assert_eq!(result.spillover_matrix[2][2], 1.0);
+    assert!(result.spillover_matrix[2][0] > 0.0);
+    assert!(result.spillover_matrix[2][1] > 0.0);
+}
+
+#[test]
+fn runner_writes_debug_artifacts() {
+    let directory = support::create_temp_dir("autospill-debug");
+    let debug_dir = directory.join("debug");
+    let (manifest_path, detectors_path) = support::write_rectangular_autospill_fixture(&directory);
+    let transform_path = support::write_transform_manifest(&directory, &["FITC", "PE"]);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let transforms = read_transform_manifest(&transform_path).expect("transforms should load");
+    let config = AutospillConfig {
+        detectors,
+        transforms,
+        debug_dir: Some(debug_dir.clone()),
+        ..AutospillConfig::default()
+    };
+
+    let _ = AutospillRunner::run(&manifest, &directory, &config)
+        .expect("autospill with debug output should succeed");
+
+    for name in [
+        "summary.json",
+        "convergence.html",
+        "spillover_matrix.html",
+        "compensation_matrix.html",
+        "gate_fitc.html",
+        "gate_pe.html",
+        "scatter_fitc_00.html",
+        "scatter_pe_00.html",
+    ] {
+        assert!(debug_dir.join(name).is_file(), "missing debug artifact {name}");
+    }
+}
+
+#[test]
+fn autospread_estimates_positive_spread_coefficients() {
+    let directory = support::create_temp_dir("autospread");
+    let (manifest_path, detectors_path) = support::write_autospread_fixture(&directory);
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let config = AutospreadConfig {
+        detectors,
+        ..AutospreadConfig::default()
+    };
+
+    let result = AutospreadRunner::run(&manifest, &directory, &config)
+        .expect("autospread should succeed");
+
+    assert_eq!(result.spread_matrix.len(), 2);
+    assert_eq!(result.spread_matrix[0].len(), 3);
+    assert_eq!(result.spread_matrix[0][0], 0.0);
+    assert_eq!(result.spread_matrix[1][1], 0.0);
+    assert!(result.spread_matrix[0][1] > 0.0);
+    assert!(result.spread_matrix[0][2] > 0.0);
+    assert!(result.spread_matrix[1][0] > 0.0);
+    assert!(result.spread_matrix[1][2] > 0.0);
 }
 
 fn assert_close(actual: f64, expected: f64, tolerance: f64) {

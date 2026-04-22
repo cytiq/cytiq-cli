@@ -10,16 +10,38 @@ pub enum AutospillError {
         #[source]
         source: csv::Error,
     },
+    #[error("failed to read detectors manifest `{path}`: {source}")]
+    DetectorRead {
+        path: PathBuf,
+        #[source]
+        source: csv::Error,
+    },
+    #[error("failed to read transform manifest `{path}`: {source}")]
+    TransformRead {
+        path: PathBuf,
+        #[source]
+        source: csv::Error,
+    },
     #[error("controls manifest is empty")]
     EmptyManifest,
+    #[error("detectors manifest is empty")]
+    EmptyDetectorsManifest,
     #[error("manifest row {row} has an empty `{field}`")]
     EmptyManifestField { row: usize, field: &'static str },
+    #[error("detector row {row} has an empty `{field}`")]
+    EmptyDetectorField { row: usize, field: &'static str },
+    #[error("transform row {row} has an empty `{field}`")]
+    EmptyTransformField { row: usize, field: &'static str },
     #[error("manifest row {row} must use a relative `filename`, got `{filename}`")]
     AbsoluteManifestFilename { row: usize, filename: String },
     #[error("duplicate `dye` value `{value}` in controls manifest")]
     DuplicateDye { value: String },
     #[error("duplicate `primary_channel` value `{value}` in controls manifest")]
     DuplicatePrimaryChannel { value: String },
+    #[error("duplicate detector channel `{value}` in detectors manifest")]
+    DuplicateDetectorChannel { value: String },
+    #[error("duplicate transform channel `{value}` in transform manifest")]
+    DuplicateTransformChannel { value: String },
     #[error("control file `{path}` does not exist")]
     MissingControlFile { path: PathBuf },
     #[error("failed to read FCS control `{path}`: {source}")]
@@ -32,6 +54,10 @@ pub enum AutospillError {
     EmptyControl { path: PathBuf },
     #[error("channel `{channel}` was not found in `{path}`")]
     MissingChannel { path: PathBuf, channel: String },
+    #[error("detector channel `{channel}` was not declared")]
+    MissingDetector { channel: String },
+    #[error("transform parameters for `{channel}` were not found")]
+    MissingTransform { channel: String },
     #[error("control `{path}` produced a degenerate gate: {reason}")]
     DegenerateGate { path: PathBuf, reason: &'static str },
     #[error(
@@ -44,8 +70,24 @@ pub enum AutospillError {
     },
     #[error("spillover matrix became singular during refinement")]
     SingularMatrix,
+    #[error("rectangular unmixing matrix is ill-conditioned")]
+    IllConditionedPseudoInverse,
     #[error("autospill did not converge after {iterations} iterations (delta.max={delta_max:e})")]
     NonConvergent { iterations: usize, delta_max: f64 },
+    #[error("autospread could not estimate a spreading matrix")]
+    AutospreadFailed,
+    #[error("debug output could not be created at `{path}`: {source}")]
+    DebugOutputCreate {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to write debug artifact `{path}`: {source}")]
+    DebugWrite {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("matrix export format for `{path}` is not supported")]
     UnsupportedOutputFormat { path: PathBuf },
     #[error("failed to write matrix to `{path}`: {source}")]

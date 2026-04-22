@@ -2,7 +2,8 @@
 mod support;
 
 use std::fs;
-use std::process::Command;
+use std::path::Path;
+use std::process::{Command, Output};
 
 #[test]
 fn cli_writes_csv_tsv_and_parquet_outputs() {
@@ -38,18 +39,11 @@ fn cli_fails_when_manifest_references_missing_control() {
         .args([
             "autospill",
             "--controls",
-            manifest_path
-                .to_str()
-                .expect("manifest path should be valid utf-8"),
+            utf8(&manifest_path),
             "--input-dir",
-            directory
-                .to_str()
-                .expect("directory path should be valid utf-8"),
+            utf8(&directory),
             "--output",
-            directory
-                .join("matrix.csv")
-                .to_str()
-                .expect("output path should be valid utf-8"),
+            utf8(&directory.join("matrix.csv")),
         ])
         .output()
         .expect("command should run");
@@ -72,18 +66,11 @@ fn cli_fails_on_duplicate_primary_channel() {
         .args([
             "autospill",
             "--controls",
-            manifest_path
-                .to_str()
-                .expect("manifest path should be valid utf-8"),
+            utf8(&manifest_path),
             "--input-dir",
-            directory
-                .to_str()
-                .expect("directory path should be valid utf-8"),
+            utf8(&directory),
             "--output",
-            directory
-                .join("matrix.csv")
-                .to_str()
-                .expect("output path should be valid utf-8"),
+            utf8(&directory.join("matrix.csv")),
         ])
         .output()
         .expect("command should run");
@@ -93,27 +80,98 @@ fn cli_fails_on_duplicate_primary_channel() {
     assert!(stderr.contains("duplicate `primary_channel`"));
 }
 
-fn run_success(
-    manifest_path: &std::path::Path,
-    input_dir: &std::path::Path,
-    output_path: &std::path::Path,
-) {
+#[test]
+fn cli_supports_detectors_transform_file_and_debug_dir() {
+    let directory = support::create_temp_dir("cytiq-cli-rectangular");
+    let debug_dir = directory.join("debug");
+    let (manifest_path, detectors_path) = support::write_rectangular_autospill_fixture(&directory);
+    let transform_path = support::write_transform_manifest(&directory, &["FITC", "PE"]);
+    let output_path = directory.join("spillover.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospill",
+            "--controls",
+            utf8(&manifest_path),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&output_path),
+            "--detectors",
+            utf8(&detectors_path),
+            "--transform-file",
+            utf8(&transform_path),
+            "--debug-dir",
+            utf8(&debug_dir),
+            "--matrix-kind",
+            "spillover",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let csv_output = fs::read_to_string(&output_path).expect("spillover output should exist");
+    assert!(csv_output.starts_with("dye,FL1-A,FL2-A,FL3-A"));
+    assert!(debug_dir.join("summary.json").is_file());
+    assert!(debug_dir.join("convergence.html").is_file());
+}
+
+#[test]
+fn cli_runs_autospread() {
+    let directory = support::create_temp_dir("cytiq-cli-autospread");
+    let debug_dir = directory.join("debug");
+    let (manifest_path, detectors_path) = support::write_autospread_fixture(&directory);
+    let output_path = directory.join("spread.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospread",
+            "--controls",
+            utf8(&manifest_path),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&output_path),
+            "--detectors",
+            utf8(&detectors_path),
+            "--debug-dir",
+            utf8(&debug_dir),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let csv_output = fs::read_to_string(&output_path).expect("spread output should exist");
+    assert!(csv_output.starts_with("dye,FL1-A,FL2-A,FL3-A"));
+    assert!(debug_dir.join("spread_matrix.html").is_file());
+    assert!(debug_dir.join("summary.json").is_file());
+}
+
+fn run_success(manifest_path: &Path, input_dir: &Path, output_path: &Path) {
     let status = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "autospill",
             "--controls",
-            manifest_path
-                .to_str()
-                .expect("manifest path should be valid utf-8"),
+            utf8(manifest_path),
             "--input-dir",
-            input_dir.to_str().expect("input dir should be valid utf-8"),
+            utf8(input_dir),
             "--output",
-            output_path
-                .to_str()
-                .expect("output path should be valid utf-8"),
+            utf8(output_path),
         ])
         .status()
         .expect("command should run");
 
     assert!(status.success());
+}
+
+fn utf8(path: &Path) -> &str {
+    path.to_str().expect("path should be valid utf-8")
+}
+
+#[allow(dead_code)]
+fn run_output(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args(args)
+        .output()
+        .expect("command should run")
 }

@@ -1,5 +1,5 @@
-//! `cytiq-autospill` implements a narrow Rust port of the core `AutoSpill`
-//! workflow for square compensation matrices.
+//! `cytiq-autospill` implements the core `AutoSpill` and `AutoSpread`
+//! workflows for flow-cytometry compensation and unmixing.
 //!
 //! Primary reference:
 //! <https://www.nature.com/articles/s41467-021-23126-8>
@@ -9,20 +9,26 @@
 //!
 //! The goal of this crate is not to introduce Rust-specific tuning, but to keep
 //! the same high-level stages and defaults visible in code:
-//! FSC/SSC auto-gating, robust spillover estimation, iterative refinement, and
-//! matrix export.
+//! FSC/SSC auto-gating, robust spillover estimation, linear-to-transformed
+//! iterative refinement, matrix export, AutoSpread estimation, and optional
+//! Plotly debug artifacts.
 
 mod error;
 mod export;
 mod gating;
 mod manifest;
+mod plotting;
 mod regression;
 mod runner;
+mod transform;
 
 pub use crate::error::AutospillError;
-pub use crate::export::export_matrix;
-pub use crate::manifest::{ControlsManifestRow, read_controls_manifest};
+pub use crate::export::{export_matrix, export_spread_matrix};
+pub use crate::manifest::{
+    ControlKind, ControlsManifestRow, DetectorSpec, TransformSpec, read_controls_manifest,
+    read_detectors_manifest, read_transform_manifest,
+};
 pub use crate::runner::{
-    AutospillConfig, AutospillResult, AutospillRunner, ConvergenceStep, ConvergenceSummary,
-    GateStats, MatrixKind,
+    AutospillConfig, AutospillResult, AutospillRunner, AutospreadConfig, AutospreadResult,
+    AutospreadRunner, ConvergenceStep, ConvergenceSummary, GateStats, MatrixKind, SpreadStats,
 };

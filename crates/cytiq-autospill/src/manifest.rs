@@ -5,21 +5,47 @@ use serde::Deserialize;
 
 use crate::error::AutospillError;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ControlKind {
+    #[default]
+    SingleColor,
+    Autofluorescence,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct ControlsManifestRow {
     pub filename: String,
     pub dye: String,
     pub primary_channel: String,
     #[serde(default, deserialize_with = "empty_string_is_none")]
     pub antigen: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_control_kind")]
+    pub control_kind: ControlKind,
+    #[serde(default)]
+    pub wavelength: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct DetectorSpec {
+    pub channel: String,
+    #[serde(default, deserialize_with = "empty_string_is_none")]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub wavelength: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct TransformSpec {
+    pub channel: String,
+    pub length: f64,
+    #[serde(rename = "max_range")]
+    pub max_range: f64,
+    pub pos: f64,
+    pub neg: f64,
+    pub width: f64,
 }
 
 /// Read and validate the controls manifest CSV.
-///
-/// # Errors
-///
-/// Returns an error when the CSV cannot be parsed or when manifest validation
-/// fails.
 pub fn read_controls_manifest(
     path: impl AsRef<Path>,
 ) -> Result<Vec<ControlsManifestRow>, AutospillError> {
@@ -38,6 +64,50 @@ pub fn read_controls_manifest(
         rows.push(row);
     }
     validate_controls_manifest(&rows)?;
+    Ok(rows)
+}
+
+/// Read and validate the detectors manifest CSV.
+pub fn read_detectors_manifest(
+    path: impl AsRef<Path>,
+) -> Result<Vec<DetectorSpec>, AutospillError> {
+    let path = path.as_ref();
+    let mut reader =
+        csv::Reader::from_path(path).map_err(|source| AutospillError::DetectorRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut rows = Vec::new();
+    for record in reader.deserialize() {
+        let row = record.map_err(|source| AutospillError::DetectorRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        rows.push(row);
+    }
+    validate_detectors_manifest(&rows)?;
+    Ok(rows)
+}
+
+/// Read and validate the transform manifest CSV.
+pub fn read_transform_manifest(
+    path: impl AsRef<Path>,
+) -> Result<Vec<TransformSpec>, AutospillError> {
+    let path = path.as_ref();
+    let mut reader =
+        csv::Reader::from_path(path).map_err(|source| AutospillError::TransformRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut rows = Vec::new();
+    for record in reader.deserialize() {
+        let row = record.map_err(|source| AutospillError::TransformRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        rows.push(row);
+    }
+    validate_transform_manifest(&rows)?;
     Ok(rows)
 }
 
@@ -89,6 +159,50 @@ fn validate_controls_manifest(rows: &[ControlsManifestRow]) -> Result<(), Autosp
     Ok(())
 }
 
+fn validate_detectors_manifest(rows: &[DetectorSpec]) -> Result<(), AutospillError> {
+    if rows.is_empty() {
+        return Err(AutospillError::EmptyDetectorsManifest);
+    }
+
+    let mut seen_channels = HashSet::new();
+    for (index, row) in rows.iter().enumerate() {
+        let row_number = index + 1;
+        if row.channel.trim().is_empty() {
+            return Err(AutospillError::EmptyDetectorField {
+                row: row_number,
+                field: "channel",
+            });
+        }
+        if !seen_channels.insert(row.channel.clone()) {
+            return Err(AutospillError::DuplicateDetectorChannel {
+                value: row.channel.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_transform_manifest(rows: &[TransformSpec]) -> Result<(), AutospillError> {
+    let mut seen_channels = HashSet::new();
+    for (index, row) in rows.iter().enumerate() {
+        let row_number = index + 1;
+        if row.channel.trim().is_empty() {
+            return Err(AutospillError::EmptyTransformField {
+                row: row_number,
+                field: "channel",
+            });
+        }
+        if !seen_channels.insert(row.channel.clone()) {
+            return Err(AutospillError::DuplicateTransformChannel {
+                value: row.channel.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn empty_string_is_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -104,9 +218,27 @@ where
     }))
 }
 
+fn deserialize_control_kind<'de, D>(deserializer: D) -> Result<ControlKind, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    let Some(value) = value else {
+        return Ok(ControlKind::SingleColor);
+    };
+
+    match value.trim() {
+        "" | "single_color" => Ok(ControlKind::SingleColor),
+        "autofluorescence" => Ok(ControlKind::Autofluorescence),
+        other => Err(serde::de::Error::custom(format!(
+            "unsupported control_kind `{other}`"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ControlsManifestRow;
+    use super::{ControlKind, ControlsManifestRow, DetectorSpec, TransformSpec};
     use crate::error::AutospillError;
 
     fn validate(rows: &[ControlsManifestRow]) -> Result<(), AutospillError> {
@@ -119,6 +251,8 @@ mod tests {
             dye: dye.to_owned(),
             primary_channel: channel.to_owned(),
             antigen: None,
+            control_kind: ControlKind::SingleColor,
+            wavelength: None,
         }
     }
 
@@ -149,6 +283,56 @@ mod tests {
                 field: "primary_channel",
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_detector_channels() {
+        let rows = vec![
+            DetectorSpec {
+                channel: "FL1-A".to_owned(),
+                label: None,
+                wavelength: None,
+            },
+            DetectorSpec {
+                channel: "FL1-A".to_owned(),
+                label: None,
+                wavelength: None,
+            },
+        ];
+        let error = super::validate_detectors_manifest(&rows)
+            .expect_err("duplicate detector channel should fail");
+        assert!(matches!(
+            error,
+            AutospillError::DuplicateDetectorChannel { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_transform_channels() {
+        let rows = vec![
+            TransformSpec {
+                channel: "FITC".to_owned(),
+                length: 256.0,
+                max_range: 262_144.0,
+                pos: 4.0,
+                neg: 0.0,
+                width: -100.0,
+            },
+            TransformSpec {
+                channel: "FITC".to_owned(),
+                length: 256.0,
+                max_range: 262_144.0,
+                pos: 4.0,
+                neg: 0.0,
+                width: -100.0,
+            },
+        ];
+        let error = super::validate_transform_manifest(&rows)
+            .expect_err("duplicate transform channel should fail");
+        assert!(matches!(
+            error,
+            AutospillError::DuplicateTransformChannel { .. }
         ));
     }
 }

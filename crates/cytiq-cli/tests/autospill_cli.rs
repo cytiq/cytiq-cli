@@ -109,18 +109,28 @@ fn cli_supports_detectors_transform_file_and_debug_dir() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let csv_output = fs::read_to_string(&output_path).expect("spillover output should exist");
     assert!(csv_output.starts_with("dye,FL1-A,FL2-A,FL3-A"));
     assert!(debug_dir.join("summary.json").is_file());
-    assert!(debug_dir.join("convergence.html").is_file());
+    let report_path = debug_dir.join("report.html");
+    assert!(report_path.is_file());
+    let report = fs::read_to_string(report_path).expect("report should exist");
+    assert!(report.contains("cytiq AutoSpill Report"));
+    assert!(report.contains("Spillover Matrix"));
+    assert!(report.contains("Compensation Matrix"));
 }
 
 #[test]
 fn cli_runs_autospread() {
-    let directory = support::create_temp_dir("cytiq-cli-autospread");
+    let directory = support::copy_autospread_fixture_set("cytiq-cli-autospread");
     let debug_dir = directory.join("debug");
-    let (manifest_path, detectors_path) = support::write_autospread_fixture(&directory);
+    let manifest_path = directory.join("controls.csv");
+    let detectors_path = directory.join("detectors.csv");
     let output_path = directory.join("spread.csv");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -140,11 +150,44 @@ fn cli_runs_autospread() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let csv_output = fs::read_to_string(&output_path).expect("spread output should exist");
     assert!(csv_output.starts_with("dye,FL1-A,FL2-A,FL3-A"));
-    assert!(debug_dir.join("spread_matrix.html").is_file());
     assert!(debug_dir.join("summary.json").is_file());
+    let report_path = debug_dir.join("report.html");
+    assert!(report_path.is_file());
+    let report = fs::read_to_string(report_path).expect("report should exist");
+    assert!(report.contains("cytiq AutoSpread Report"));
+    assert!(report.contains("Spread Matrix"));
+}
+
+#[test]
+fn cli_writes_autospread_csv_tsv_and_parquet_outputs() {
+    let directory = support::copy_autospread_fixture_set("cytiq-cli-autospread-formats");
+    let manifest_path = directory.join("controls.csv");
+    let detectors_path = directory.join("detectors.csv");
+
+    let csv_path = directory.join("spread.csv");
+    run_autospread_success(&manifest_path, &detectors_path, &directory, &csv_path);
+    let csv_output = fs::read_to_string(&csv_path).expect("csv output should exist");
+    assert_eq!(
+        csv_output,
+        support::read_autospread_fixture_text("expected_spread.csv")
+    );
+
+    let tsv_path = directory.join("spread.tsv");
+    run_autospread_success(&manifest_path, &detectors_path, &directory, &tsv_path);
+    let tsv_output = fs::read_to_string(&tsv_path).expect("tsv output should exist");
+    assert!(tsv_output.starts_with("dye\tFL1-A\tFL2-A\tFL3-A"));
+
+    let parquet_path = directory.join("spread.parquet");
+    run_autospread_success(&manifest_path, &detectors_path, &directory, &parquet_path);
+    let parquet = fs::read(&parquet_path).expect("parquet output should exist");
+    assert_eq!(&parquet[..4], b"PAR1");
 }
 
 fn run_success(manifest_path: &Path, input_dir: &Path, output_path: &Path) {
@@ -157,6 +200,30 @@ fn run_success(manifest_path: &Path, input_dir: &Path, output_path: &Path) {
             utf8(input_dir),
             "--output",
             utf8(output_path),
+        ])
+        .status()
+        .expect("command should run");
+
+    assert!(status.success());
+}
+
+fn run_autospread_success(
+    manifest_path: &Path,
+    detectors_path: &Path,
+    input_dir: &Path,
+    output_path: &Path,
+) {
+    let status = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospread",
+            "--controls",
+            utf8(manifest_path),
+            "--input-dir",
+            utf8(input_dir),
+            "--output",
+            utf8(output_path),
+            "--detectors",
+            utf8(detectors_path),
         ])
         .status()
         .expect("command should run");

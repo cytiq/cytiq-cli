@@ -4,8 +4,8 @@
     clippy::cast_sign_loss
 )]
 
-use std::path::{Path, PathBuf};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{ColumnData, FcsReader, Parameter};
 use nalgebra::DMatrix;
@@ -211,7 +211,12 @@ struct RegressionMatrices {
 }
 
 impl AutospillRunner {
-    /// Run the AutoSpill pipeline for the provided controls.
+    /// Run the `AutoSpill` pipeline for the provided controls.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if controls cannot be loaded, gated, refined, or
+    /// exported into debug artifacts.
     pub fn run(
         manifest_rows: &[ControlsManifestRow],
         input_dir: impl AsRef<Path>,
@@ -244,7 +249,8 @@ impl AutospillRunner {
             })
             .collect::<Vec<_>>();
 
-        let initial_spillover = estimate_spillover(&loaded.controls, &gates, loaded.detectors.len())?;
+        let initial_spillover =
+            estimate_spillover(&loaded.controls, &gates, loaded.detectors.len())?;
         let (spillover_matrix, compensation_matrix, convergence, compensation_error) =
             refine_spillover(&loaded, &gates, &initial_spillover)?;
 
@@ -259,10 +265,10 @@ impl AutospillRunner {
             primary_channels: loaded.primary_channels.clone(),
             spillover_matrix: matrix_to_rows(&spillover_matrix),
             compensation_matrix: matrix_to_rows(&compensation_matrix),
-            residual_slope_error: matrix_to_rows(&(compensation_error.slopes - DMatrix::identity(
-                loaded.dyes.len(),
-                loaded.dyes.len(),
-            ))),
+            residual_slope_error: matrix_to_rows(
+                &(compensation_error.slopes
+                    - DMatrix::identity(loaded.dyes.len(), loaded.dyes.len())),
+            ),
             residual_skewness: matrix_to_rows(&compensation_error.skewness),
             gate_stats,
             convergence,
@@ -277,7 +283,12 @@ impl AutospillRunner {
 }
 
 impl AutospreadRunner {
-    /// Run the AutoSpread pipeline for the provided controls.
+    /// Run the `AutoSpread` pipeline for the provided controls.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if controls cannot be loaded, gated, analyzed, or
+    /// exported into debug artifacts.
     pub fn run(
         manifest_rows: &[ControlsManifestRow],
         input_dir: impl AsRef<Path>,
@@ -346,6 +357,7 @@ impl AutospreadRunner {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn load_controls(
     manifest_rows: &[ControlsManifestRow],
     input_dir: &Path,
@@ -563,8 +575,11 @@ fn estimate_spillover(
                 continue;
             }
 
-            let secondary_values =
-                gated_column(&control.detector_events, &gate.gated_indices, detector_index);
+            let secondary_values = gated_column(
+                &control.detector_events,
+                &gate.gated_indices,
+                detector_index,
+            );
             let regression = fit_pair_regression(
                 &primary_values,
                 &secondary_values,
@@ -584,14 +599,26 @@ fn estimate_spillover(
     }
 
     let _ = intercepts;
-    Ok(DMatrix::from_row_slice(dye_count, detector_count, &coefficients))
+    Ok(DMatrix::from_row_slice(
+        dye_count,
+        detector_count,
+        &coefficients,
+    ))
 }
 
 fn refine_spillover(
     loaded: &LoadedControls,
     gates: &[GateComputation],
     initial_spillover: &DMatrix<f64>,
-) -> Result<(DMatrix<f64>, DMatrix<f64>, ConvergenceSummary, RegressionMatrices), AutospillError> {
+) -> Result<
+    (
+        DMatrix<f64>,
+        DMatrix<f64>,
+        ConvergenceSummary,
+        RegressionMatrices,
+    ),
+    AutospillError,
+> {
     let dye_count = loaded.controls.len();
     let detector_count = loaded.detectors.len();
     let identity = DMatrix::identity(dye_count, dye_count);
@@ -601,7 +628,8 @@ fn refine_spillover(
         .map(|control| control.primary_detector_index)
         .collect::<Vec<_>>();
 
-    let mut spillover_current = basis_spillover(dye_count, detector_count, &primary_detector_indices);
+    let mut spillover_current =
+        basis_spillover(dye_count, detector_count, &primary_detector_indices);
     let mut spillover_update = initial_spillover - &spillover_current;
     let mut scale = RefinementScale::Linear;
     let mut lambda = RS_LAMBDA_COARSE;
@@ -615,12 +643,12 @@ fn refine_spillover(
         spillover_current += &spillover_update;
         normalize_rows_on_primary(&mut spillover_current, &primary_detector_indices)?;
         let compensation = compensation_matrix(&spillover_current)?;
-        let compensation_error =
-            compensation_error(loaded, gates, &compensation, scale)?;
+        let compensation_error = compensation_error(loaded, gates, &compensation, scale)?;
         let slope_error = compensation_error.slopes.clone() - identity.clone();
 
         let previous_delta = delta;
-        delta = sample_standard_deviation(slope_error.iter().copied().collect::<Vec<_>>().as_slice());
+        delta =
+            sample_standard_deviation(slope_error.iter().copied().collect::<Vec<_>>().as_slice());
         let delta_max = slope_error
             .iter()
             .map(|value| value.abs())
@@ -709,8 +737,7 @@ fn compensation_error(
 
     for (control, gate) in loaded.controls.iter().zip(gates) {
         let unmixed_linear = control.detector_events.dot(&compensation_array);
-        let primary_linear =
-            gated_column(&unmixed_linear, &gate.gated_indices, control.dye_index);
+        let primary_linear = gated_column(&unmixed_linear, &gate.gated_indices, control.dye_index);
         let primary_values = match scale {
             RefinementScale::Linear => primary_linear.clone(),
             RefinementScale::BiExponential => primary_linear
@@ -726,7 +753,8 @@ fn compensation_error(
                 continue;
             }
 
-            let secondary_linear = gated_column(&unmixed_linear, &gate.gated_indices, secondary_index);
+            let secondary_linear =
+                gated_column(&unmixed_linear, &gate.gated_indices, secondary_index);
             let secondary_values = match scale {
                 RefinementScale::Linear => secondary_linear.clone(),
                 RefinementScale::BiExponential => secondary_linear
@@ -750,7 +778,10 @@ fn compensation_error(
                 RefinementScale::BiExponential => {
                     let (trimmed_primary, trimmed_secondary) =
                         trim_joint_pairs(&primary_values, &secondary_values, RLM_TRIM_FACTOR);
-                    let primary_low = trimmed_primary.iter().copied().fold(f64::INFINITY, f64::min);
+                    let primary_low = trimmed_primary
+                        .iter()
+                        .copied()
+                        .fold(f64::INFINITY, f64::min);
                     let primary_high = trimmed_primary
                         .iter()
                         .copied()
@@ -808,14 +839,22 @@ fn estimate_spread_matrix(
                 continue;
             }
 
-            let secondary_values =
-                gated_column(&control.detector_events, &gate.gated_indices, detector_index);
+            let secondary_values = gated_column(
+                &control.detector_events,
+                &gate.gated_indices,
+                detector_index,
+            );
             let mut fluorescence = Vec::new();
             let mut sigma = Vec::new();
             for bin in &bins {
-                let primary_bin = bin.iter().map(|&index| primary_values[index]).collect::<Vec<_>>();
-                let secondary_bin =
-                    bin.iter().map(|&index| secondary_values[index]).collect::<Vec<_>>();
+                let primary_bin = bin
+                    .iter()
+                    .map(|&index| primary_values[index])
+                    .collect::<Vec<_>>();
+                let secondary_bin = bin
+                    .iter()
+                    .map(|&index| secondary_values[index])
+                    .collect::<Vec<_>>();
                 if primary_bin.len() < 3 || secondary_bin.len() < 3 {
                     continue;
                 }
@@ -861,7 +900,10 @@ fn estimate_spread_matrix(
         });
     }
 
-    Ok((DMatrix::from_row_slice(dye_count, detector_count, &values), stats))
+    Ok((
+        DMatrix::from_row_slice(dye_count, detector_count, &values),
+        stats,
+    ))
 }
 
 fn basis_spillover(
@@ -894,7 +936,10 @@ fn normalize_rows_on_primary(
 
 fn compensation_matrix(spillover: &DMatrix<f64>) -> Result<DMatrix<f64>, AutospillError> {
     if spillover.nrows() == spillover.ncols() {
-        spillover.clone().try_inverse().ok_or(AutospillError::SingularMatrix)
+        spillover
+            .clone()
+            .try_inverse()
+            .ok_or(AutospillError::SingularMatrix)
     } else {
         spillover
             .clone()
@@ -922,7 +967,10 @@ fn fit_pair_regression(
 }
 
 fn gated_column(matrix: &Array2<f64>, indices: &[usize], column: usize) -> Vec<f64> {
-    indices.iter().map(|&index| matrix[(index, column)]).collect()
+    indices
+        .iter()
+        .map(|&index| matrix[(index, column)])
+        .collect()
 }
 
 fn column_to_f64(column: &ColumnData) -> Vec<f64> {
@@ -939,7 +987,10 @@ fn find_parameter_index(parameters: &[Parameter], channel: &str) -> Option<usize
         .position(|parameter| parameter.name == channel)
         .or_else(|| {
             parameters.iter().position(|parameter| {
-                parameter.label.as_deref().is_some_and(|label| label == channel)
+                parameter
+                    .label
+                    .as_deref()
+                    .is_some_and(|label| label == channel)
             })
         })
 }
@@ -952,7 +1003,11 @@ fn dmat_to_array2(matrix: &DMatrix<f64>) -> Array2<f64> {
 
 fn matrix_to_rows(matrix: &DMatrix<f64>) -> Vec<Vec<f64>> {
     (0..matrix.nrows())
-        .map(|row| (0..matrix.ncols()).map(|column| matrix[(row, column)]).collect())
+        .map(|row| {
+            (0..matrix.ncols())
+                .map(|column| matrix[(row, column)])
+                .collect()
+        })
         .collect()
 }
 

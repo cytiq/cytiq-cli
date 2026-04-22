@@ -11,6 +11,11 @@ use crate::error::AutospillError;
 use crate::runner::{AutospillResult, AutospreadResult, MatrixKind};
 
 /// Write the requested matrix format to `path`.
+///
+/// # Errors
+///
+/// Returns an error if the output format is unsupported or the matrix cannot be
+/// written to the requested path.
 pub fn export_matrix(
     result: &AutospillResult,
     kind: MatrixKind,
@@ -18,15 +23,32 @@ pub fn export_matrix(
 ) -> Result<(), AutospillError> {
     let path = path.as_ref();
     let (row_header, row_labels, column_labels) = matrix_labels(result, kind);
-    export_named_matrix(row_header, row_labels, column_labels, result.matrix(kind), path)
+    export_named_matrix(
+        row_header,
+        row_labels,
+        column_labels,
+        result.matrix(kind),
+        path,
+    )
 }
 
 /// Write the requested spread matrix format to `path`.
+///
+/// # Errors
+///
+/// Returns an error if the output format is unsupported or the matrix cannot be
+/// written to the requested path.
 pub fn export_spread_matrix(
     result: &AutospreadResult,
     path: impl AsRef<Path>,
 ) -> Result<(), AutospillError> {
-    export_named_matrix("dye", &result.dyes, &result.detectors, &result.spread_matrix, path)
+    export_named_matrix(
+        "dye",
+        &result.dyes,
+        &result.detectors,
+        &result.spread_matrix,
+        path,
+    )
 }
 
 pub(crate) fn export_named_matrix(
@@ -55,12 +77,16 @@ pub(crate) fn export_named_matrix(
     }
 }
 
-fn matrix_labels<'a>(
-    result: &'a AutospillResult,
+fn matrix_labels(
+    result: &AutospillResult,
     kind: MatrixKind,
-) -> (&'static str, &'a [String], &'a [String]) {
+) -> (&'static str, &[String], &[String]) {
     if is_legacy_square_result(result) {
-        return ("channel", &result.primary_channels, &result.primary_channels);
+        return (
+            "channel",
+            &result.primary_channels,
+            &result.primary_channels,
+        );
     }
 
     match kind {
@@ -246,11 +272,7 @@ mod tests {
             channels: vec!["FITC".to_owned(), "PE".to_owned()],
             primary_channels: vec!["FL1-A".to_owned(), "FL2-A".to_owned()],
             spillover_matrix: vec![vec![1.0, 0.2, 0.05], vec![0.1, 1.0, 0.03]],
-            compensation_matrix: vec![
-                vec![1.0, -0.2],
-                vec![-0.1, 1.0],
-                vec![0.0, 0.0],
-            ],
+            compensation_matrix: vec![vec![1.0, -0.2], vec![-0.1, 1.0], vec![0.0, 0.0]],
             residual_slope_error: vec![vec![0.0, 0.0], vec![0.0, 0.0]],
             residual_skewness: vec![vec![0.0, 0.0], vec![0.0, 0.0]],
             gate_stats: Vec::new(),

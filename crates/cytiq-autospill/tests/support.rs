@@ -1,9 +1,13 @@
 #![allow(
     dead_code,
+    clippy::cast_lossless,
     clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
     clippy::cast_sign_loss,
+    clippy::format_push_string,
     clippy::missing_panics_doc,
-    clippy::must_use_candidate
+    clippy::must_use_candidate,
+    clippy::needless_range_loop
 )]
 
 use std::fs;
@@ -26,6 +30,10 @@ pub fn autospill_fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill")
 }
 
+pub fn autospread_fixture_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospread")
+}
+
 pub fn create_temp_dir(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -38,11 +46,13 @@ pub fn create_temp_dir(label: &str) -> PathBuf {
 
 pub fn copy_autospill_fixture_set(label: &str) -> PathBuf {
     let directory = create_temp_dir(label);
-    let fixture_dir = autospill_fixture_dir();
-    for name in ["control_a.fcs", "control_b.fcs", "controls.csv"] {
-        fs::copy(fixture_dir.join(name), directory.join(name))
-            .expect("fixture file should copy into temp dir");
-    }
+    copy_fixture_set(&autospill_fixture_dir(), &directory);
+    directory
+}
+
+pub fn copy_autospread_fixture_set(label: &str) -> PathBuf {
+    let directory = create_temp_dir(label);
+    copy_fixture_set(&autospread_fixture_dir(), &directory);
     directory
 }
 
@@ -173,10 +183,8 @@ pub fn write_control_fixture_set(
 
     let manifest_path = directory.join("controls.csv");
     let mut manifest = String::from("filename,dye,primary_channel,antigen\n");
-    for ((dye, primary_channel), control_index) in dyes
-        .iter()
-        .zip(primary_channels.iter())
-        .zip(0..dyes.len())
+    for ((dye, primary_channel), control_index) in
+        dyes.iter().zip(primary_channels.iter()).zip(0..dyes.len())
     {
         manifest.push_str(&format!(
             "control_{}.fcs,{dye},{primary_channel},Marker{}\n",
@@ -194,6 +202,21 @@ pub fn write_text(path: &Path, contents: &str) {
 
 pub fn read_fixture_text(name: &str) -> String {
     fs::read_to_string(autospill_fixture_dir().join(name)).expect("fixture text should exist")
+}
+
+pub fn read_autospread_fixture_text(name: &str) -> String {
+    fs::read_to_string(autospread_fixture_dir().join(name)).expect("fixture text should exist")
+}
+
+fn copy_fixture_set(source_dir: &Path, destination_dir: &Path) {
+    for entry in fs::read_dir(source_dir).expect("fixture directory should exist") {
+        let entry = entry.expect("fixture dir entry should read");
+        let source_path = entry.path();
+        if source_path.is_file() {
+            fs::copy(&source_path, destination_dir.join(entry.file_name()))
+                .expect("fixture file should copy into temp dir");
+        }
+    }
 }
 
 fn build_control_bytes(
@@ -247,10 +270,7 @@ fn build_control_bytes(
     }
 
     for index in 0..30 {
-        let mut row = vec![
-            20 + (index as u16),
-            30 + ((index % 7) as u16),
-        ];
+        let mut row = vec![20 + (index as u16), 30 + ((index % 7) as u16)];
         for detector_index in 0..detectors.len() {
             row.push(10 + (((index + detector_index) % 9) as u16));
         }
@@ -409,7 +429,8 @@ fn encode_u16_rows(rows: &[Vec<u16>]) -> Vec<u8> {
 }
 
 fn slug(value: &str) -> String {
-    value.chars()
+    value
+        .chars()
         .map(|ch| {
             if ch.is_ascii_alphanumeric() {
                 ch.to_ascii_lowercase()

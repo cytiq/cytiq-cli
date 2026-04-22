@@ -1,0 +1,3 @@
+filename,dye,primary_channel,antigen
+control_fitc.fcs,FITC,FL1-A,Marker1
+control_pe.fcs,PE,FL2-A,Marker2

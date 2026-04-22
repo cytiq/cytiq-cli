@@ -91,11 +91,10 @@ pub(crate) fn resolve_transforms(
     channels
         .iter()
         .map(|channel| {
-            spec_map
-                .get(channel)
-                .map_or_else(|| BiExponentialTransform::default_for_channel(channel), |spec| {
-                    BiExponentialTransform::from_spec(spec)
-                })
+            spec_map.get(channel).map_or_else(
+                || BiExponentialTransform::default_for_channel(channel),
+                |spec| BiExponentialTransform::from_spec(spec),
+            )
         })
         .collect()
 }

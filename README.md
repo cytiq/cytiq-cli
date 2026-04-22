@@ -101,7 +101,7 @@ When `--detectors` is provided, `autospill` can export rectangular matrices:
 - compensation/unmixing: rows are detectors, columns are dyes
 - `autospread` exports a dye-by-detector spread matrix
 
-When `--debug-dir` is provided, Plotly HTML artifacts and `summary.json` are written for gating, scatter/regression, convergence, and matrix heatmaps.
+When `--debug-dir` is provided, `cytiq` writes a single-page `report.html` plus `summary.json`; the report includes gating, scatter/regression, convergence, and matrix heatmaps in one sequential document.
 
 ## Algorithm Notes
 

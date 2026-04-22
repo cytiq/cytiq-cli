@@ -46,6 +46,11 @@ pub struct TransformSpec {
 }
 
 /// Read and validate the controls manifest CSV.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or fails manifest
+/// validation.
 pub fn read_controls_manifest(
     path: impl AsRef<Path>,
 ) -> Result<Vec<ControlsManifestRow>, AutospillError> {
@@ -68,6 +73,11 @@ pub fn read_controls_manifest(
 }
 
 /// Read and validate the detectors manifest CSV.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or fails manifest
+/// validation.
 pub fn read_detectors_manifest(
     path: impl AsRef<Path>,
 ) -> Result<Vec<DetectorSpec>, AutospillError> {
@@ -90,6 +100,11 @@ pub fn read_detectors_manifest(
 }
 
 /// Read and validate the transform manifest CSV.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or fails manifest
+/// validation.
 pub fn read_transform_manifest(
     path: impl AsRef<Path>,
 ) -> Result<Vec<TransformSpec>, AutospillError> {

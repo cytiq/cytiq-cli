@@ -10,7 +10,7 @@
 //! The goal of this crate is not to introduce Rust-specific tuning, but to keep
 //! the same high-level stages and defaults visible in code:
 //! FSC/SSC auto-gating, robust spillover estimation, linear-to-transformed
-//! iterative refinement, matrix export, AutoSpread estimation, and optional
+//! iterative refinement, matrix export, `AutoSpread` estimation, and optional
 //! Plotly debug artifacts.
 
 mod error;

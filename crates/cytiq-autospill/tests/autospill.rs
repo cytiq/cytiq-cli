@@ -82,13 +82,15 @@ fn runner_reports_missing_primary_channel() {
 
     let error = AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
         .expect_err("missing channel should fail");
-    assert!(matches!(
-        error,
-        AutospillError::MissingChannel { ref channel, .. } if channel == "FL9-A"
-    ) || matches!(
-        error,
-        AutospillError::MissingDetector { ref channel } if channel == "FL9-A"
-    ));
+    assert!(
+        matches!(
+            error,
+            AutospillError::MissingChannel { ref channel, .. } if channel == "FL9-A"
+        ) || matches!(
+            error,
+            AutospillError::MissingDetector { ref channel } if channel == "FL9-A"
+        )
+    );
 }
 
 #[test]
@@ -146,7 +148,7 @@ fn runner_supports_autofluorescence_controls() {
     assert_eq!(result.detectors, vec!["FL1-A", "FL2-A", "AF-A"]);
     assert_eq!(result.spillover_matrix.len(), 3);
     assert_eq!(result.spillover_matrix[2].len(), 3);
-    assert_eq!(result.spillover_matrix[2][2], 1.0);
+    assert_close(result.spillover_matrix[2][2], 1.0, 1e-9);
     assert!(result.spillover_matrix[2][0] > 0.0);
     assert!(result.spillover_matrix[2][1] > 0.0);
 }
@@ -170,24 +172,23 @@ fn runner_writes_debug_artifacts() {
     let _ = AutospillRunner::run(&manifest, &directory, &config)
         .expect("autospill with debug output should succeed");
 
-    for name in [
-        "summary.json",
-        "convergence.html",
-        "spillover_matrix.html",
-        "compensation_matrix.html",
-        "gate_fitc.html",
-        "gate_pe.html",
-        "scatter_fitc_00.html",
-        "scatter_pe_00.html",
-    ] {
-        assert!(debug_dir.join(name).is_file(), "missing debug artifact {name}");
-    }
+    assert!(debug_dir.join("summary.json").is_file());
+    let report_path = debug_dir.join("report.html");
+    assert!(report_path.is_file(), "missing report.html");
+    let report = fs::read_to_string(report_path).expect("report should exist");
+    assert!(report.contains("cytiq AutoSpill Report"));
+    assert!(report.contains("Summary"));
+    assert!(report.contains("Convergence"));
+    assert!(report.contains("Spillover Matrix"));
+    assert!(report.contains("Compensation Matrix"));
+    assert!(report.contains("Spillover Regression"));
 }
 
 #[test]
 fn autospread_estimates_positive_spread_coefficients() {
-    let directory = support::create_temp_dir("autospread");
-    let (manifest_path, detectors_path) = support::write_autospread_fixture(&directory);
+    let directory = support::copy_autospread_fixture_set("autospread");
+    let manifest_path = directory.join("controls.csv");
+    let detectors_path = directory.join("detectors.csv");
     let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
     let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
     let config = AutospreadConfig {
@@ -195,17 +196,43 @@ fn autospread_estimates_positive_spread_coefficients() {
         ..AutospreadConfig::default()
     };
 
-    let result = AutospreadRunner::run(&manifest, &directory, &config)
-        .expect("autospread should succeed");
+    let result =
+        AutospreadRunner::run(&manifest, &directory, &config).expect("autospread should succeed");
 
     assert_eq!(result.spread_matrix.len(), 2);
     assert_eq!(result.spread_matrix[0].len(), 3);
-    assert_eq!(result.spread_matrix[0][0], 0.0);
-    assert_eq!(result.spread_matrix[1][1], 0.0);
-    assert!(result.spread_matrix[0][1] > 0.0);
-    assert!(result.spread_matrix[0][2] > 0.0);
-    assert!(result.spread_matrix[1][0] > 0.0);
-    assert!(result.spread_matrix[1][2] > 0.0);
+    assert_matrix_csv(
+        &result.spread_matrix,
+        &support::read_autospread_fixture_text("expected_spread.csv"),
+        1e-9,
+    );
+}
+
+#[test]
+fn autospread_writes_single_report() {
+    let directory = support::copy_autospread_fixture_set("autospread-debug");
+    let debug_dir = directory.join("debug");
+    let manifest_path = directory.join("controls.csv");
+    let detectors_path = directory.join("detectors.csv");
+    let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+    let detectors = read_detectors_manifest(&detectors_path).expect("detectors should load");
+    let config = AutospreadConfig {
+        detectors,
+        debug_dir: Some(debug_dir.clone()),
+        ..AutospreadConfig::default()
+    };
+
+    let _ = AutospreadRunner::run(&manifest, &directory, &config)
+        .expect("autospread with debug report should succeed");
+
+    assert!(debug_dir.join("summary.json").is_file());
+    let report_path = debug_dir.join("report.html");
+    assert!(report_path.is_file(), "missing report.html");
+    let report = fs::read_to_string(report_path).expect("report should exist");
+    assert!(report.contains("cytiq AutoSpread Report"));
+    assert!(report.contains("Spread Matrix"));
+    assert!(report.contains("Spread Regression"));
+    assert!(report.contains("Gate Statistics"));
 }
 
 fn assert_close(actual: f64, expected: f64, tolerance: f64) {

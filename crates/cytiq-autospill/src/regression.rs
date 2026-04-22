@@ -141,7 +141,11 @@ pub(crate) fn ordinary_linear_regression_without_intercept(
     if sxx <= f64::EPSILON {
         return None;
     }
-    let sxy = x.iter().zip(y).map(|(x_value, y_value)| x_value * y_value).sum::<f64>();
+    let sxy = x
+        .iter()
+        .zip(y)
+        .map(|(x_value, y_value)| x_value * y_value)
+        .sum::<f64>();
     let slope = sxy / sxx;
     let rss = x
         .iter()

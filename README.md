@@ -5,6 +5,7 @@
 Current workspace crates:
 - `cytiq-fcs`: strict FCS 3.0 / 3.1 / 3.2 reader
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
+- `cytiq-autospectral`: reference-based spectral unmixing workflow
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -35,7 +36,8 @@ cytiq autospill \
   --transform-file transforms.csv \
   --debug-dir ./debug \
   --fsc FSC-A \
-  --ssc SSC-A
+  --ssc SSC-A \
+  --threads 4
 ```
 
 `cytiq autospread` uses the same manifest/input model:
@@ -46,7 +48,8 @@ cytiq autospread \
   --input-dir ./controls \
   --detectors detectors.csv \
   --output spread.csv \
-  --debug-dir ./debug
+  --debug-dir ./debug \
+  --threads 4
 ```
 
 Logging:
@@ -56,7 +59,8 @@ Logging:
 
 Performance:
 - independent control loading, gating, spillover rows, spread rows, and refinement error passes use worker threads
-- parallel execution uses Rayon defaults
+- parallel execution uses Rayon defaults, which normally use all available logical CPUs
+- use `--threads N` to cap worker threads for `autospill`, `autospread`, or `autospectral`
 
 ### Controls Manifest
 
@@ -113,6 +117,72 @@ When `--detectors` is provided, `autospill` can export rectangular matrices:
 
 When `--debug-dir` is provided, `cytiq` writes a single-page `report.html` plus `summary.json`; the report includes gating, scatter/regression, convergence, and matrix heatmaps in one sequential document.
 
+## AutoSpectral
+
+`cytiq autospectral` unmixed spectral FCS samples from single-stain controls with a compact CLI that follows the existing manifest/input model:
+
+```bash
+cytiq autospectral \
+  --controls controls.csv \
+  --samples samples.csv \
+  --input-dir ./fcs \
+  --output ./autospectral-out
+```
+
+Optional flags:
+
+```bash
+cytiq autospectral \
+  --controls controls.csv \
+  --samples samples.csv \
+  --input-dir ./fcs \
+  --output ./autospectral-out \
+  --detectors detectors.csv \
+  --debug-dir ./debug \
+  --fsc FSC-A \
+  --ssc SSC-A \
+  --threads 4
+```
+
+Controls manifest:
+
+```csv
+filename,dye,primary_channel
+controls/unstained.fcs,Autofluorescence,
+controls/FITC.fcs,FITC,FITC
+controls/PE.fcs,PE,PE
+```
+
+Samples manifest:
+
+```csv
+filename
+samples/sample_01.fcs
+samples/sample_02.fcs
+```
+
+Rules:
+- manifest `filename` values are relative to `--input-dir`
+- exactly one `dye=Autofluorescence` control is required
+- single-stain `primary_channel` can be provided explicitly; otherwise it is inferred from FCS `$PnN` first, then `$PnS`
+- AutoSpectral-style `fluorophore` and `channel` headers are accepted as aliases for `dye` and `primary_channel`
+- if `--detectors` is omitted, spectral detectors are inferred as shared non-scatter, non-time channels
+- independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
+- solver, autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
+
+Outputs are always written under `--output`:
+
+```text
+autospectral-out/
+  references/
+    fluorophore_spectra.csv
+    autospectral-references.json
+  unmixed/
+    sample_01.unmixed.fcs
+  diagnostics/
+    run.json
+```
+
 ## Algorithm Notes
 
 `cytiq-autospill` follows the published AutoSpill workflow and upstream R
@@ -137,8 +207,11 @@ Use `just` for the standard local workflows:
 
 ```bash
 just build
+just build-release
 just test
 just verify
 ```
+
+Release builds use full LTO, one codegen unit, stripped symbols, and aborting panics for optimized CLI binaries.
 
 `just verify` runs formatting, `cargo check`, `clippy`, and the full test suite.

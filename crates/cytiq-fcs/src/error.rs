@@ -56,4 +56,6 @@ pub enum FcsError {
         data_type: &'static str,
         value: String,
     },
+    #[error("invalid FCS writer input: {0}")]
+    InvalidWriterInput(&'static str),
 }

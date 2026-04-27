@@ -441,6 +441,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-autospectral"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "log",
+ "nalgebra",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cytiq-autospill"
 version = "0.1.0"
 dependencies = [
@@ -464,7 +478,9 @@ name = "cytiq-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "cytiq-autospectral",
  "cytiq-autospill",
+ "cytiq-fcs",
  "log",
 ]
 

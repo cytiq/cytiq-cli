@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use cytiq_fcs::{ColumnData, FcsReader, FcsVersion};
+use cytiq_fcs::{ColumnData, FcsReader, FcsVersion, FcsWriteParameter};
 
 const DELIMITER: u8 = b'|';
 
@@ -220,6 +220,27 @@ fn rejects_header_text_offset_mismatch() {
         .read()
         .expect_err("mismatched DATA offsets should fail");
     assert!(error.to_string().contains("offsets do not match"));
+}
+
+#[test]
+fn writes_and_reads_fcs3_1_float32() -> Result<(), Box<dyn Error>> {
+    let parameters = vec![
+        FcsWriteParameter::new("FSC-A"),
+        FcsWriteParameter::with_label("FITC", "FITC-A"),
+    ];
+    let columns = vec![vec![1.0_f32, 2.0, 3.0], vec![10.5_f32, 20.5, 30.5]];
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f32_to_writer(&mut bytes, &parameters, &columns)?;
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    assert_eq!(dataset.version, FcsVersion::V3_1);
+    assert_eq!(dataset.parameters.len(), 2);
+    assert_eq!(dataset.parameters[0].name, "FSC-A");
+    assert_eq!(dataset.parameters[1].label.as_deref(), Some("FITC-A"));
+    assert_f32_column(dataset.data.column(0), &[1.0, 2.0, 3.0]);
+    assert_f32_column(dataset.data.column(1), &[10.5, 20.5, 30.5]);
+
+    Ok(())
 }
 
 fn fixture_path(name: &str) -> PathBuf {

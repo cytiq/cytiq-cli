@@ -5,10 +5,15 @@ use std::process::ExitCode;
 use std::sync::OnceLock;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use cytiq_autospectral::{
+    AutoSpectralConfig, AutoSpectralRunner,
+    read_controls_manifest as read_autospectral_controls_manifest,
+    read_detectors_manifest as read_autospectral_detectors_manifest, read_samples_manifest,
+};
 use cytiq_autospill::{
-    AutospillConfig, AutospillError, AutospillRunner, AutospreadConfig, AutospreadRunner,
-    MatrixKind, export_matrix, export_spread_matrix, read_controls_manifest,
-    read_detectors_manifest, read_transform_manifest,
+    AutospillConfig, AutospillRunner, AutospreadConfig, AutospreadRunner, MatrixKind,
+    export_matrix, export_spread_matrix, read_controls_manifest, read_detectors_manifest,
+    read_transform_manifest,
 };
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info};
 
@@ -43,6 +48,9 @@ enum Commands {
         fsc: String,
         #[arg(long, default_value = "SSC-A")]
         ssc: String,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
     },
     /// Estimate a spillover spreading matrix from single-color controls.
     Autospread {
@@ -61,6 +69,33 @@ enum Commands {
         fsc: String,
         #[arg(long, default_value = "SSC-A")]
         ssc: String,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+    },
+    /// Unmix spectral flow cytometry samples from single-stain controls.
+    Autospectral {
+        /// Controls manifest CSV with `filename,dye[,primary_channel]`; include one `dye=Autofluorescence` row.
+        #[arg(long)]
+        controls: PathBuf,
+        /// Samples manifest CSV with `filename` rows for fully stained FCS files.
+        #[arg(long)]
+        samples: PathBuf,
+        #[arg(long)]
+        input_dir: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        detectors: Option<PathBuf>,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        #[arg(long, default_value = "FSC-A")]
+        fsc: String,
+        #[arg(long, default_value = "SSC-A")]
+        ssc: String,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
     },
 }
 
@@ -126,7 +161,7 @@ fn main() -> ExitCode {
 }
 
 #[allow(clippy::too_many_lines)]
-fn run() -> Result<(), AutospillError> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Autospill {
@@ -139,6 +174,7 @@ fn run() -> Result<(), AutospillError> {
             matrix_kind,
             fsc,
             ssc,
+            threads,
         } => {
             info!(
                 "starting autospill: controls={}, input_dir={}, output={}, matrix_kind={:?}",
@@ -179,6 +215,7 @@ fn run() -> Result<(), AutospillError> {
                 detectors,
                 transforms,
                 debug_dir,
+                threads,
             };
             let result = AutospillRunner::run(&manifest, &input_dir, &config)?;
             info!(
@@ -206,6 +243,7 @@ fn run() -> Result<(), AutospillError> {
             debug_dir,
             fsc,
             ssc,
+            threads,
         } => {
             info!(
                 "starting autospread: controls={}, input_dir={}, output={}",
@@ -234,6 +272,7 @@ fn run() -> Result<(), AutospillError> {
                 ssc,
                 detectors,
                 debug_dir,
+                threads,
             };
             let result = AutospreadRunner::run(&manifest, &input_dir, &config)?;
             export_spread_matrix(&result, &output)?;
@@ -247,6 +286,61 @@ fn run() -> Result<(), AutospillError> {
                 info!("wrote debug artifacts to {}", debug_dir.display());
             }
             info!("autospread completed successfully");
+            Ok(())
+        }
+        Commands::Autospectral {
+            controls,
+            samples,
+            input_dir,
+            output,
+            detectors,
+            debug_dir,
+            fsc,
+            ssc,
+            threads,
+        } => {
+            info!(
+                "starting autospectral: controls={}, samples={}, input_dir={}, output={}",
+                controls.display(),
+                samples.display(),
+                input_dir.display(),
+                output.display()
+            );
+            debug!("autospectral channels: FSC=`{fsc}`, SSC=`{ssc}`");
+            let control_manifest = read_autospectral_controls_manifest(&controls)?;
+            let sample_manifest = read_samples_manifest(&samples)?;
+            info!(
+                "loaded {} control rows and {} sample rows",
+                control_manifest.len(),
+                sample_manifest.len()
+            );
+            let detectors = detectors
+                .map(read_autospectral_detectors_manifest)
+                .transpose()?
+                .unwrap_or_default();
+            if detectors.is_empty() {
+                info!("no detector manifest provided; spectral detector order will be inferred");
+            } else {
+                info!("loaded {} detector specs", detectors.len());
+            }
+            let config = AutoSpectralConfig {
+                fsc,
+                ssc,
+                detectors,
+                output_dir: output.clone(),
+                debug_dir,
+                threads,
+            };
+            let summary =
+                AutoSpectralRunner::run(&control_manifest, &sample_manifest, &input_dir, &config)?;
+            info!(
+                "autospectral finished {} samples across {} components; condition_number={:.6e}",
+                summary.samples.len(),
+                summary.components.len(),
+                summary.condition_number
+            );
+            info!("wrote autospectral outputs to {}", output.display());
+            info!("autospectral completed successfully");
             Ok(())
         }
     }
@@ -293,5 +387,16 @@ fn parse_log_level_token(token: &str) -> Option<LevelFilter> {
         "debug" => Some(LevelFilter::Debug),
         "trace" => Some(LevelFilter::Trace),
         _ => None,
+    }
+}
+
+fn parse_threads(raw: &str) -> Result<usize, String> {
+    let threads = raw
+        .parse::<usize>()
+        .map_err(|error| format!("invalid thread count `{raw}`: {error}"))?;
+    if threads == 0 {
+        Err("thread count must be greater than zero".to_owned())
+    } else {
+        Ok(threads)
     }
 }

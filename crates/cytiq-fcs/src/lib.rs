@@ -4,6 +4,7 @@ mod header;
 mod layout;
 mod text;
 mod types;
+mod writer;
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -23,6 +24,7 @@ pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,
     ParameterDataType, ParameterWidth, TextSegment,
 };
+pub use crate::writer::{FcsWriteParameter, write_fcs3_1_f32, write_fcs3_1_f32_to_writer};
 
 #[derive(Debug)]
 pub struct FcsReader<R> {

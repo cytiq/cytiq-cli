@@ -212,6 +212,8 @@ fn run_success(manifest_path: &Path, input_dir: &Path, output_path: &Path) {
             utf8(input_dir),
             "--output",
             utf8(output_path),
+            "--threads",
+            "1",
         ])
         .status()
         .expect("command should run");
@@ -236,11 +238,64 @@ fn run_autospread_success(
             utf8(output_path),
             "--detectors",
             utf8(detectors_path),
+            "--threads",
+            "1",
         ])
         .status()
         .expect("command should run");
 
     assert!(status.success());
+}
+
+#[test]
+fn cli_rejects_zero_threads_for_autospill_and_autospread() {
+    let directory = support::create_temp_dir("cytiq-cli-zero-threads");
+    let manifest_path = support::write_manifest_rows(&directory, &[("missing.fcs", "FITC")]);
+    let detectors_path = directory.join("detectors.csv");
+    support::write_text(
+        &detectors_path,
+        "channel,label,wavelength\nFL1-A,FITC detector,530\n",
+    );
+
+    let autospill_output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospill",
+            "--controls",
+            utf8(&manifest_path),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("matrix.csv")),
+            "--threads",
+            "0",
+        ])
+        .output()
+        .expect("command should run");
+    assert!(!autospill_output.status.success());
+    assert!(
+        String::from_utf8_lossy(&autospill_output.stderr).contains("thread count must be greater")
+    );
+
+    let autospread_output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospread",
+            "--controls",
+            utf8(&manifest_path),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("spread.csv")),
+            "--detectors",
+            utf8(&detectors_path),
+            "--threads",
+            "0",
+        ])
+        .output()
+        .expect("command should run");
+    assert!(!autospread_output.status.success());
+    assert!(
+        String::from_utf8_lossy(&autospread_output.stderr).contains("thread count must be greater")
+    );
 }
 
 fn utf8(path: &Path) -> &str {

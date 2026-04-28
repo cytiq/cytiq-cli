@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cytiq-autospectral",
     "crates/cytiq-autospill",
     "crates/cytiq-cli",
     "crates/cytiq-fcs",
@@ -13,3 +14,10 @@ edition = "2024"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

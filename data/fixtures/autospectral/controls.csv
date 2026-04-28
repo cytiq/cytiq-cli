@@ -1,0 +1,4 @@
+filename,dye
+unstained.fcs,Autofluorescence
+fitc.fcs,FITC
+pe.fcs,PE

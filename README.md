@@ -6,6 +6,7 @@ Current workspace crates:
 - `cytiq-fcs`: strict FCS 3.0 / 3.1 / 3.2 reader
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
+- `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -183,6 +184,56 @@ autospectral-out/
     run.json
 ```
 
+## PeacoQC
+
+`cytiq peacoqc` removes unstable acquisition regions from compensated and
+transformed FCS files using a PeacoQC-compatible peak-based QC workflow:
+
+```bash
+cytiq peacoqc \
+  --input sample.fcs \
+  --output sample.peacoqc.fcs \
+  --channels CD3,CD4,CD8
+```
+
+Optional flags:
+
+```bash
+cytiq peacoqc \
+  --input sample.fcs \
+  --output sample.peacoqc.fcs \
+  --channels CD3,CD4,CD8 \
+  --method all \
+  --remove-margins \
+  --remove-zeros \
+  --debug-dir ./peacoqc-debug \
+  --threads 4
+```
+
+Rules:
+- input and output are FCS files for the MVP
+- `--channels` is a comma-separated list; names match `$PnN` first and `$PnS`
+  labels as a fallback
+- `--method` can be `all`, `mad`, `it`, or `peaks-only`
+- `--remove-margins` removes detector-boundary events before PeacoQC
+- `--remove-zeros` ignores zero values during peak detection, which is useful
+  for mass cytometry data
+- PeacoQC tuning values such as MAD, IT limit, binning, peak removal, and
+  consecutive-bin cleanup are fixed internal constants aligned with the
+  reference defaults
+
+When `--debug-dir` is provided, `cytiq` writes:
+
+```text
+peacoqc-debug/
+  summary.json
+  mask.csv
+  report.html
+```
+
+The HTML report uses Plotly for interactive removal-summary and acquisition
+order diagnostics.
+
 ## Algorithm Notes
 
 `cytiq-autospill` follows the published AutoSpill workflow and upstream R
@@ -195,11 +246,23 @@ reference closely for the implemented scope:
 - AutoSpread estimation
 - Plotly debug artifacts
 
+`cytiq-peacoqc` follows the PeacoQC paper and upstream R implementation for
+the MVP scope:
+- optional margin removal
+- overlapping acquisition-order bins
+- per-channel peak detection and peak-feature matrix construction
+- MAD filtering, deterministic Isolation Tree-style splitting, and
+  consecutive-bin cleanup
+- cleaned FCS export with `Original_ID`
+- JSON/mask outputs and Plotly HTML diagnostics
+
 Primary reference:
 - AutoSpill paper: <https://www.nature.com/articles/s41467-021-23126-8>
+- PeacoQC paper: <https://doi.org/10.1002/cyto.a.24501>
 
 Upstream R implementation:
 - <https://github.com/carlosproca/autospill>
+- <https://github.com/saeyslab/PeacoQC>
 
 ## Development
 

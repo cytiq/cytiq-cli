@@ -9,6 +9,8 @@ algorithmic implementations are:
   `cytiq autospill` and `cytiq autospread`
 - AutoSpectral-style reference-based spectral unmixing in
   `crates/cytiq-autospectral`, exposed through `cytiq autospectral`
+- PeacoQC-style acquisition quality control in `crates/cytiq-peacoqc`,
+  exposed through `cytiq peacoqc`
 
 ## AutoSpill
 
@@ -64,6 +66,32 @@ Relevant code:
 - `crates/cytiq-autospectral/src/runner.rs`
 - `crates/cytiq-autospectral/src/export.rs`
 - `crates/cytiq-autospectral/src/manifest.rs`
+
+## PeacoQC
+
+If you use `cytiq peacoqc`, or reuse the implementation in
+`crates/cytiq-peacoqc`, cite the PeacoQC paper:
+
+Emmaneel, A., Quintelier, K., Sichien, D. et al. PeacoQC: Peak-based selection
+of high quality cytometry data. *Cytometry Part A* 101, 325-338 (2022).
+<https://doi.org/10.1002/cyto.a.24501>
+
+Project links:
+- Paper: <https://onlinelibrary.wiley.com/doi/10.1002/cyto.a.24501>
+- Upstream R reference implementation: <https://github.com/saeyslab/PeacoQC>
+
+The current Rust implementation is an MVP aligned with the repository's FCS
+input/output model:
+- optional margin-event removal
+- overlapping acquisition-order binning
+- per-channel peak detection and peak-feature matrix construction
+- MAD filtering, deterministic Isolation Tree-style splitting, and
+  consecutive-bin cleanup
+- cleaned FCS export plus JSON, mask CSV, and Plotly HTML diagnostics
+
+Relevant code:
+- `crates/cytiq-peacoqc/src/runner.rs`
+- `crates/cytiq-peacoqc/src/export.rs`
 
 ## Notes
 

@@ -15,6 +15,9 @@ use cytiq_autospill::{
     export_matrix, export_spread_matrix, read_controls_manifest, read_detectors_manifest,
     read_transform_manifest,
 };
+use cytiq_peacoqc::{
+    PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
+};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info};
 
 #[derive(Debug, Parser)]
@@ -97,6 +100,29 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+    /// Remove unstable acquisition regions using PeacoQC-style peak-based QC.
+    Peacoqc {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Comma-separated channel names used for peak detection and QC.
+        #[arg(long)]
+        channels: String,
+        #[arg(long, value_enum, default_value_t = CliPeacoQcMethod::All)]
+        method: CliPeacoQcMethod,
+        /// Remove detector margin events before peak-based QC.
+        #[arg(long)]
+        remove_margins: bool,
+        /// Ignore zero values during peak detection; useful for mass cytometry.
+        #[arg(long)]
+        remove_zeros: bool,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -110,6 +136,25 @@ impl From<CliMatrixKind> for MatrixKind {
         match value {
             CliMatrixKind::Compensation => Self::Compensation,
             CliMatrixKind::Spillover => Self::Spillover,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliPeacoQcMethod {
+    All,
+    Mad,
+    It,
+    PeaksOnly,
+}
+
+impl From<CliPeacoQcMethod> for PeacoQcMethod {
+    fn from(value: CliPeacoQcMethod) -> Self {
+        match value {
+            CliPeacoQcMethod::All => Self::All,
+            CliPeacoQcMethod::Mad => Self::Mad,
+            CliPeacoQcMethod::It => Self::It,
+            CliPeacoQcMethod::PeaksOnly => Self::PeaksOnly,
         }
     }
 }
@@ -341,6 +386,43 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             info!("wrote autospectral outputs to {}", output.display());
             info!("autospectral completed successfully");
+            Ok(())
+        }
+        Commands::Peacoqc {
+            input,
+            output,
+            channels,
+            method,
+            remove_margins,
+            remove_zeros,
+            debug_dir,
+            threads,
+        } => {
+            info!(
+                "starting peacoqc: input={}, output={}, method={:?}",
+                input.display(),
+                output.display(),
+                method
+            );
+            let channels = parse_peacoqc_channel_list(&channels)
+                .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            let config = PeacoQcConfig {
+                channels,
+                method: method.into(),
+                remove_margins,
+                remove_zeros,
+                debug_dir,
+                threads,
+            };
+            let result = PeacoQcRunner::run(&input, &output, &config)?;
+            info!(
+                "peacoqc retained {} of {} events",
+                result.summary.metrics.events_after, result.summary.metrics.events_before
+            );
+            if let Some(debug_dir) = config.debug_dir.as_ref() {
+                info!("wrote peacoqc debug artifacts to {}", debug_dir.display());
+            }
+            info!("peacoqc completed successfully");
             Ok(())
         }
     }

@@ -30,6 +30,11 @@ build-release:
 check:
     cargo check --workspace
 
+# ---- Regenerate Cargo.lock from workspace manifests
+[group('build')]
+lock:
+    cargo generate-lockfile
+
 # ---- Run the test suite
 [group('quality')]
 test:

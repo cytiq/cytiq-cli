@@ -193,7 +193,9 @@ transformed FCS files using a PeacoQC-compatible peak-based QC workflow:
 cytiq peacoqc \
   --input sample.fcs \
   --output sample.peacoqc.fcs \
-  --channels CD3,CD4,CD8
+  --channel "355_378/28_uH-A [CD3 BUV395]" \
+  --channel "405_750/40_vB-A [CD4 BV750]" \
+  --channel "355_515/20_uF-A [CD8 BUV496]"
 ```
 
 Optional flags:
@@ -202,7 +204,8 @@ Optional flags:
 cytiq peacoqc \
   --input sample.fcs \
   --output sample.peacoqc.fcs \
-  --channels CD3,CD4,CD8 \
+  --channel "355_378/28_uH-A [CD3 BUV395]" \
+  --channel "405_750/40_vB-A [CD4 BV750]" \
   --method all \
   --remove-margins \
   --remove-zeros \
@@ -212,8 +215,10 @@ cytiq peacoqc \
 
 Rules:
 - input and output are FCS files for the MVP
-- `--channels` is a comma-separated list; names match `$PnN` first and `$PnS`
-  labels as a fallback
+- pass channels either as repeated `--channel` values or as one compact
+  comma-separated `--channels` value
+- channel values match `$PnN` first, `$PnS` labels as a fallback, and display
+  identifiers like `$PnN [$PnS]`
 - `--method` can be `all`, `mad`, `it`, or `peaks-only`
 - `--remove-margins` removes detector-boundary events before PeacoQC
 - `--remove-zeros` ignores zero values during peak detection, which is useful

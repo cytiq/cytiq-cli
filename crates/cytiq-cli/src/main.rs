@@ -108,7 +108,10 @@ enum Commands {
         output: PathBuf,
         /// Comma-separated channel names used for peak detection and QC.
         #[arg(long)]
-        channels: String,
+        channels: Option<String>,
+        /// Channel name used for peak detection and QC; can be repeated.
+        #[arg(long = "channel")]
+        channel: Vec<String>,
         #[arg(long, value_enum, default_value_t = CliPeacoQcMethod::All)]
         method: CliPeacoQcMethod,
         /// Remove detector margin events before peak-based QC.
@@ -392,6 +395,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             input,
             output,
             channels,
+            channel,
             method,
             remove_margins,
             remove_zeros,
@@ -404,7 +408,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output.display(),
                 method
             );
-            let channels = parse_peacoqc_channel_list(&channels)
+            let channels = parse_peacoqc_channels(channels.as_deref(), &channel)
                 .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
             let config = PeacoQcConfig {
                 channels,
@@ -480,5 +484,27 @@ fn parse_threads(raw: &str) -> Result<usize, String> {
         Err("thread count must be greater than zero".to_owned())
     } else {
         Ok(threads)
+    }
+}
+
+fn parse_peacoqc_channels(
+    channels: Option<&str>,
+    repeated_channels: &[String],
+) -> Result<Vec<String>, String> {
+    let mut parsed = channels
+        .map(parse_peacoqc_channel_list)
+        .transpose()?
+        .unwrap_or_default();
+    for channel in repeated_channels {
+        let channel = channel.trim();
+        if channel.is_empty() {
+            return Err("channel must not be empty".to_owned());
+        }
+        parsed.push(channel.to_owned());
+    }
+    if parsed.is_empty() {
+        Err("at least one `--channels` or `--channel` value is required".to_owned())
+    } else {
+        Ok(parsed)
     }
 }

@@ -1360,6 +1360,11 @@ fn find_parameter_index(parameters: &[Parameter], channel: &str) -> Option<usize
                     .is_some_and(|label| label == channel)
             })
         })
+        .or_else(|| {
+            parameters
+                .iter()
+                .position(|parameter| display_parameter_identifier(parameter) == channel)
+        })
 }
 
 fn display_parameter_identifier(parameter: &Parameter) -> String {

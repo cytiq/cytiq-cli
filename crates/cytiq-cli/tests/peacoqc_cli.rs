@@ -22,8 +22,12 @@ fn cli_runs_peacoqc_with_debug_artifacts() {
             utf8(&input),
             "--output",
             utf8(&output_path),
-            "--channels",
-            "CD3,CD4",
+            "--channel",
+            "355_378/28_uH-A [CD3 BUV395]",
+            "--channel",
+            "405_750/40_vB-A [CD4 BV750]",
+            "--channel",
+            "355_515/20_uF-A [CD8 BUV496]",
             "--debug-dir",
             utf8(&debug_dir),
             "--threads",
@@ -91,7 +95,7 @@ fn cli_rejects_non_fcs_peacoqc_output() {
             "--output",
             utf8(&directory.join("sample.csv")),
             "--channels",
-            "CD3",
+            "355_378/28_uH-A",
         ])
         .output()
         .expect("command should run");
@@ -107,8 +111,9 @@ fn write_peacoqc_fixture_fcs(path: &Path) {
         FcsWriteParameter::new("Time"),
         FcsWriteParameter::new("FSC-A"),
         FcsWriteParameter::new("SSC-A"),
-        FcsWriteParameter::new("CD3"),
-        FcsWriteParameter::new("CD4"),
+        FcsWriteParameter::with_label("355_378/28_uH-A", "CD3 BUV395"),
+        FcsWriteParameter::with_label("405_750/40_vB-A", "CD4 BV750"),
+        FcsWriteParameter::with_label("355_515/20_uF-A", "CD8 BUV496"),
     ];
     cytiq_fcs::write_fcs3_1_f32(path, &parameters, &columns).expect("fixture FCS should write");
 }
@@ -116,7 +121,11 @@ fn write_peacoqc_fixture_fcs(path: &Path) {
 fn read_peacoqc_fixture_columns() -> Vec<Vec<f32>> {
     let path = peacoqc_fixture_dir().join(PEACOQC_FIXTURE_EVENTS);
     let mut reader = csv::Reader::from_path(&path).expect("PeacoQC fixture CSV should open");
-    let mut columns = vec![Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+    let header_len = reader
+        .headers()
+        .expect("PeacoQC fixture header should parse")
+        .len();
+    let mut columns = vec![Vec::new(); header_len];
     for record in reader.records() {
         let record = record.expect("PeacoQC fixture row should parse");
         assert_eq!(record.len(), columns.len());

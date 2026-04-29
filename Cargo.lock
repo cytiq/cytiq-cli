@@ -454,9 +454,11 @@ name = "cytiq-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "csv",
  "cytiq-autospectral",
  "cytiq-autospill",
  "cytiq-fcs",
+ "cytiq-peacoqc",
  "log",
 ]
 
@@ -465,6 +467,20 @@ name = "cytiq-fcs"
 version = "0.1.0"
 dependencies = [
  "log",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-peacoqc"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "log",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

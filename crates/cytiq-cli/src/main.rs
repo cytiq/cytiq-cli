@@ -15,6 +15,9 @@ use cytiq_autospill::{
     export_matrix, export_spread_matrix, read_controls_manifest, read_detectors_manifest,
     read_transform_manifest,
 };
+use cytiq_flowsom::{
+    FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
+};
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
 };
@@ -120,6 +123,24 @@ enum Commands {
         /// Ignore zero values during peak detection; useful for mass cytometry.
         #[arg(long)]
         remove_zeros: bool,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+    },
+    /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
+    Flowsom {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Comma-separated channel names used for clustering.
+        #[arg(long)]
+        channels: Option<String>,
+        /// Channel name used for clustering; can be repeated.
+        #[arg(long = "channel")]
+        channel: Vec<String>,
         #[arg(long)]
         debug_dir: Option<PathBuf>,
         /// Worker thread limit; defaults to all available logical CPUs.
@@ -429,6 +450,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("peacoqc completed successfully");
             Ok(())
         }
+        Commands::Flowsom {
+            input,
+            output,
+            channels,
+            channel,
+            debug_dir,
+            threads,
+        } => {
+            info!(
+                "starting flowsom: input={}, output={}",
+                input.display(),
+                output.display()
+            );
+            let channels = parse_flowsom_channels(channels.as_deref(), &channel)
+                .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            let config = FlowSomConfig {
+                channels,
+                debug_dir,
+                threads,
+            };
+            let result = FlowSomRunner::run(&input, &output, &config)?;
+            info!(
+                "flowsom assigned {} events across {} SOM nodes and {} metaclusters",
+                result.summary.metrics.events,
+                result.summary.metrics.som_nodes,
+                result.summary.metrics.metaclusters
+            );
+            if let Some(debug_dir) = config.debug_dir.as_ref() {
+                info!("wrote flowsom debug artifacts to {}", debug_dir.display());
+            }
+            info!("flowsom completed successfully");
+            Ok(())
+        }
     }
 }
 
@@ -493,6 +547,28 @@ fn parse_peacoqc_channels(
 ) -> Result<Vec<String>, String> {
     let mut parsed = channels
         .map(parse_peacoqc_channel_list)
+        .transpose()?
+        .unwrap_or_default();
+    for channel in repeated_channels {
+        let channel = channel.trim();
+        if channel.is_empty() {
+            return Err("channel must not be empty".to_owned());
+        }
+        parsed.push(channel.to_owned());
+    }
+    if parsed.is_empty() {
+        Err("at least one `--channels` or `--channel` value is required".to_owned())
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn parse_flowsom_channels(
+    channels: Option<&str>,
+    repeated_channels: &[String],
+) -> Result<Vec<String>, String> {
+    let mut parsed = channels
+        .map(parse_flowsom_channel_list)
         .transpose()?
         .unwrap_or_default();
     for channel in repeated_channels {

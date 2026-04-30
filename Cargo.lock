@@ -458,6 +458,7 @@ dependencies = [
  "cytiq-autospectral",
  "cytiq-autospill",
  "cytiq-fcs",
+ "cytiq-flowsom",
  "cytiq-peacoqc",
  "log",
 ]
@@ -467,6 +468,20 @@ name = "cytiq-fcs"
 version = "0.1.0"
 dependencies = [
  "log",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-flowsom"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "log",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

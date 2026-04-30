@@ -7,6 +7,7 @@ Current workspace crates:
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
+- `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -61,7 +62,7 @@ Logging:
 Performance:
 - independent control loading, gating, spillover rows, spread rows, and refinement error passes use worker threads
 - parallel execution uses Rayon defaults, which normally use all available logical CPUs
-- use `--threads N` to cap worker threads for `autospill`, `autospread`, or `autospectral`
+- use `--threads N` to cap worker threads for `autospill`, `autospread`, `autospectral`, `peacoqc`, or `flowsom`
 
 ### Controls Manifest
 
@@ -239,6 +240,56 @@ peacoqc-debug/
 The HTML report uses Plotly for interactive removal-summary and acquisition
 order diagnostics.
 
+## FlowSOM
+
+`cytiq flowsom` clusters events from one FCS file using a deterministic
+FlowSOM-style workflow and writes per-event SOM assignments:
+
+```bash
+cytiq flowsom \
+  --input sample.fcs \
+  --output sample.flowsom.csv \
+  --channel CD3 \
+  --channel CD4 \
+  --channel CD8
+```
+
+The compact channel form is equivalent:
+
+```bash
+cytiq flowsom \
+  --input sample.fcs \
+  --output sample.flowsom.csv \
+  --channels CD3,CD4,CD8 \
+  --debug-dir ./flowsom-debug \
+  --threads 4
+```
+
+Rules:
+- input is a single FCS file for the MVP
+- output is a per-event CSV assignment table with `event_index`,
+  `flowsom_node`, and `flowsom_metacluster`
+- pass channels either as repeated `--channel` values or as one compact
+  comma-separated `--channels` value
+- channel values match `$PnN` first, `$PnS` labels as a fallback, and display
+  identifiers like `$PnN [$PnS]`
+- SOM size, metacluster count, training iterations, learning-rate schedule,
+  radius schedule, random seed, and input scaling are fixed internal constants
+  for the MVP
+
+When `--debug-dir` is provided, `cytiq` writes:
+
+```text
+flowsom-debug/
+  summary.json
+  nodes.csv
+  metaclusters.csv
+  report.html
+```
+
+The HTML report uses Plotly for SOM-node, metacluster, and assignment
+diagnostics.
+
 ## Algorithm Notes
 
 `cytiq-autospill` follows the published AutoSpill workflow and upstream R
@@ -261,13 +312,24 @@ the MVP scope:
 - cleaned FCS export with `Original_ID`
 - JSON/mask outputs and Plotly HTML diagnostics
 
+`cytiq-flowsom` follows the FlowSOM paper and upstream R implementation for
+the MVP scope:
+- selected marker matrix extraction from FCS files
+- fixed z-score preprocessing
+- deterministic self-organizing map training
+- deterministic hierarchical metaclustering over SOM nodes
+- per-event node/metacluster assignment CSV export
+- JSON, node/metacluster CSV outputs, and Plotly HTML diagnostics
+
 Primary reference:
 - AutoSpill paper: <https://www.nature.com/articles/s41467-021-23126-8>
 - PeacoQC paper: <https://doi.org/10.1002/cyto.a.24501>
+- FlowSOM paper: <https://doi.org/10.1002/cyto.a.22625>
 
 Upstream R implementation:
 - <https://github.com/carlosproca/autospill>
 - <https://github.com/saeyslab/PeacoQC>
+- <https://github.com/saeyslab/FlowSOM>
 
 ## Development
 

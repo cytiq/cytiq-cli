@@ -11,6 +11,8 @@ algorithmic implementations are:
   `crates/cytiq-autospectral`, exposed through `cytiq autospectral`
 - PeacoQC-style acquisition quality control in `crates/cytiq-peacoqc`,
   exposed through `cytiq peacoqc`
+- FlowSOM-style clustering in `crates/cytiq-flowsom`, exposed through
+  `cytiq flowsom`
 
 ## AutoSpill
 
@@ -92,6 +94,33 @@ input/output model:
 Relevant code:
 - `crates/cytiq-peacoqc/src/runner.rs`
 - `crates/cytiq-peacoqc/src/export.rs`
+
+## FlowSOM
+
+If you use `cytiq flowsom`, or reuse the implementation in
+`crates/cytiq-flowsom`, cite the FlowSOM paper:
+
+Van Gassen, S., Callebaut, B., Van Helden, M.J. et al. FlowSOM: Using
+self-organizing maps for visualization and interpretation of cytometry data.
+*Cytometry Part A* 87, 636-645 (2015).
+<https://doi.org/10.1002/cyto.a.22625>
+
+Project links:
+- Paper: <https://onlinelibrary.wiley.com/doi/10.1002/cyto.a.22625>
+- Upstream R reference implementation: <https://github.com/saeyslab/FlowSOM>
+
+The current Rust implementation is an MVP aligned with the repository's FCS
+input/output model:
+- selected marker matrix extraction from one FCS file
+- fixed z-score preprocessing
+- deterministic self-organizing map training
+- deterministic hierarchical metaclustering over SOM nodes
+- per-event assignment CSV export plus JSON, node/metacluster CSV, and Plotly
+  HTML diagnostics
+
+Relevant code:
+- `crates/cytiq-flowsom/src/runner.rs`
+- `crates/cytiq-flowsom/src/export.rs`
 
 ## Notes
 

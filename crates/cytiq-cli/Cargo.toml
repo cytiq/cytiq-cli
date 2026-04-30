@@ -11,6 +11,7 @@ path = "src/main.rs"
 clap = { version = "4.5.38", features = ["derive"] }
 cytiq-autospectral = { path = "../cytiq-autospectral" }
 cytiq-autospill = { path = "../cytiq-autospill" }
+cytiq-flowsom = { path = "../cytiq-flowsom" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
 log = "0.4.28"
 

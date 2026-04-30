@@ -8,6 +8,7 @@ Current workspace crates:
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
+- `cytiq-transform`: FCS signal transformation workflow
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -185,6 +186,77 @@ autospectral-out/
     run.json
 ```
 
+## Transform
+
+`cytiq transform` applies analysis-ready signal transformations to one or more
+FCS files. The MVP supports FCS output and defaults to arcsinh:
+
+```bash
+cytiq transform \
+  --input sample.fcs \
+  --output sample.transformed.fcs
+```
+
+Multiple inputs can be passed explicitly or with a simple file-name glob:
+
+```bash
+cytiq transform \
+  --input "samples/*.fcs" \
+  --output transformed/
+
+cytiq transform \
+  --input sample-1.fcs \
+  --input sample-2.fcs \
+  --output transformed/
+```
+
+Optional flags:
+
+```bash
+cytiq transform \
+  --input sample.fcs \
+  --method arcsinh \
+  --cofactor 150 \
+  --logicle-t 262144 \
+  --logicle-m 4.5 \
+  --logicle-w 0.5 \
+  --logicle-a 0 \
+  --channels CD3,CD4,CD8 \
+  --exclude-channels CD4 \
+  --metadata-json transform.json \
+  --debug-dir transform-debug \
+  --dry-run \
+  --threads 4 \
+  --output sample.transformed.fcs
+```
+
+Rules:
+- inputs must be provided with `--input` / `-i`; positional FCS inputs are not
+  part of the public contract
+- direct `.fcs` files, repeated inputs, directories with immediate `.fcs`
+  children, and simple file-name globs such as `samples/*.fcs` are supported
+- `--method` supports `arcsinh`, `logicle`, `biexponential`, `hyperlog`, and
+  `none`; `arcsinh` uses `asinh(value / cofactor)` with default
+  `--cofactor 150`
+- `logicle` and `hyperlog` use `--logicle-t`, `--logicle-m`, `--logicle-w`,
+  and `--logicle-a` for top-of-scale, decades, linear-region width, and
+  additional negative decades
+- `biexponential` uses the same default shape parameters as the existing
+  AutoSpill transform path
+- FCS files and event columns are processed with Rayon; `--threads N` caps the
+  worker thread count
+- if `--channels` is omitted, obvious acquisition channels such as `Time`,
+  `FSC-A/H/W`, and `SSC-A/H/W` are left untransformed
+- channel values match `$PnN` first, `$PnS` labels as a fallback, and display
+  identifiers like `$PnN [$PnS]`
+- output format is FCS for the MVP; CSV and parquet exports are follow-up work
+- output files are not replaced unless `--overwrite` is passed
+- transform metadata is stored in the output FCS `CYTIQ_TRANSFORM` keyword and
+  can also be written as a sidecar JSON file
+- when `--debug-dir` is provided, `cytiq` writes `summary.json`,
+  `metrics.csv`, and a Plotly `report.html` with per-channel transformation
+  diagnostics
+
 ## PeacoQC
 
 `cytiq peacoqc` removes unstable acquisition regions from compensated and
@@ -320,6 +392,13 @@ the MVP scope:
 - deterministic hierarchical metaclustering over SOM nodes
 - per-event node/metacluster assignment CSV export
 - JSON, node/metacluster CSV outputs, and Plotly HTML diagnostics
+
+`cytiq-transform` currently implements deterministic signal transforms:
+- `arcsinh`, `logicle`, `biexponential`, `hyperlog`, and `none`
+- parallel FCS file and event-column transformation with Rayon
+- explicit channel inclusion and exclusion
+- FCS output with names, labels, transform metadata, and optional Plotly debug
+  artifacts
 
 Primary reference:
 - AutoSpill paper: <https://www.nature.com/articles/s41467-021-23126-8>

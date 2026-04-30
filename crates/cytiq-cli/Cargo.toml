@@ -13,6 +13,7 @@ cytiq-autospectral = { path = "../cytiq-autospectral" }
 cytiq-autospill = { path = "../cytiq-autospill" }
 cytiq-flowsom = { path = "../cytiq-flowsom" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
+cytiq-transform = { path = "../cytiq-transform" }
 log = "0.4.28"
 
 [dev-dependencies]

@@ -6,6 +6,7 @@ members = [
     "crates/cytiq-fcs",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",
+    "crates/cytiq-transform",
 ]
 resolver = "3"
 

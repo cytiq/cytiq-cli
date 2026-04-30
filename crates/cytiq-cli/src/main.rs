@@ -21,6 +21,11 @@ use cytiq_flowsom::{
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
 };
+use cytiq_transform::{
+    BiexponentialParameters, LogicleParameters, TransformConfig, TransformFormat, TransformMethod,
+    TransformParameters, TransformRunResult, TransformRunner,
+    parse_channel_list as parse_transform_channel_list,
+};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info};
 
 #[derive(Debug, Parser)]
@@ -129,6 +134,58 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+    /// Transform FCS signal intensities into analysis-ready values.
+    Transform {
+        /// Input .fcs file, glob pattern, or directory. Can be passed multiple times.
+        #[arg(short, long, required = true)]
+        input: Vec<PathBuf>,
+        /// Output file path for one input, or output directory for multiple inputs.
+        #[arg(short, long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = CliTransformMethod::Arcsinh)]
+        method: CliTransformMethod,
+        /// Cofactor for arcsinh transformation.
+        #[arg(long, default_value_t = 150.0, value_parser = parse_positive_f64)]
+        cofactor: f64,
+        /// Logicle/hyperlog T parameter, top of scale.
+        #[arg(long, default_value_t = 262_144.0, value_parser = parse_positive_f64)]
+        logicle_t: f64,
+        /// Logicle/hyperlog M parameter, number of decades.
+        #[arg(long, default_value_t = 4.5, value_parser = parse_positive_f64)]
+        logicle_m: f64,
+        /// Logicle/hyperlog W parameter, width of linear region.
+        #[arg(long, default_value_t = 0.5, value_parser = parse_non_negative_f64)]
+        logicle_w: f64,
+        /// Logicle/hyperlog A parameter, additional negative decades.
+        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative_f64)]
+        logicle_a: f64,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        /// Comma-separated channel names to transform.
+        #[arg(long)]
+        channels: Option<String>,
+        /// Comma-separated channel names to leave untransformed.
+        #[arg(long)]
+        exclude_channels: Option<String>,
+        #[arg(long, value_enum, default_value_t = CliTransformFormat::Fcs)]
+        format: CliTransformFormat,
+        /// Output filename suffix when writing to a directory.
+        #[arg(long, default_value = ".transformed")]
+        suffix: String,
+        /// Allow replacing existing output files.
+        #[arg(long)]
+        overwrite: bool,
+        /// Print resolved inputs, channels, and outputs without writing files.
+        #[arg(long)]
+        dry_run: bool,
+        /// Optional path to write transformation metadata as JSON.
+        #[arg(long)]
+        metadata_json: Option<PathBuf>,
+        /// Optional directory for transformation metrics and Plotly report.
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+    },
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
     Flowsom {
         #[arg(long)]
@@ -170,6 +227,44 @@ enum CliPeacoQcMethod {
     Mad,
     It,
     PeaksOnly,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliTransformMethod {
+    Arcsinh,
+    Biexponential,
+    Hyperlog,
+    Logicle,
+    None,
+}
+
+impl From<CliTransformMethod> for TransformMethod {
+    fn from(value: CliTransformMethod) -> Self {
+        match value {
+            CliTransformMethod::Arcsinh => Self::Arcsinh,
+            CliTransformMethod::Biexponential => Self::Biexponential,
+            CliTransformMethod::Hyperlog => Self::Hyperlog,
+            CliTransformMethod::Logicle => Self::Logicle,
+            CliTransformMethod::None => Self::None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliTransformFormat {
+    Fcs,
+    Csv,
+    Parquet,
+}
+
+impl From<CliTransformFormat> for TransformFormat {
+    fn from(value: CliTransformFormat) -> Self {
+        match value {
+            CliTransformFormat::Fcs => Self::Fcs,
+            CliTransformFormat::Csv => Self::Csv,
+            CliTransformFormat::Parquet => Self::Parquet,
+        }
+    }
 }
 
 impl From<CliPeacoQcMethod> for PeacoQcMethod {
@@ -450,6 +545,68 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("peacoqc completed successfully");
             Ok(())
         }
+        Commands::Transform {
+            input,
+            output,
+            method,
+            cofactor,
+            logicle_t,
+            logicle_m,
+            logicle_w,
+            logicle_a,
+            threads,
+            channels,
+            exclude_channels,
+            format,
+            suffix,
+            overwrite,
+            dry_run,
+            metadata_json,
+            debug_dir,
+        } => {
+            info!(
+                "starting transform: inputs={}, output={}, method={:?}",
+                input.len(),
+                output.display(),
+                method
+            );
+            let channels = parse_optional_transform_channels(channels.as_deref())
+                .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            let exclude_channels =
+                parse_optional_transform_channels(exclude_channels.as_deref())
+                    .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            let config = TransformConfig {
+                inputs: input,
+                output,
+                method: method.into(),
+                cofactor,
+                logicle: LogicleParameters {
+                    t: logicle_t,
+                    m: logicle_m,
+                    w: logicle_w,
+                    a: logicle_a,
+                },
+                biexponential: BiexponentialParameters::default(),
+                channels,
+                exclude_channels,
+                format: format.into(),
+                suffix,
+                overwrite,
+                dry_run,
+                metadata_json,
+                debug_dir,
+                threads,
+            };
+            let result = TransformRunner::run(&config)?;
+            if result.dry_run {
+                print_transform_dry_run(&result);
+            }
+            if let Some(debug_dir) = config.debug_dir.as_ref() {
+                info!("wrote transform debug artifacts to {}", debug_dir.display());
+            }
+            info!("transform completed for {} file(s)", result.files.len());
+            Ok(())
+        }
         Commands::Flowsom {
             input,
             output,
@@ -539,6 +696,88 @@ fn parse_threads(raw: &str) -> Result<usize, String> {
     } else {
         Ok(threads)
     }
+}
+
+fn parse_positive_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() && value > 0.0 {
+        Ok(value)
+    } else {
+        Err("value must be finite and greater than zero".to_owned())
+    }
+}
+
+fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err("value must be finite and greater than or equal to zero".to_owned())
+    }
+}
+
+fn parse_optional_transform_channels(raw: Option<&str>) -> Result<Vec<String>, String> {
+    raw.map(parse_transform_channel_list)
+        .transpose()
+        .map_err(|error| error.to_string())
+        .map(Option::unwrap_or_default)
+}
+
+fn print_transform_dry_run(result: &TransformRunResult) {
+    println!("cytiq transform dry run");
+    for file in &result.files {
+        println!(
+            "{} -> {}",
+            file.input_path.display(),
+            file.output_path.display()
+        );
+        println!("  method: {}", file.method.as_str());
+        let parameters = format_transform_parameters(&file.parameters);
+        if !parameters.is_empty() {
+            println!("  parameters: {parameters}");
+        }
+        println!("  events: {}", file.events);
+        println!("  channels: {}", file.channels.join(","));
+        if !file.excluded_channels.is_empty() {
+            println!("  excluded: {}", file.excluded_channels.join(","));
+        }
+    }
+    if let Some(path) = result.metadata_path.as_ref() {
+        println!("metadata: {}", path.display());
+    }
+}
+
+fn format_transform_parameters(parameters: &TransformParameters) -> String {
+    if let Some(cofactor) = parameters.cofactor {
+        return format!("cofactor={cofactor}");
+    }
+    if let Some(logicle) = parameters.logicle {
+        return format!(
+            "logicle_t={}, logicle_m={}, logicle_w={}, logicle_a={}",
+            logicle.t, logicle.m, logicle.w, logicle.a
+        );
+    }
+    if let Some(hyperlog) = parameters.hyperlog {
+        return format!(
+            "logicle_t={}, logicle_m={}, logicle_w={}, logicle_a={}",
+            hyperlog.t, hyperlog.m, hyperlog.w, hyperlog.a
+        );
+    }
+    if let Some(biexponential) = parameters.biexponential {
+        return format!(
+            "length={}, max_range={}, pos={}, neg={}, width={}",
+            biexponential.length,
+            biexponential.max_range,
+            biexponential.pos,
+            biexponential.neg,
+            biexponential.width
+        );
+    }
+    String::new()
 }
 
 fn parse_peacoqc_channels(

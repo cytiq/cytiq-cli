@@ -34,6 +34,26 @@ impl FcsWriteParameter {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FcsWriteOptions {
+    pub text_keywords: Vec<(String, String)>,
+}
+
+impl FcsWriteOptions {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            text_keywords: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_text_keyword(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.text_keywords.push((key.into(), value.into()));
+        self
+    }
+}
+
 /// Write an FCS 3.1 file with little-endian 32-bit float event data.
 ///
 /// `columns` must contain one column per parameter and all columns must have the
@@ -57,7 +77,31 @@ pub fn write_fcs3_1_f32(
         parameters.len()
     );
     let mut file = File::create(path).map_err(FcsError::Io)?;
-    write_fcs3_1_f32_to_writer(&mut file, parameters, columns)
+    write_fcs3_1_f32_to_writer_with_options(&mut file, parameters, columns, &FcsWriteOptions::new())
+}
+
+/// Write an FCS 3.1 file with little-endian 32-bit float event data and custom
+/// TEXT keywords.
+///
+/// # Errors
+///
+/// Returns an error when parameters/columns/options are inconsistent, offsets
+/// cannot be represented in the fixed header, values are non-finite, or the
+/// underlying writer fails.
+pub fn write_fcs3_1_f32_with_options(
+    path: impl AsRef<Path>,
+    parameters: &[FcsWriteParameter],
+    columns: &[Vec<f32>],
+    options: &FcsWriteOptions,
+) -> Result<(), FcsError> {
+    let path = path.as_ref();
+    debug!(
+        "writing FCS 3.1 float32 dataset to {} with {} parameters",
+        path.display(),
+        parameters.len()
+    );
+    let mut file = File::create(path).map_err(FcsError::Io)?;
+    write_fcs3_1_f32_to_writer_with_options(&mut file, parameters, columns, options)
 }
 
 /// Write an FCS 3.1 float32 dataset to any byte writer.
@@ -72,7 +116,25 @@ pub fn write_fcs3_1_f32_to_writer<W: Write>(
     parameters: &[FcsWriteParameter],
     columns: &[Vec<f32>],
 ) -> Result<(), FcsError> {
+    write_fcs3_1_f32_to_writer_with_options(writer, parameters, columns, &FcsWriteOptions::new())
+}
+
+/// Write an FCS 3.1 float32 dataset to any byte writer with custom TEXT
+/// keywords.
+///
+/// # Errors
+///
+/// Returns an error when parameters/columns/options are inconsistent, offsets
+/// cannot be represented in the fixed header, values are non-finite, or the
+/// underlying writer fails.
+pub fn write_fcs3_1_f32_to_writer_with_options<W: Write>(
+    writer: &mut W,
+    parameters: &[FcsWriteParameter],
+    columns: &[Vec<f32>],
+    options: &FcsWriteOptions,
+) -> Result<(), FcsError> {
     validate_input(parameters, columns)?;
+    validate_options(options)?;
 
     let row_count = columns.first().map_or(0, Vec::len);
     let mut pairs = common_text_pairs(parameters.len(), row_count);
@@ -99,6 +161,9 @@ pub fn write_fcs3_1_f32_to_writer<W: Write>(
             &format!("$P{number}R"),
             &format!("{:.6}", column_range(&columns[parameter_index])),
         );
+    }
+    for (key, value) in &options.text_keywords {
+        set_pair(&mut pairs, key.trim(), value);
     }
 
     let placeholder_text = encode_text(&pairs);
@@ -176,6 +241,42 @@ fn validate_input(parameters: &[FcsWriteParameter], columns: &[Vec<f32>]) -> Res
     }
 
     Ok(())
+}
+
+fn validate_options(options: &FcsWriteOptions) -> Result<(), FcsError> {
+    for (key, _) in &options.text_keywords {
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(FcsError::InvalidWriterInput(
+                "custom TEXT keyword names must not be empty",
+            ));
+        }
+        if is_generated_keyword(key) {
+            return Err(FcsError::InvalidWriterInput(
+                "custom TEXT keywords must not override generated FCS keywords",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_generated_keyword(key: &str) -> bool {
+    matches!(
+        key,
+        "$BEGINSTEXT"
+            | "$ENDSTEXT"
+            | "$BEGINDATA"
+            | "$ENDDATA"
+            | "$BEGINANALYSIS"
+            | "$ENDANALYSIS"
+            | "$BYTEORD"
+            | "$DATATYPE"
+            | "$MODE"
+            | "$NEXTDATA"
+            | "$PAR"
+            | "$TOT"
+    ) || key.starts_with("$P")
 }
 
 fn common_text_pairs(parameter_count: usize, row_count: usize) -> Vec<(String, String)> {

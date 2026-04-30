@@ -460,6 +460,7 @@ dependencies = [
  "cytiq-fcs",
  "cytiq-flowsom",
  "cytiq-peacoqc",
+ "cytiq-transform",
  "log",
 ]
 
@@ -487,6 +488,20 @@ dependencies = [
 
 [[package]]
 name = "cytiq-peacoqc"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "log",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-transform"
 version = "0.1.0"
 dependencies = [
  "csv",

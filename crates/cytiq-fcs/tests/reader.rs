@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use cytiq_fcs::{ColumnData, FcsReader, FcsVersion, FcsWriteParameter};
+use cytiq_fcs::{ColumnData, FcsReader, FcsVersion, FcsWriteOptions, FcsWriteParameter};
 
 const DELIMITER: u8 = b'|';
 
@@ -239,6 +239,29 @@ fn writes_and_reads_fcs3_1_float32() -> Result<(), Box<dyn Error>> {
     assert_eq!(dataset.parameters[1].label.as_deref(), Some("FITC-A"));
     assert_f32_column(dataset.data.column(0), &[1.0, 2.0, 3.0]);
     assert_f32_column(dataset.data.column(1), &[10.5, 20.5, 30.5]);
+
+    Ok(())
+}
+
+#[test]
+fn writes_and_reads_custom_text_keywords() -> Result<(), Box<dyn Error>> {
+    let parameters = vec![FcsWriteParameter::new("FL1-A")];
+    let columns = vec![vec![1.0_f32, 2.0, 3.0]];
+    let options =
+        FcsWriteOptions::new().with_text_keyword("CYTIQ_TRANSFORM", "{\"method\":\"none\"}");
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
+        &mut bytes,
+        &parameters,
+        &columns,
+        &options,
+    )?;
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    assert_eq!(
+        dataset.text.get("CYTIQ_TRANSFORM"),
+        Some("{\"method\":\"none\"}")
+    );
 
     Ok(())
 }

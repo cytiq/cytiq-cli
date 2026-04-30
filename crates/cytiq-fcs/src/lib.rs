@@ -24,7 +24,10 @@ pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,
     ParameterDataType, ParameterWidth, TextSegment,
 };
-pub use crate::writer::{FcsWriteParameter, write_fcs3_1_f32, write_fcs3_1_f32_to_writer};
+pub use crate::writer::{
+    FcsWriteOptions, FcsWriteParameter, write_fcs3_1_f32, write_fcs3_1_f32_to_writer,
+    write_fcs3_1_f32_to_writer_with_options, write_fcs3_1_f32_with_options,
+};
 
 #[derive(Debug)]
 pub struct FcsReader<R> {

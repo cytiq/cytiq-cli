@@ -314,8 +314,9 @@ cytoscan_results/
 ```
 
 When `--debug-dir` is provided, `cytiq` also writes reference features,
-aggregate sampling details, model diagnostics, PCA coordinates/loadings, and a
-Plotly `report.html`.
+aggregate sampling details, model diagnostics, PCA coordinates/loadings,
+`feature_heatmap.csv`, `boxplot_samples.csv`, and a Plotly `report.html` with
+PCA, top-loading, feature heatmap, and per-channel boxplot sections.
 
 ## PeacoQC
 

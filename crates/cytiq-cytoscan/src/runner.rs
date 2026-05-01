@@ -222,11 +222,11 @@ pub struct CytoScanDiagnostics {
 }
 
 #[derive(Clone, Debug)]
-struct LoadedFile {
-    path: PathBuf,
-    filename: String,
-    channel_names: Vec<String>,
-    matrix: Vec<Vec<f64>>,
+pub(crate) struct LoadedFile {
+    pub(crate) path: PathBuf,
+    pub(crate) filename: String,
+    pub(crate) channel_names: Vec<String>,
+    pub(crate) matrix: Vec<Vec<f64>>,
     event_count: usize,
     warnings: Vec<String>,
 }
@@ -433,7 +433,7 @@ impl CytoScanRunner {
             summary_rows,
             diagnostics,
         };
-        write_outputs(config, &result)?;
+        write_outputs(config, &result, &test_files, &reference_files)?;
         info!(
             "cytoscan pipeline: wrote outputs for {} test file(s) to {}",
             result.summary_rows.len(),
@@ -1194,7 +1194,7 @@ fn feature_names(method: FeatureMethod, channels: &[String], model: &FeatureMode
     }
 }
 
-fn sampled_matrix(file: &LoadedFile, limit: usize) -> Vec<Vec<f64>> {
+pub(crate) fn sampled_matrix(file: &LoadedFile, limit: usize) -> Vec<Vec<f64>> {
     let indices = sample_indices(
         file.matrix.len(),
         limit,

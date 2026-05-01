@@ -44,11 +44,22 @@ fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
     assert!(output_dir.join("cytoscan_config.json").is_file());
     assert!(debug_dir.join("pca_coordinates.csv").is_file());
     assert!(debug_dir.join("pca_loadings.csv").is_file());
+    assert!(debug_dir.join("feature_heatmap.csv").is_file());
+    assert!(debug_dir.join("boxplot_samples.csv").is_file());
     let report = fs::read_to_string(debug_dir.join("report.html")).expect("report should exist");
     assert!(report.contains("plotly"));
+    assert!(report.contains("Top PCA Loadings"));
+    assert!(report.contains("Feature Heatmap"));
+    assert!(report.contains("Boxplots"));
 
     let rows = read_csv_rows(&output_dir.join("cytoscan_summary.csv"));
     assert_eq!(rows.len(), 4);
+    let pca_header = read_csv_header(&debug_dir.join("pca_coordinates.csv"));
+    assert!(pca_header.iter().any(|column| column == "status"));
+    let heatmap_rows = read_csv_rows(&debug_dir.join("feature_heatmap.csv"));
+    assert_eq!(heatmap_rows.len(), 4);
+    let boxplot_rows = read_csv_rows(&debug_dir.join("boxplot_samples.csv"));
+    assert!(!boxplot_rows.is_empty());
     let feature_header = read_csv_header(&output_dir.join("cytoscan_features.csv"));
     assert!(
         feature_header
@@ -63,6 +74,7 @@ fn cli_runs_cytoscan_novelty_with_reference() {
     let input_dir = directory.join("test");
     let reference_dir = directory.join("reference");
     let output_dir = directory.join("out");
+    let debug_dir = directory.join("debug");
     write_cytoscan_fixture_set(&reference_dir, &[0.0, 3.0, 6.0, 9.0]);
     write_cytoscan_fixture_set(&input_dir, &[2.0, 260.0]);
 
@@ -85,6 +97,8 @@ fn cli_runs_cytoscan_novelty_with_reference() {
             "binning",
             "--flag-method",
             "novelty",
+            "--debug-dir",
+            utf8(&debug_dir),
             "--threads",
             "1",
         ])
@@ -105,6 +119,14 @@ fn cli_runs_cytoscan_novelty_with_reference() {
     let config = fs::read_to_string(output_dir.join("cytoscan_config.json"))
         .expect("config json should exist");
     assert!(config.contains("novelty_threshold"));
+    assert!(debug_dir.join("reference_features.csv").is_file());
+    assert!(debug_dir.join("feature_heatmap.csv").is_file());
+    assert!(debug_dir.join("boxplot_samples.csv").is_file());
+    let pca_rows = read_csv_rows(&debug_dir.join("pca_coordinates.csv"));
+    assert!(pca_rows.iter().any(|row| row.get(0) == Some("reference")));
+    let report = fs::read_to_string(debug_dir.join("report.html")).expect("report should exist");
+    assert!(report.contains("reference"));
+    assert!(report.contains("Feature Heatmap"));
 }
 
 #[test]

@@ -6,6 +6,7 @@ Current workspace crates:
 - `cytiq-fcs`: strict FCS 3.0 / 3.1 / 3.2 reader
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
+- `cytiq-cytoscan`: CytoScan-style file-level anomaly detection
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-transform`: FCS signal transformation workflow
@@ -256,6 +257,65 @@ Rules:
 - when `--debug-dir` is provided, `cytiq` writes `summary.json`,
   `metrics.csv`, and a Plotly `report.html` with per-channel transformation
   diagnostics
+
+## CytoScan
+
+`cytiq cytoscan` flags anomalous FCS files across a cohort. Outlier detection
+uses only the test cohort; novelty detection compares test files to a separate
+high-quality reference cohort.
+
+```bash
+cytiq cytoscan \
+  --input ./test_fcs \
+  --output ./cytoscan_results \
+  --channels CD3,CD4,CD8,CD45
+```
+
+Novelty detection requires `--reference`:
+
+```bash
+cytiq cytoscan \
+  --input ./test_fcs \
+  --reference ./reference_fcs \
+  --output ./cytoscan_results \
+  --channel CD3 \
+  --channel CD4 \
+  --channel CD8 \
+  --method quantiles \
+  --flag-method novelty
+```
+
+Rules:
+- `--input` and `--reference` accept direct `.fcs` files, directories with
+  immediate `.fcs` children, and simple file-name globs such as `samples/*.fcs`
+- pass channels either as repeated `--channel` values or as one compact
+  comma-separated `--channels` value
+- channel values match `$PnN` first, `$PnS` labels as a fallback, and display
+  identifiers like `$PnN [$PnS]`
+- `--method` supports `summary`, `quantiles`, `emd`, `binning`, and
+  `fingerprint`; default is `quantiles`
+- `--flag-method` supports `outlier`, `novelty`, and `both`; default is
+  `outlier`
+- novelty and `both` require `--reference`
+- FCS preprocessing compensates selected spillover channels with `SPILL` /
+  `$SPILL`, applies `asinh(value / 150)`, and truncates values above `$PnR`
+  before feature generation
+- low-level algorithm settings such as event sampling, aggregate size,
+  isolation tree count, novelty quantile, and fingerprint recursions are fixed
+  internal constants for the first public CLI
+
+Outputs are always written under `--output`:
+
+```text
+cytoscan_results/
+  cytoscan_summary.csv
+  cytoscan_features.csv
+  cytoscan_config.json
+```
+
+When `--debug-dir` is provided, `cytiq` also writes reference features,
+aggregate sampling details, model diagnostics, PCA coordinates/loadings, and a
+Plotly `report.html`.
 
 ## PeacoQC
 

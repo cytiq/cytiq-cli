@@ -457,11 +457,27 @@ dependencies = [
  "csv",
  "cytiq-autospectral",
  "cytiq-autospill",
+ "cytiq-cytoscan",
  "cytiq-fcs",
  "cytiq-flowsom",
  "cytiq-peacoqc",
  "cytiq-transform",
  "log",
+]
+
+[[package]]
+name = "cytiq-cytoscan"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "log",
+ "nalgebra",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

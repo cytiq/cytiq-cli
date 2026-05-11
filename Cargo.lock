@@ -129,9 +129,9 @@ dependencies = [
 
 [[package]]
 name = "arrow-ipc"
-version = "58.1.0"
+version = "58.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "609a441080e338147a84e8e6904b6da482cefb957c5cdc0f3398872f69a315d0"
+checksum = "fd8907ddd8f9fbabf91ec2c85c1d81fe2874e336d2443eb36373595e28b98dd5"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -149,9 +149,9 @@ checksum = "f633dbfdf39c039ada1bf9e34c694816eb71fbb7dc78f613993b7245e078a1ed"
 
 [[package]]
 name = "arrow-select"
-version = "58.1.0"
+version = "58.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78694888660a9e8ac949853db393af2a8b8fc82c19ce333132dfa2e72cc1a7fe"
+checksum = "a657ab5132e9c8ca3b24eb15a823d0ced38017fe3930ff50167466b02e2d592c"
 dependencies = [
  "ahash",
  "arrow-array",
@@ -778,12 +778,6 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-
-[[package]]
-name = "hashbrown"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
@@ -1043,9 +1037,9 @@ dependencies = [
 
 [[package]]
 name = "parquet"
-version = "58.1.0"
+version = "58.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d3f9f2205199603564127932b89695f52b62322f541d0fc7179d57c2e1c9877"
+checksum = "43d7efd3052f7d6ef601085559a246bc991e9a8cc77e02753737df6322ce35f1"
 dependencies = [
  "ahash",
  "arrow-array",
@@ -1058,7 +1052,7 @@ dependencies = [
  "bytes",
  "chrono",
  "half",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.0",
  "num-bigint",
  "num-integer",
  "num-traits",

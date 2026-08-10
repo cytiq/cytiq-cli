@@ -11,7 +11,7 @@ cytiq-fcs = { path = "../cytiq-fcs" }
 log = "0.4.30"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 ndarray = "0.17.2"
-parquet = { version = "58.3.0", default-features = false, features = ["arrow"] }
+parquet = { version = "59.2.0", default-features = false, features = ["arrow"] }
 plotly = "0.14.1"
 rayon = "1.10.0"
 serde = { version = "1.0.228", features = ["derive"] }

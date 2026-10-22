@@ -14,14 +14,16 @@ lib <- Sys.getenv("R_LIBS_USER")
 options(repos = c(CRAN = "https://cloud.r-project.org"), Ncpus = 8)
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", lib = lib)
 BiocManager::install(c("flowCore", "flowWorkspace", "FlowSOM", "PeacoQC", "ConsensusClusterPlus",
-                       "remotes", "MASS", "deldir"), lib = lib, ask = FALSE, update = FALSE)
+                       "remotes", "MASS", "deldir", "flowFP", "isotree", "mclust", "transport",
+                       "doParallel", "foreach", "ggridges", "ggrepel", "gridExtra", "dplyr",
+                       "jsonlite"), lib = lib, ask = FALSE, update = FALSE)
 R
 
-for repo in carlosproca/autospill DrCytometer/AutoSpectral; do
+for repo in carlosproca/autospill DrCytometer/AutoSpectral AUMC-HEMA/CytoScan; do
   name="${repo#*/}"
   [[ -d "$ENV_DIR/$name-src" ]] || git clone -q --depth 1 "https://github.com/$repo.git" "$ENV_DIR/$name-src"
   Rscript -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()));
-    remotes::install_local('$ENV_DIR/$name-src', lib = Sys.getenv('R_LIBS_USER'), upgrade = 'never',
+    remotes::install_local('$ENV_DIR/$name-src', lib = '$R_LIBS_USER', upgrade = 'never',
                            dependencies = c('Depends', 'Imports', 'LinkingTo'))"
 done
 
@@ -30,7 +32,8 @@ VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q numpy pandas scipy scikit-learn flow
 
 {
   Rscript -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()));
-    for (p in c('flowCore','flowWorkspace','FlowSOM','PeacoQC','autospill','AutoSpectral','MASS'))
+    for (p in c('flowCore','flowWorkspace','FlowSOM','PeacoQC','autospill','AutoSpectral','MASS',
+                'CytoScan','flowFP','isotree','mclust','transport'))
       cat(p, as.character(packageVersion(p)), '\n')"
   R --version | head -1
   VIRTUAL_ENV="$ENV_DIR/py" uv pip freeze | grep -Ei '^(flowkit|flowio|numpy|scikit-learn|scipy|pandas)=='

@@ -72,6 +72,17 @@ pub enum CytoScanError {
     EmptyAggregate { method: &'static str },
     #[error("feature matrices have incompatible feature columns")]
     FeatureShapeMismatch,
+    #[error(
+        "fingerprint bin {bin} at level {level} has {events} event(s); the aggregate is too small for {recursions} recursions"
+    )]
+    FingerprintBinTooSmall {
+        level: usize,
+        bin: usize,
+        events: usize,
+        recursions: usize,
+    },
+    #[error("novelty model fitting failed: {reason}")]
+    NoveltyFit { reason: String },
     #[error("failed to create output directory `{path}`: {source}")]
     OutputDirectoryCreate {
         path: PathBuf,

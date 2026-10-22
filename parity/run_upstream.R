@@ -13,7 +13,7 @@ out_dir <- if (length(args) >= 2) args[[2]] else "parity/.out/upstream"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_dir <- normalizePath(out_dir)
 tools <- if (length(args) >= 3) args[3:length(args)] else
-  c("transform", "autospill", "peacoqc", "flowsom", "autospectral")
+  c("transform", "autospill", "peacoqc", "flowsom", "autospectral", "cytoscan")
 
 timed <- function(name, expr) {
   started <- proc.time()[["elapsed"]]
@@ -127,6 +127,96 @@ run_autospectral <- function() {
     rownames(rust_spectra) <- rust$component
     unmixed_rust <- unmix.ols(raw, rust_spectra)
     write.csv(unmixed_rust, file.path(out_dir, "autospectral_unmix_rust_spectra.csv"), row.names = FALSE)
+  }
+}
+
+# ------------------------------------------------------------------ cytoscan
+# Upstream CytoScan (AUMC-HEMA/CytoScan): features via generateFeatures(),
+# outliers via isotree (seed 42 plus 43-44 for the isotree noise band), novelty
+# via mclust::Mclust (default model search and VVV-only, which is what
+# linfa's full-covariance GMM corresponds to).
+cytoscan_features <- function(dataset_dir, method, seed = 42) {
+  suppressPackageStartupMessages(library(CytoScan))
+  if (seed != 42) {
+    # noise band for the per-file subsample: same readInput with another seed
+    patched <- function(CS, path, n = NULL) {
+      set.seed(seed)
+      ff <- flowCore::read.FCS(path, which.lines = n, truncate_max_range = CS$truncate_max_range)
+      CS[["preprocessFunction"]](ff)
+    }
+    original <- get("readInput", envir = asNamespace("CytoScan"))
+    utils::assignInNamespace("readInput", patched, ns = "CytoScan")
+    on.exit(utils::assignInNamespace("readInput", original, ns = "CytoScan"), add = TRUE)
+  }
+  channels <- strsplit(readLines(file.path(dataset_dir, "channels.txt"), warn = FALSE), ",")[[1]]
+  test <- sort(list.files(file.path(dataset_dir, "test"), full.names = TRUE))
+  ref <- sort(list.files(file.path(dataset_dir, "reference"), full.names = TRUE))
+  CS <- CytoScan()
+  CS <- addTestdata(CS, test)
+  CS <- addReferencedata(CS, ref)
+  CS <- suppressMessages(generateFeatures(CS, channels, featMethod = method, cores = 1))
+  CS
+}
+
+write_features <- function(features, path) {
+  out <- data.frame(filename = basename(rownames(features)), features, check.names = FALSE)
+  write.csv(out, path, row.names = FALSE)
+}
+
+run_cytoscan <- function() {
+  suppressPackageStartupMessages({ library(CytoScan); library(mclust) })
+  for (dataset in c("cytoscan_exact", "cytoscan", "cytoscan_ref100")) {
+    dataset_dir <- file.path(data_dir, dataset)
+    if (!dir.exists(dataset_dir)) next
+    target <- file.path(out_dir, dataset)
+    dir.create(target, recursive = TRUE, showWarnings = FALSE)
+    for (method in c("summary", "quantiles", "EMD", "binning", "fingerprint")) {
+      tag <- tolower(method)
+      CS <- timed(paste0(dataset, "_features_", tag), cytoscan_features(dataset_dir, method))
+      test_features <- CS$features$test[[method]]
+      ref_features <- CS$features$reference[[method]]
+      write_features(test_features, file.path(target, paste0("features_test_", tag, ".csv")))
+      write_features(ref_features, file.path(target, paste0("features_reference_", tag, ".csv")))
+
+      scores <- sapply(c(42, 1042, 2042), function(seed) {
+        forest <- isotree::isolation.forest(test_features, sample_size = 1, ntrees = 1000,
+                                            ndim = 1, seed = seed, nthreads = 1)
+        stats::predict(forest, test_features)
+      })
+      colnames(scores) <- paste0("score_seed", c(42, 1042, 2042))
+      outlier <- data.frame(filename = basename(rownames(test_features)), scores, check.names = FALSE)
+      write.csv(outlier, file.path(target, paste0("outlier_", tag, ".csv")), row.names = FALSE)
+
+      novelty <- data.frame(filename = basename(rownames(test_features)))
+      meta <- list()
+      for (models in list(default = NULL, VVV = "VVV")) {
+        key <- if (is.null(models)) "default" else models
+        gmm <- tryCatch(suppressWarnings(Mclust(ref_features, modelNames = models, verbose = FALSE)),
+                        error = function(e) NULL)
+        if (is.null(gmm)) {
+          novelty[[paste0("ll_", key)]] <- NA
+          meta[[key]] <- list(model = NA, G = NA, threshold = NA)
+          next
+        }
+        ll_train <- log(dens(ref_features, gmm$modelName, parameters = gmm$parameters))
+        threshold <- unname(quantile(ll_train, 0.05))
+        novelty[[paste0("ll_", key)]] <- log(dens(test_features, gmm$modelName, parameters = gmm$parameters))
+        meta[[key]] <- list(model = gmm$modelName, G = gmm$G, threshold = threshold,
+                            train_ll = ll_train)
+      }
+      write.csv(novelty, file.path(target, paste0("novelty_", tag, ".csv")), row.names = FALSE)
+      jsonlite::write_json(meta, file.path(target, paste0("novelty_", tag, ".json")),
+                           auto_unbox = TRUE, digits = NA)
+    }
+    if (dataset == "cytoscan") {
+      for (seed in c(1, 2)) {
+        for (method in c("summary", "quantiles", "EMD", "binning", "fingerprint")) {
+          CS <- cytoscan_features(dataset_dir, method, seed = seed)
+          write_features(CS$features$test[[method]],
+                         file.path(target, sprintf("features_test_%s_seed%d.csv", tolower(method), seed)))
+        }
+      }
+    }
   }
 }
 

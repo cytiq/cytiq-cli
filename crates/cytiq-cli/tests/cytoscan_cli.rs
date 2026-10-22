@@ -54,12 +54,21 @@ fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
 
     let rows = read_csv_rows(&output_dir.join("cytoscan_summary.csv"));
     assert_eq!(rows.len(), 4);
+    // columns: filename, path, flag_method, feature_method, is_outlier, ...;
+    // only the file shifted by 280 is an outlier
+    let flagged = rows
+        .iter()
+        .filter(|row| &row[4] == "true")
+        .map(|row| row[0].to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(flagged, vec!["sample_03.fcs".to_owned()]);
     let pca_header = read_csv_header(&debug_dir.join("pca_coordinates.csv"));
     assert!(pca_header.iter().any(|column| column == "status"));
     let heatmap_rows = read_csv_rows(&debug_dir.join("feature_heatmap.csv"));
     assert_eq!(heatmap_rows.len(), 4);
     let boxplot_rows = read_csv_rows(&debug_dir.join("boxplot_samples.csv"));
-    assert!(!boxplot_rows.is_empty());
+    // 4 files x 80 events x 3 channels (files are smaller than the 1000-event sample)
+    assert_eq!(boxplot_rows.len(), 4 * 80 * 3);
     let feature_header = read_csv_header(&output_dir.join("cytoscan_features.csv"));
     assert!(
         feature_header

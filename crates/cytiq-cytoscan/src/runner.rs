@@ -14,11 +14,16 @@ use std::path::{Path, PathBuf};
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
 use log::{debug, info};
 use nalgebra::DMatrix;
+use rand::rngs::StdRng;
+use rand::seq::index;
+use rand::{Rng, SeedableRng};
+use rand_distr::{Distribution, Uniform};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
 use crate::error::CytoScanError;
 use crate::export::write_outputs;
+use crate::novelty::{self, NoveltyModelKind};
 
 pub const DEFAULT_RANDOM_SEED: u64 = 42;
 pub const DEFAULT_EVENTS_PER_FILE: usize = 1_000;
@@ -29,13 +34,6 @@ pub const DEFAULT_NOVELTY_QUANTILE: f64 = 0.05;
 pub const DEFAULT_ISOLATION_TREES: usize = 1_000;
 pub const DEFAULT_FINGERPRINT_RECURSIONS: usize = 4;
 pub const DEFAULT_ARCSINH_COFACTOR: f64 = 150.0;
-
-const EQUALITY_EPSILON: f64 = 1.0e-12;
-const VARIANCE_FLOOR: f64 = 1.0e-6;
-const MAX_GMM_COMPONENTS: usize = 4;
-const GMM_ITERATIONS: usize = 100;
-const GMM_TOLERANCE: f64 = 1.0e-7;
-const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -217,6 +215,8 @@ pub struct CytoScanDiagnostics {
     pub feature_count: usize,
     pub outlier_tree_count: Option<usize>,
     pub novelty_components: Option<usize>,
+    pub novelty_model: Option<NoveltyModelKind>,
+    pub novelty_bic: Option<f64>,
     pub novelty_threshold: Option<f64>,
     pub warnings: Vec<String>,
 }
@@ -227,7 +227,6 @@ pub(crate) struct LoadedFile {
     pub(crate) filename: String,
     pub(crate) channel_names: Vec<String>,
     pub(crate) matrix: Vec<Vec<f64>>,
-    event_count: usize,
     warnings: Vec<String>,
 }
 
@@ -254,9 +253,10 @@ enum FeatureModel {
     Fingerprint(FingerprintModel),
 }
 
+/// `flowFP` probability-binning model: for every level, one split per bin.
 #[derive(Clone, Debug, PartialEq)]
 struct FingerprintModel {
-    splits: Vec<FingerprintSplit>,
+    levels: Vec<Vec<FingerprintSplit>>,
     bins: usize,
 }
 
@@ -264,27 +264,6 @@ struct FingerprintModel {
 struct FingerprintSplit {
     channel_index: usize,
     threshold: f64,
-}
-
-#[derive(Clone, Debug)]
-struct NoveltyModel {
-    gmm: DiagonalGmm,
-    scale: FeatureScale,
-    threshold: f64,
-}
-
-#[derive(Clone, Debug)]
-struct FeatureScale {
-    means: Vec<f64>,
-    standard_deviations: Vec<f64>,
-}
-
-#[derive(Clone, Debug)]
-struct DiagonalGmm {
-    weights: Vec<f64>,
-    means: Vec<Vec<f64>>,
-    variances: Vec<Vec<f64>>,
-    bic: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -298,34 +277,6 @@ enum IsolationNode {
         left: Box<IsolationNode>,
         right: Box<IsolationNode>,
     },
-}
-
-#[derive(Clone, Debug)]
-struct DeterministicRng {
-    state: u64,
-}
-
-impl DeterministicRng {
-    const fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        self.state = self
-            .state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        self.state
-    }
-
-    fn next_index(&mut self, upper_bound: usize) -> usize {
-        (self.next_u64() % upper_bound as u64) as usize
-    }
-
-    fn next_f64(&mut self) -> f64 {
-        let bits = self.next_u64() >> 11;
-        bits as f64 / ((1_u64 << 53) as f64)
-    }
 }
 
 pub struct CytoScanRunner;
@@ -394,14 +345,27 @@ impl CytoScanRunner {
                 .as_ref()
                 .expect("reference features should exist for novelty");
             ensure_feature_shape(reference_features, &test_features)?;
-            let model = fit_novelty_model(&reference_features.values())?;
-            let test_log_likelihoods = log_likelihoods(&model, &test_features.values());
+            let model = novelty::fit(&reference_features.values(), DEFAULT_NOVELTY_QUANTILE)?;
+            let test_log_likelihoods = test_features
+                .values()
+                .iter()
+                .map(|row| model.log_density(row))
+                .collect::<Vec<_>>();
             Some((model, test_log_likelihoods))
         } else {
             None
         };
 
-        let warnings = collect_warnings(&test_files, &reference_files);
+        let mut warnings = collect_warnings(&test_files, &reference_files);
+        if let Some((model, _)) = &novelty
+            && model.kind == NoveltyModelKind::DiagonalFallback
+        {
+            warnings.push(format!(
+                "novelty: {} reference file(s) cannot support a full-covariance mixture over {} features; used a single diagonal Gaussian",
+                reference_features.as_ref().map_or(0, |matrix| matrix.rows.len()),
+                test_features.feature_names.len()
+            ));
+        }
         let summary_rows = build_summary_rows(
             config,
             &test_files,
@@ -416,13 +380,19 @@ impl CytoScanRunner {
                 .iter()
                 .map(|file| file.path.clone())
                 .collect(),
-            aggregate_events: aggregate_event_count(aggregate_files),
+            aggregate_events: if config.feature_method.uses_aggregate() {
+                aggregate_event_count(aggregate_files)
+            } else {
+                0
+            },
             feature_count: test_features.feature_names.len(),
             outlier_tree_count: config
                 .flag_method
                 .includes_outlier()
                 .then_some(DEFAULT_ISOLATION_TREES),
-            novelty_components: novelty.as_ref().map(|(model, _)| model.gmm.weights.len()),
+            novelty_components: novelty.as_ref().map(|(model, _)| model.components()),
+            novelty_model: novelty.as_ref().map(|(model, _)| model.kind),
+            novelty_bic: novelty.as_ref().and_then(|(model, _)| model.bic),
             novelty_threshold: novelty.as_ref().map(|(model, _)| model.threshold),
             warnings,
         };
@@ -668,8 +638,7 @@ fn load_processed_file(
             path: path.to_path_buf(),
             source,
         })?;
-    let event_count = event_count(&dataset);
-    if event_count == 0 {
+    if event_count(&dataset) == 0 {
         return Err(CytoScanError::EmptyFcs {
             path: path.to_path_buf(),
         });
@@ -685,7 +654,6 @@ fn load_processed_file(
             .map(|channel| channel.display_name.clone())
             .collect(),
         matrix,
-        event_count,
         warnings,
     })
 }
@@ -1042,10 +1010,6 @@ fn collect_warnings(test_files: &[LoadedFile], reference_files: &[LoadedFile]) -
         .collect()
 }
 
-fn aggregate_event_count(files: &[LoadedFile]) -> usize {
-    files.iter().map(|file| file.event_count).sum()
-}
-
 fn parallel_try_map<T, U, E, F>(items: &[T], stage: &str, worker: F) -> Result<Vec<U>, E>
 where
     T: Sync,
@@ -1093,7 +1057,7 @@ fn build_feature_model(
         FeatureMethod::Fingerprint => Ok(FeatureModel::Fingerprint(FingerprintModel::fit(
             &aggregate,
             DEFAULT_FINGERPRINT_RECURSIONS,
-        ))),
+        )?)),
         FeatureMethod::Summary | FeatureMethod::Quantiles => Ok(FeatureModel::None),
     }
 }
@@ -1194,18 +1158,18 @@ fn feature_names(method: FeatureMethod, channels: &[String], model: &FeatureMode
     }
 }
 
+/// Per-file subsample as `CytoScan::readInput`: the generator is reseeded with
+/// the fixed seed for every file (`set.seed(42)` before
+/// `read.FCS(which.lines = n)`), so the sample does not depend on the path.
 pub(crate) fn sampled_matrix(file: &LoadedFile, limit: usize) -> Vec<Vec<f64>> {
-    let indices = sample_indices(
-        file.matrix.len(),
-        limit,
-        DEFAULT_RANDOM_SEED ^ stable_hash_path(&file.path),
-    );
-    indices
+    sample_indices(file.matrix.len(), limit, DEFAULT_RANDOM_SEED)
         .into_iter()
         .map(|index| file.matrix[index].clone())
         .collect()
 }
 
+/// `getAggregate`: `ceiling(aggSize / n_files)` events from every file,
+/// concatenated in file order without further resampling.
 fn aggregate_matrix(files: &[LoadedFile]) -> Result<Vec<Vec<f64>>, CytoScanError> {
     if files.is_empty() {
         return Err(CytoScanError::EmptyAggregate {
@@ -1213,45 +1177,34 @@ fn aggregate_matrix(files: &[LoadedFile]) -> Result<Vec<Vec<f64>>, CytoScanError
         });
     }
     let per_file = DEFAULT_AGGREGATE_EVENTS.div_ceil(files.len());
-    let mut aggregate = Vec::new();
-    for file in files {
-        aggregate.extend(sampled_matrix(file, per_file));
-    }
-    if aggregate.len() > DEFAULT_AGGREGATE_EVENTS {
-        let indices = sample_indices(
-            aggregate.len(),
-            DEFAULT_AGGREGATE_EVENTS,
-            DEFAULT_RANDOM_SEED ^ 0x9e37_79b9_7f4a_7c15,
-        );
-        aggregate = indices
-            .into_iter()
-            .map(|index| aggregate[index].clone())
-            .collect();
-    }
-    Ok(aggregate)
+    Ok(files
+        .iter()
+        .flat_map(|file| sampled_matrix(file, per_file))
+        .collect())
 }
 
+/// Number of aggregate events `aggregate_matrix` uses for `files`.
+fn aggregate_event_count(files: &[LoadedFile]) -> usize {
+    if files.is_empty() {
+        return 0;
+    }
+    let per_file = DEFAULT_AGGREGATE_EVENTS.div_ceil(files.len());
+    files
+        .iter()
+        .map(|file| file.matrix.len().min(per_file))
+        .sum()
+}
+
+/// Sorted indices of `limit` events drawn without replacement (all events
+/// when the file has no more than `limit`).
 fn sample_indices(length: usize, limit: usize, seed: u64) -> Vec<usize> {
     if length <= limit {
         return (0..length).collect();
     }
-    let mut indices = (0..length).collect::<Vec<_>>();
-    let mut rng = DeterministicRng::new(seed);
-    for index in 0..limit {
-        let swap_index = index + rng.next_index(length - index);
-        indices.swap(index, swap_index);
-    }
-    indices.truncate(limit);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut indices = index::sample(&mut rng, length, limit).into_vec();
     indices.sort_unstable();
     indices
-}
-
-fn stable_hash_path(path: &Path) -> u64 {
-    path.to_string_lossy()
-        .bytes()
-        .fold(14_695_981_039_346_656_037_u64, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(1_099_511_628_211)
-        })
 }
 
 fn summary_features(sample: &[Vec<f64>]) -> Vec<f64> {
@@ -1286,6 +1239,9 @@ fn emd_features(sample: &[Vec<f64>], aggregate_columns: &[Vec<f64>]) -> Vec<f64>
         .collect()
 }
 
+/// `CytoScan::calculateBins`: `table(cut(x, breaks = deciles))`. Intervals are
+/// right-closed `(b[i], b[i+1]]`; values at or below the lowest break or above
+/// the highest are `NA` and leave both the counts and the denominator.
 fn binning_features(sample: &[Vec<f64>], boundaries: &[Vec<f64>]) -> Vec<f64> {
     let columns = transpose(sample);
     columns
@@ -1294,23 +1250,34 @@ fn binning_features(sample: &[Vec<f64>], boundaries: &[Vec<f64>]) -> Vec<f64> {
         .flat_map(|(column, boundary)| {
             let mut counts = [0_usize; 10];
             for value in column {
-                counts[bin_index(*value, boundary)] += 1;
+                if let Some(bin) = cut_bin(*value, boundary) {
+                    counts[bin] += 1;
+                }
             }
-            let denominator = column.len().max(1) as f64;
-            counts.map(|count| count as f64 / denominator)
+            let total = counts.iter().sum::<usize>();
+            counts.map(|count| {
+                if total == 0 {
+                    0.0
+                } else {
+                    count as f64 / total as f64
+                }
+            })
         })
         .collect()
 }
 
+/// `CytoScan::calculateFingerprint`: `flowFP(ff, model)` counts per bin
+/// divided by their sum.
 fn fingerprint_features(sample: &[Vec<f64>], model: &FingerprintModel) -> Vec<f64> {
+    let tags = model.tag(&dequantize(sample));
     let mut counts = vec![0_usize; model.bins];
-    for row in sample {
-        counts[model.assign(row)] += 1;
+    for tag in tags {
+        counts[tag] += 1;
     }
-    let denominator = sample.len().max(1) as f64;
+    let total = counts.iter().sum::<usize>().max(1) as f64;
     counts
         .into_iter()
-        .map(|count| count as f64 / denominator)
+        .map(|count| count as f64 / total)
         .collect()
 }
 
@@ -1325,16 +1292,13 @@ fn aggregate_boundaries(aggregate: &[Vec<f64>]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-fn bin_index(value: f64, boundaries: &[f64]) -> usize {
+fn cut_bin(value: f64, boundaries: &[f64]) -> Option<usize> {
     if boundaries.len() < 2 || value <= boundaries[0] {
-        return 0;
+        return None;
     }
-    for (index, boundary) in boundaries.iter().enumerate().skip(1) {
-        if value <= *boundary {
-            return (index - 1).min(9);
-        }
-    }
-    9
+    boundaries
+        .windows(2)
+        .position(|pair| value > pair[0] && value <= pair[1])
 }
 
 fn transpose(matrix: &[Vec<f64>]) -> Vec<Vec<f64>> {
@@ -1425,114 +1389,116 @@ fn wasserstein_1d(left: &[f64], right: &[f64]) -> f64 {
     distance
 }
 
+/// `flowFP::dequantize`: event `i` (1-based) gets `i * 1e-8` added to every
+/// parameter, which breaks ties before median splits.
+fn dequantize(rows: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    const ALPHA: f64 = 1.0e-8;
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let offset = ALPHA * (index + 1) as f64;
+            row.iter().map(|value| value + offset).collect()
+        })
+        .collect()
+}
+
 impl FingerprintModel {
-    fn fit(rows: &[Vec<f64>], recursions: usize) -> Self {
-        let bins = 1_usize << recursions;
-        let mut splits = vec![
-            FingerprintSplit {
-                channel_index: 0,
-                threshold: 0.0,
-            };
-            bins.saturating_sub(1)
-        ];
-        let indexes = (0..rows.len()).collect::<Vec<_>>();
-        Self::fit_node(rows, &indexes, 0, recursions, &mut splits);
-        Self { splits, bins }
+    /// `flowFP::flowFPModel(agg, nRecursions)` on the dequantized aggregate:
+    /// level by level, every bin is split at the median of its
+    /// highest-variance parameter.
+    fn fit(rows: &[Vec<f64>], recursions: usize) -> Result<Self, CytoScanError> {
+        let rows = dequantize(rows);
+        let mut tags = vec![0_usize; rows.len()];
+        let mut levels = Vec::with_capacity(recursions);
+        for level in 0..recursions {
+            let bin_count = 1_usize << level;
+            let members = bin_members(&tags, bin_count);
+            let mut splits = Vec::with_capacity(bin_count);
+            for (bin, events) in members.iter().enumerate() {
+                let channel_index = find_split_axis(&rows, events).ok_or(
+                    CytoScanError::FingerprintBinTooSmall {
+                        level: level + 1,
+                        bin: bin + 1,
+                        events: events.len(),
+                        recursions,
+                    },
+                )?;
+                let threshold = median_of(events.iter().map(|&index| rows[index][channel_index]));
+                splits.push(FingerprintSplit {
+                    channel_index,
+                    threshold,
+                });
+            }
+            split_tags(&rows, &mut tags, &splits);
+            levels.push(splits);
+        }
+        Ok(Self {
+            levels,
+            bins: 1_usize << recursions,
+        })
     }
 
-    fn fit_node(
-        rows: &[Vec<f64>],
-        indexes: &[usize],
-        node_index: usize,
-        remaining_depth: usize,
-        splits: &mut [FingerprintSplit],
-    ) {
-        if remaining_depth == 0 || node_index >= splits.len() || rows.is_empty() {
-            return;
+    /// `flowFP`'s `tag_events`: 0-based bin per (already dequantized) event.
+    fn tag(&self, rows: &[Vec<f64>]) -> Vec<usize> {
+        let mut tags = vec![0_usize; rows.len()];
+        for splits in &self.levels {
+            split_tags(rows, &mut tags, splits);
         }
-        let channel_index = highest_variance_channel(rows, indexes);
-        let threshold = median_for_channel(rows, indexes, channel_index);
-        splits[node_index] = FingerprintSplit {
-            channel_index,
-            threshold,
-        };
-        let mut left = Vec::new();
-        let mut right = Vec::new();
-        for index in indexes {
-            if rows[*index][channel_index] <= threshold {
-                left.push(*index);
-            } else {
-                right.push(*index);
-            }
-        }
-        if left.is_empty() || right.is_empty() {
-            let midpoint = indexes.len() / 2;
-            left = indexes[..midpoint].to_vec();
-            right = indexes[midpoint..].to_vec();
-        }
-        Self::fit_node(rows, &left, node_index * 2 + 1, remaining_depth - 1, splits);
-        Self::fit_node(
-            rows,
-            &right,
-            node_index * 2 + 2,
-            remaining_depth - 1,
-            splits,
-        );
-    }
-
-    fn assign(&self, row: &[f64]) -> usize {
-        let mut node_index = 0;
-        let mut bin_index = 0;
-        for _ in 0..DEFAULT_FINGERPRINT_RECURSIONS {
-            let split = self.splits[node_index];
-            let right = row
-                .get(split.channel_index)
-                .is_some_and(|value| *value > split.threshold);
-            bin_index = bin_index * 2 + usize::from(right);
-            node_index = node_index * 2 + 1 + usize::from(right);
-            if node_index >= self.splits.len() {
-                break;
-            }
-        }
-        bin_index.min(self.bins.saturating_sub(1))
+        tags
     }
 }
 
-fn highest_variance_channel(rows: &[Vec<f64>], indexes: &[usize]) -> usize {
+fn bin_members(tags: &[usize], bin_count: usize) -> Vec<Vec<usize>> {
+    let mut members = vec![Vec::new(); bin_count];
+    for (event, tag) in tags.iter().enumerate() {
+        members[*tag].push(event);
+    }
+    members
+}
+
+/// `split_bin`: bin `b` becomes `2b` (value <= threshold) or `2b + 1`.
+fn split_tags(rows: &[Vec<f64>], tags: &mut [usize], splits: &[FingerprintSplit]) {
+    for (row, tag) in rows.iter().zip(tags.iter_mut()) {
+        let split = splits[*tag];
+        *tag = 2 * *tag + usize::from(row[split.channel_index] > split.threshold);
+    }
+}
+
+/// `find_split_axis`: the parameter with the largest one-pass sample variance
+/// `(sum_sq - sum^2 / n) / (n - 1)`; the first maximum wins and the running
+/// maximum starts at `DBL_MIN`, so empty or single-event bins have no axis.
+#[allow(clippy::needless_range_loop)]
+fn find_split_axis(rows: &[Vec<f64>], events: &[usize]) -> Option<usize> {
     let channel_count = rows.first().map_or(0, Vec::len);
-    (0..channel_count)
-        .max_by(|left, right| {
-            variance_for_channel(rows, indexes, *left)
-                .total_cmp(&variance_for_channel(rows, indexes, *right))
-        })
-        .unwrap_or(0)
-}
-
-fn variance_for_channel(rows: &[Vec<f64>], indexes: &[usize], channel_index: usize) -> f64 {
-    if indexes.is_empty() {
-        return 0.0;
+    let n = events.len() as f64;
+    let mut best = None;
+    let mut max_variance = f64::MIN_POSITIVE;
+    for channel_index in 0..channel_count {
+        let (sum, sum_squares) = events
+            .iter()
+            .fold((0.0, 0.0), |(sum, sum_squares), &event| {
+                let value = rows[event][channel_index];
+                (sum + value, sum_squares + value * value)
+            });
+        let variance = (sum_squares - sum * sum / n) / (n - 1.0);
+        if max_variance < variance {
+            max_variance = variance;
+            best = Some(channel_index);
+        }
     }
-    let mean = indexes
-        .iter()
-        .map(|index| rows[*index][channel_index])
-        .sum::<f64>()
-        / indexes.len() as f64;
-    indexes
-        .iter()
-        .map(|index| {
-            let delta = rows[*index][channel_index] - mean;
-            delta * delta
-        })
-        .sum::<f64>()
-        / indexes.len() as f64
+    best
 }
 
-fn median_for_channel(rows: &[Vec<f64>], indexes: &[usize], channel_index: usize) -> f64 {
-    let mut values = indexes
-        .iter()
-        .map(|index| rows[*index][channel_index])
-        .collect::<Vec<_>>();
-    quantile_sorted(&mut values, 0.5)
+/// `median` in flowFP's `split_utils.c`.
+fn median_of(values: impl Iterator<Item = f64>) -> f64 {
+    let mut values = values.collect::<Vec<_>>();
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len() % 2 == 1 {
+        values[middle]
+    } else {
+        f64::midpoint(values[middle - 1], values[middle])
+    }
 }
 
 fn ensure_feature_shape(
@@ -1585,27 +1551,41 @@ fn build_summary_rows(
         .collect()
 }
 
+/// `isotree::isolation.forest(sample_size = 1, ntrees = 1000, ndim = 1)` scored
+/// with `predict()`: every tree sees all files, depth is limited to
+/// `ceiling(log2(n))`, each split picks a non-constant column uniformly and a
+/// threshold uniformly between that column's node minimum and maximum, and the
+/// standardized score is `2^(-mean depth / c(n))` with `c(n) = 2 (H_n - 1)`.
 fn score_outliers(features: &[Vec<f64>]) -> Vec<f64> {
     if features.len() < 2 || features.first().is_none_or(Vec::is_empty) {
         return vec![0.0; features.len()];
     }
-    let max_depth = (features.len() as f64).log2().ceil() as usize + 1;
-    let normalization = average_path_length(features.len()).max(EQUALITY_EPSILON);
-    let mut path_sums = vec![0.0; features.len()];
-    for tree_index in 0..DEFAULT_ISOLATION_TREES {
-        let mut rng = DeterministicRng::new(DEFAULT_RANDOM_SEED ^ tree_index as u64);
-        let indexes = (0..features.len()).collect::<Vec<_>>();
-        let tree = build_isolation_tree(features, &indexes, 0, max_depth, &mut rng);
-        for (row_index, row) in features.iter().enumerate() {
-            path_sums[row_index] += tree.path_length(row, 0.0);
-        }
-    }
-    path_sums
-        .into_iter()
-        .map(|sum| {
-            let average = sum / DEFAULT_ISOLATION_TREES as f64;
-            2_f64.powf(-average / normalization)
+    let max_depth = (features.len() as f64).log2().ceil() as usize;
+    let normalization = expected_average_depth(features.len());
+    let indexes = (0..features.len()).collect::<Vec<_>>();
+    let depth_sums = (0..DEFAULT_ISOLATION_TREES)
+        .into_par_iter()
+        .map(|tree_index| {
+            let mut rng = StdRng::seed_from_u64(DEFAULT_RANDOM_SEED + tree_index as u64);
+            let tree = build_isolation_tree(features, &indexes, 0, max_depth, &mut rng);
+            features
+                .iter()
+                .map(|row| tree.path_length(row, 0.0))
+                .collect::<Vec<_>>()
         })
+        // collected in tree order and summed sequentially so the result does
+        // not depend on rayon's scheduling
+        .collect::<Vec<_>>()
+        .into_iter()
+        .fold(vec![0.0; features.len()], |mut totals, depths| {
+            for (total, value) in totals.iter_mut().zip(depths) {
+                *total += value;
+            }
+            totals
+        });
+    depth_sums
+        .into_iter()
+        .map(|sum| 2_f64.powf(-(sum / DEFAULT_ISOLATION_TREES as f64) / normalization))
         .collect()
 }
 
@@ -1614,35 +1594,25 @@ fn build_isolation_tree(
     indexes: &[usize],
     depth: usize,
     max_depth: usize,
-    rng: &mut DeterministicRng,
+    rng: &mut StdRng,
 ) -> IsolationNode {
     if indexes.len() <= 1 || depth >= max_depth {
         return IsolationNode::Leaf {
             size: indexes.len(),
         };
     }
-    let feature_count = features.first().map_or(0, Vec::len);
-    if feature_count == 0 {
-        return IsolationNode::Leaf {
-            size: indexes.len(),
-        };
-    }
-    for _ in 0..feature_count {
-        let feature_index = rng.next_index(feature_count);
+    let mut candidates = (0..features.first().map_or(0, Vec::len)).collect::<Vec<_>>();
+    while !candidates.is_empty() {
+        let feature_index = candidates.swap_remove(rng.gen_range(0..candidates.len()));
         let (minimum, maximum) = feature_min_max(features, indexes, feature_index);
-        if maximum - minimum <= EQUALITY_EPSILON {
+        if maximum <= minimum {
+            // constant within this node: isotree drops the column and retries
             continue;
         }
-        let threshold = minimum + rng.next_f64() * (maximum - minimum);
-        let mut left = Vec::new();
-        let mut right = Vec::new();
-        for index in indexes {
-            if features[*index][feature_index] <= threshold {
-                left.push(*index);
-            } else {
-                right.push(*index);
-            }
-        }
+        let threshold = Uniform::new(minimum, maximum).sample(rng);
+        let (left, right): (Vec<usize>, Vec<usize>) = indexes
+            .iter()
+            .partition(|index| features[**index][feature_index] <= threshold);
         if left.is_empty() || right.is_empty() {
             continue;
         }
@@ -1673,7 +1643,7 @@ fn build_isolation_tree(
 impl IsolationNode {
     fn path_length(&self, row: &[f64], depth: f64) -> f64 {
         match self {
-            Self::Leaf { size } => depth + average_path_length(*size),
+            Self::Leaf { size } => depth + expected_average_depth(*size),
             Self::Split {
                 feature_index,
                 threshold,
@@ -1700,269 +1670,137 @@ fn feature_min_max(features: &[Vec<f64>], indexes: &[usize], feature_index: usiz
     )
 }
 
-fn average_path_length(size: usize) -> f64 {
-    match size {
-        0 | 1 => 0.0,
-        2 => 1.0,
-        value => {
-            2.0 * ((value - 1) as f64).ln() + 2.0 * EULER_MASCHERONI
-                - 2.0 * (value - 1) as f64 / value as f64
+/// isotree's `expected_avg_depth`: `2 (H_n - 1)` with the exact harmonic number
+/// (isotree tabulates it up to 512 and uses an asymptotic series above).
+fn expected_average_depth(size: usize) -> f64 {
+    if size <= 1 {
+        return 0.0;
+    }
+    let harmonic = (1..=size).rev().map(|k| 1.0 / k as f64).sum::<f64>();
+    2.0 * (harmonic - 1.0)
+}
+
+#[cfg(test)]
+#[allow(
+    dead_code,
+    clippy::approx_constant,
+    clippy::unreadable_literal,
+    clippy::excessive_precision
+)]
+mod tests {
+    use super::*;
+
+    include!("../../../data/fixtures/cytoscan/reference.rs");
+
+    fn rows<const N: usize>(matrix: &[[f64; N]]) -> Vec<Vec<f64>> {
+        matrix.iter().map(|row| row.to_vec()).collect()
+    }
+
+    fn column(values: &[f64]) -> Vec<Vec<f64>> {
+        values.iter().map(|value| vec![*value]).collect()
+    }
+
+    #[test]
+    fn emd_matches_transport_wasserstein1d() {
+        let distance = wasserstein_1d(&EMD_A, &EMD_B);
+        assert!(
+            (distance - EMD_EXPECTED).abs() < 1e-12,
+            "{distance} vs {EMD_EXPECTED}"
+        );
+    }
+
+    #[test]
+    fn binning_matches_cytoscan_cut_semantics() {
+        // includes values equal to the lowest break and outside the range,
+        // which `cut()` maps to NA and drops from the denominator
+        let boundaries = aggregate_boundaries(&column(&BIN_AGGREGATE));
+        let features = binning_features(&column(&BIN_VALUES), &boundaries);
+        for (actual, expected) in features.iter().zip(BIN_EXPECTED) {
+            assert!((actual - expected).abs() < 1e-12, "{actual} vs {expected}");
         }
     }
-}
 
-fn fit_novelty_model(features: &[Vec<f64>]) -> Result<NoveltyModel, CytoScanError> {
-    if features.is_empty() || features.first().is_none_or(Vec::is_empty) {
-        return Err(CytoScanError::EmptyFeatureMatrix);
-    }
-    let scale = FeatureScale::fit(features);
-    let scaled = scale.transform_matrix(features);
-    let max_components = MAX_GMM_COMPONENTS.min(scaled.len()).max(1);
-    let mut best = None;
-    for components in 1..=max_components {
-        let gmm = fit_diagonal_gmm(&scaled, components);
-        if best
-            .as_ref()
-            .is_none_or(|current: &DiagonalGmm| gmm.bic < current.bic)
-        {
-            best = Some(gmm);
+    #[test]
+    fn fingerprint_matches_flowfp() {
+        let model = FingerprintModel::fit(&rows(&FINGERPRINT_AGGREGATE), 4).expect("model");
+        let features = fingerprint_features(&rows(&FINGERPRINT_VALUES), &model);
+        assert_eq!(features.len(), FINGERPRINT_EXPECTED.len());
+        for (actual, expected) in features.iter().zip(FINGERPRINT_EXPECTED) {
+            assert!((actual - expected).abs() < 1e-12, "{actual} vs {expected}");
         }
     }
-    let gmm = best.ok_or(CytoScanError::EmptyFeatureMatrix)?;
-    let reference_log_likelihoods = scaled
-        .iter()
-        .map(|row| gmm.log_likelihood_row(row))
-        .collect::<Vec<_>>();
-    let mut threshold_values = reference_log_likelihoods.clone();
-    let threshold = quantile_sorted(&mut threshold_values, DEFAULT_NOVELTY_QUANTILE);
 
-    Ok(NoveltyModel {
-        gmm,
-        scale,
-        threshold,
-    })
-}
+    #[test]
+    fn fingerprint_rejects_bins_without_events_like_flowfp() {
+        let tiny = vec![vec![1.0, 2.0], vec![2.0, 1.0], vec![3.0, 0.0]];
+        assert!(matches!(
+            FingerprintModel::fit(&tiny, 4),
+            Err(CytoScanError::FingerprintBinTooSmall { .. })
+        ));
+    }
 
-fn log_likelihoods(model: &NoveltyModel, features: &[Vec<f64>]) -> Vec<f64> {
-    let scaled = model.scale.transform_matrix(features);
-    scaled
-        .iter()
-        .map(|row| model.gmm.log_likelihood_row(row))
-        .collect()
-}
+    #[test]
+    fn expected_depth_matches_isotree_table() {
+        // isotree exp_depth_table[n - 1] = 2 (H_n - 1)
+        for (size, expected) in [
+            (1, 0.0),
+            (2, 1.0),
+            (3, 1.666_666_666_666_666_5),
+            (10, 3.857_936_507_936_507_5),
+            (20, 5.195_479_314_287_363),
+        ] {
+            assert!(
+                (expected_average_depth(size) - expected).abs() < 1e-12,
+                "n = {size}"
+            );
+        }
+    }
 
-impl FeatureScale {
-    fn fit(features: &[Vec<f64>]) -> Self {
-        let columns = transpose(features);
-        let means = columns
-            .iter()
-            .map(|column| mean(column))
+    #[test]
+    fn outlier_scores_match_isotree_within_monte_carlo_noise() {
+        // 1000-tree isotree scores vary by ~0.014 between independent seeds
+        let scores = score_outliers(&rows(&ISOTREE_POINTS));
+        for (actual, expected) in scores.iter().zip(ISOTREE_SCORES) {
+            assert!((actual - expected).abs() < 0.03, "{actual} vs {expected}");
+            assert_eq!(
+                *actual >= DEFAULT_OUTLIER_THRESHOLD,
+                expected >= DEFAULT_OUTLIER_THRESHOLD
+            );
+        }
+        assert_eq!(scores, score_outliers(&rows(&ISOTREE_POINTS)));
+    }
+
+    #[test]
+    fn subsample_does_not_depend_on_path() {
+        let matrix = (0..5_000)
+            .map(|index| vec![f64::from(index)])
             .collect::<Vec<_>>();
-        let standard_deviations = columns
-            .iter()
-            .zip(&means)
-            .map(|(column, mean)| {
-                let sd = sample_standard_deviation(column, *mean);
-                if sd <= EQUALITY_EPSILON { 1.0 } else { sd }
-            })
-            .collect::<Vec<_>>();
-        Self {
-            means,
-            standard_deviations,
-        }
+        let file = |path: &str| LoadedFile {
+            path: PathBuf::from(path),
+            filename: "a.fcs".to_owned(),
+            channel_names: vec!["X".to_owned()],
+            matrix: matrix.clone(),
+            warnings: Vec::new(),
+        };
+        let relative = sampled_matrix(&file("data/a.fcs"), DEFAULT_EVENTS_PER_FILE);
+        let absolute = sampled_matrix(&file("/tmp/x/data/a.fcs"), DEFAULT_EVENTS_PER_FILE);
+        assert_eq!(relative.len(), DEFAULT_EVENTS_PER_FILE);
+        assert_eq!(relative, absolute);
+        assert!(relative.windows(2).all(|pair| pair[0][0] < pair[1][0]));
     }
 
-    fn transform_matrix(&self, features: &[Vec<f64>]) -> Vec<Vec<f64>> {
-        features
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .enumerate()
-                    .map(|(index, value)| {
-                        (value - self.means[index]) / self.standard_deviations[index]
-                    })
-                    .collect()
-            })
-            .collect()
+    #[test]
+    fn aggregate_takes_ceiling_share_from_every_file_without_truncation() {
+        let file = |events: usize| LoadedFile {
+            path: PathBuf::from("f.fcs"),
+            filename: "f.fcs".to_owned(),
+            channel_names: vec!["X".to_owned()],
+            matrix: (0..events).map(|index| vec![index as f64]).collect(),
+            warnings: Vec::new(),
+        };
+        // ceiling(10000 / 3) = 3334 per file -> 10002 events, as CytoScan
+        let files = vec![file(5_000), file(5_000), file(5_000)];
+        assert_eq!(aggregate_matrix(&files).expect("aggregate").len(), 10_002);
+        assert_eq!(aggregate_event_count(&files), 10_002);
     }
-}
-
-fn fit_diagonal_gmm(features: &[Vec<f64>], components: usize) -> DiagonalGmm {
-    let dimensions = features.first().map_or(0, Vec::len);
-    let mut weights = vec![1.0 / components as f64; components];
-    let mut means = initial_gmm_means(features, components);
-    let global_variance = global_variances(features);
-    let mut variances = vec![global_variance; components];
-    let mut previous_log_likelihood = f64::NEG_INFINITY;
-
-    for _ in 0..GMM_ITERATIONS {
-        let responsibilities = gmm_responsibilities(features, &weights, &means, &variances);
-        let log_likelihood = responsibilities
-            .iter()
-            .map(|(_, row_log_likelihood)| *row_log_likelihood)
-            .sum::<f64>();
-        if (log_likelihood - previous_log_likelihood).abs() < GMM_TOLERANCE {
-            break;
-        }
-        previous_log_likelihood = log_likelihood;
-
-        for component in 0..components {
-            let responsibility_sum = responsibilities
-                .iter()
-                .map(|(row, _)| row[component])
-                .sum::<f64>()
-                .max(EQUALITY_EPSILON);
-            weights[component] = responsibility_sum / features.len() as f64;
-            for dimension in 0..dimensions {
-                means[component][dimension] = responsibilities
-                    .iter()
-                    .zip(features)
-                    .map(|((row, _), feature_row)| row[component] * feature_row[dimension])
-                    .sum::<f64>()
-                    / responsibility_sum;
-            }
-            for dimension in 0..dimensions {
-                variances[component][dimension] = responsibilities
-                    .iter()
-                    .zip(features)
-                    .map(|((row, _), feature_row)| {
-                        let delta = feature_row[dimension] - means[component][dimension];
-                        row[component] * delta * delta
-                    })
-                    .sum::<f64>()
-                    / responsibility_sum;
-                variances[component][dimension] =
-                    variances[component][dimension].max(VARIANCE_FLOOR);
-            }
-        }
-    }
-
-    let log_likelihood = features
-        .iter()
-        .map(|row| log_mixture_density(row, &weights, &means, &variances))
-        .sum::<f64>();
-    let parameter_count = components * dimensions * 2 + components.saturating_sub(1);
-    let bic = -2.0 * log_likelihood + parameter_count as f64 * (features.len() as f64).ln();
-
-    DiagonalGmm {
-        weights,
-        means,
-        variances,
-        bic,
-    }
-}
-
-fn initial_gmm_means(features: &[Vec<f64>], components: usize) -> Vec<Vec<f64>> {
-    let mut ordered = features.to_vec();
-    ordered.sort_by(|left, right| row_norm(left).total_cmp(&row_norm(right)));
-    (0..components)
-        .map(|component| {
-            let index = if components == 1 {
-                ordered.len() / 2
-            } else {
-                component * (ordered.len() - 1) / (components - 1)
-            };
-            ordered[index].clone()
-        })
-        .collect()
-}
-
-fn row_norm(row: &[f64]) -> f64 {
-    row.iter().map(|value| value * value).sum::<f64>().sqrt()
-}
-
-fn global_variances(features: &[Vec<f64>]) -> Vec<f64> {
-    transpose(features)
-        .iter()
-        .map(|column| {
-            let column_mean = mean(column);
-            let variance = column
-                .iter()
-                .map(|value| {
-                    let delta = value - column_mean;
-                    delta * delta
-                })
-                .sum::<f64>()
-                / column.len().max(1) as f64;
-            variance.max(VARIANCE_FLOOR)
-        })
-        .collect()
-}
-
-fn gmm_responsibilities(
-    features: &[Vec<f64>],
-    weights: &[f64],
-    means: &[Vec<f64>],
-    variances: &[Vec<f64>],
-) -> Vec<(Vec<f64>, f64)> {
-    features
-        .iter()
-        .map(|row| {
-            let logs = weights
-                .iter()
-                .enumerate()
-                .map(|(component, weight)| {
-                    weight.max(EQUALITY_EPSILON).ln()
-                        + gaussian_log_density(row, &means[component], &variances[component])
-                })
-                .collect::<Vec<_>>();
-            let log_sum = log_sum_exp(&logs);
-            let responsibilities = logs
-                .into_iter()
-                .map(|value| (value - log_sum).exp())
-                .collect::<Vec<_>>();
-            (responsibilities, log_sum)
-        })
-        .collect()
-}
-
-impl DiagonalGmm {
-    fn log_likelihood_row(&self, row: &[f64]) -> f64 {
-        log_mixture_density(row, &self.weights, &self.means, &self.variances)
-    }
-}
-
-fn log_mixture_density(
-    row: &[f64],
-    weights: &[f64],
-    means: &[Vec<f64>],
-    variances: &[Vec<f64>],
-) -> f64 {
-    let logs = weights
-        .iter()
-        .enumerate()
-        .map(|(component, weight)| {
-            weight.max(EQUALITY_EPSILON).ln()
-                + gaussian_log_density(row, &means[component], &variances[component])
-        })
-        .collect::<Vec<_>>();
-    log_sum_exp(&logs)
-}
-
-fn gaussian_log_density(row: &[f64], mean: &[f64], variance: &[f64]) -> f64 {
-    let dimensions = row.len() as f64;
-    let log_determinant = variance.iter().map(|value| value.ln()).sum::<f64>();
-    let mahalanobis = row
-        .iter()
-        .zip(mean)
-        .zip(variance)
-        .map(|((value, mean), variance)| {
-            let delta = value - mean;
-            delta * delta / variance
-        })
-        .sum::<f64>();
-    -0.5 * (dimensions * std::f64::consts::TAU.ln() + log_determinant + mahalanobis)
-}
-
-fn log_sum_exp(values: &[f64]) -> f64 {
-    let maximum = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    if !maximum.is_finite() {
-        return maximum;
-    }
-    maximum
-        + values
-            .iter()
-            .map(|value| (value - maximum).exp())
-            .sum::<f64>()
-            .ln()
 }

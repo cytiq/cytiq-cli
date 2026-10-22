@@ -14,4 +14,4 @@ scikit-learn==1.9.1
 scipy==1.18.1
 AutoSpectral git 292dfea
 autospill git 1e60e86
-rustc 1.95.0 (59807616e 2026-04-14)
+rustc 1.99.1 (58cf8f9c3 2026-10-13)

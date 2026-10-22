@@ -519,36 +519,36 @@
   "timing": {
     "autospill": {
       "rust": {
-        "seconds": 1.82,
-        "max_rss_mb": 59.84
+        "seconds": 2.19,
+        "max_rss_mb": 57.91
       },
-      "upstream_seconds": 8.317
+      "upstream_seconds": 8.832
     },
     "peacoqc_all": {
       "rust": {
-        "seconds": 2.88,
-        "max_rss_mb": 93.52
+        "seconds": 0.14,
+        "max_rss_mb": 95.28
       },
-      "upstream_seconds": 1.539
+      "upstream_seconds": 1.548
     },
     "flowsom": {
       "rust": {
-        "seconds": 0.58,
-        "max_rss_mb": 38.7
+        "seconds": 0.52,
+        "max_rss_mb": 39.27
       },
-      "upstream_seconds": 4.297
+      "upstream_seconds": 3.997
     },
     "flowsom_hard": {
       "rust": {
-        "seconds": 0.57,
-        "max_rss_mb": 39.44
+        "seconds": 0.53,
+        "max_rss_mb": 39.33
       },
-      "upstream_seconds": 4.14
+      "upstream_seconds": 4.25
     },
     "autospectral": {
       "rust": {
-        "seconds": 0.47,
-        "max_rss_mb": 59.3
+        "seconds": 0.03,
+        "max_rss_mb": 56.52
       }
     }
   }

@@ -13,10 +13,11 @@ Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
 | `autospill` | autospill 0.2.0 | ⚠️ matrix close (max Δ 3.8e-4), gates 18% wider | ✅ matrix Δ ≤ 4.8e-13, identical gates |
 | `autospread` | — (no upstream) | — | — (regression test only) |
 | `autospectral` | AutoSpectral 1.8.7 (OLS) | ❌ abundances inflated 1.39–1.60× (L2 normalisation) | ✅ scale 0.992–1.0003, RMSE equal to upstream |
-| `peacoqc` | PeacoQC 1.20.0 | ❌ 82–85% mask agreement, IT precision 0.04 | ✅ 100% mask agreement in every mode |
-| `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), 7× faster than R |
+| `peacoqc` | PeacoQC 1.20.0 | ❌ 82–85% mask agreement, IT precision 0.04; 1.5× slower than R | ✅ 100% mask agreement in every mode; 11× faster than R |
+| `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 
-**36 deviations** from the upstream algorithms were found and fixed. All key
+**36 deviations** from the upstream algorithms were found and fixed, plus
+two performance defects (section 2.6). All key
 ports (`stats::density`, `smooth.spline`, logicle, hyperlog, `flowjo_biexp`)
 are pinned by unit tests against reference values produced by R.
 
@@ -50,7 +51,7 @@ are pinned by unit tests against reference values produced by R.
 
 Environment (`parity/versions.txt`): R 4.5.3, flowCore 2.22.1, flowWorkspace
 4.22.1, FlowSOM 2.18.0, PeacoQC 1.20.0, autospill 0.2.0 (`1e60e86`),
-AutoSpectral 1.8.7 (`292dfea`), MASS 7.3.66, FlowKit 1.3.0, rustc 1.95.0.
+AutoSpectral 1.8.7 (`292dfea`), MASS 7.3.66, FlowKit 1.3.0, rustc 1.99.1.
 Apple Silicon, macOS.
 
 ## 2. Results by tool
@@ -166,6 +167,7 @@ regenerated.
 | IT | precision vs truth | **0.036** | 1.00 | 1.00 |
 | IT | agreement / Jaccard | 82.3% / 0.00 | **100% / 1.00** | — |
 | — | number of bins | 399 | 400 | 400 |
+| — | time, 200k events × 6 channels | 2.30 s | **0.14 s** | 1.55 s |
 
 Recall of bad events is the same for Rust and R: 1.0 in `all` mode.
 Precision in `all` mode is 0.48 for both: upstream with `MAD = 6` is
@@ -202,7 +204,7 @@ events. Under R semantics a file with fewer than 5 bins is removed entirely.
 | flowsom_hard | ARI vs truth | **0.885** | 0.953 | 0.948–0.966 |
 | flowsom_hard | NMI vs truth | 0.903 | 0.961 | 0.949–0.963 |
 | flowsom_hard | ARI Rust vs R | 0.87–0.91 | **0.93–0.98** | R seed-to-seed: 0.93–0.95 |
-| — | time, 100k × 10D | **36.7 s** | 0.58 s | 4.1–4.3 s |
+| — | time, 100k × 10D | **36.7 s** | 0.52 s | 4.0–4.4 s |
 
 After the fixes Rust differs from R no more than R differs from itself when
 the seed changes.
@@ -229,6 +231,37 @@ the seed changes.
 This does not affect the metrics: Rust-vs-R ARI is in the same range for
 scale T and F.
 
+### 2.6 Performance
+
+Wall time on the parity datasets (Apple Silicon, all cores):
+
+| Command | Before (`main`) | After | Upstream R |
+|---|---|---|---|
+| `peacoqc` (200k events, mode `all`) | 2.30 s | **0.14 s** | 1.55 s |
+| `flowsom` (100k × 10D) | 36.5 s | **0.52 s** | 4.0 s |
+| `autospectral` (6 controls + 30k sample) | 0.53 s | **0.03 s** | — |
+| `autospill` (6 controls × 20k) | 2.31 s | 2.19 s | 8.83 s |
+
+**Fixed:**
+1. **Unbuffered FCS writer** (`cytiq-fcs/src/writer.rs`). The data segment
+   was written straight to `File` one float at a time: one `write` syscall
+   per event and channel (2M syscalls for the PeacoQC output). Profiling
+   showed ~70% of PeacoQC time in `write`, with sys time 2.4 s against user
+   time 0.85 s, independent of `--threads`. Output now goes through a
+   `BufWriter` with an explicit `flush`, so I/O errors still surface. This
+   speeds up every command that writes FCS (`peacoqc`, `transform`,
+   `autospectral`).
+2. **`stats::density` used an O(n²) direct convolution**
+   (`cytiq-peacoqc/src/density.rs`). It is now an FFT convolution
+   (in-crate radix-2, 1024 points, no new dependency), the same
+   `fft(y) * Conj(fft(kords))` scheme R uses. The R reference unit tests
+   still pass at 1e-9, and the PeacoQC masks are still identical to R.
+3. Per-event rayon dispatch inside FlowSOM SOM training (section 2.5).
+
+The new Rust 1.99 toolchain (CI installs `@stable`) adds clippy lints that
+pre-existing code in `cytiq-fcs` failed (`with_capacity(0)`, `chunks_exact(2)`
+→ `as_chunks`). These were fixed so `clippy -D warnings` stays green.
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
@@ -240,7 +273,6 @@ scale T and F.
 | AutoSpectral | spectrum as a mean difference instead of an `rlm` slope; negatives are the whole AF control instead of scatter-matched kNN | spectrum shapes match to 5e-4 | `rlm` + kNN |
 | AutoSpectral | no WLS/Poisson/per-cell AF (R's default `AutoSpectral` method) | comparable only to `method = "OLS"` | separate task |
 | AutoSpread | no upstream; units are σ/√F while AutoSpectral expects σ²/F | format incompatibility | document the units |
-| PeacoQC | Rust slower than R on 200k events (2.9 s vs 1.5 s): `density` uses an O(n²) direct convolution instead of FFT | performance | FFT convolution |
 | transform | biexponential parameters cannot be set from the CLI (defaults hard-coded) | functionality | add `--biex-*` flags |
 | autospill | on a perfectly regular lattice the KDE produces exact ties, broken in a different order than R | degenerate data only | — |
 
@@ -253,6 +285,8 @@ scale T and F.
 - `crates/cytiq-peacoqc/src/{density,smooth_spline}.rs` (new), `runner.rs`,
   `lib.rs`
 - `crates/cytiq-flowsom/src/{runner,lib}.rs`
+- `crates/cytiq-fcs/src/writer.rs` (buffered output), `data.rs`, `text.rs`
+  (Rust 1.99 clippy lints)
 - Tests and fixtures:
   - `data/fixtures/peacoqc/{density,smooth_spline}_reference.rs`;
   - `data/fixtures/transform/flowcore_reference.rs`;

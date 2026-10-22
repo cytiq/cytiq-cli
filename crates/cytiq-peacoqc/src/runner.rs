@@ -1021,7 +1021,10 @@ fn avg_path_length(n_datapoints: usize) -> f64 {
         0.0
     } else {
         let n = n_datapoints as f64;
-        2.0 * ((n - 1.0).ln() + 0.577_215_664_9) - (2.0 * (n - 1.0)) / n
+        // PeacoQC's avgPL hard-codes Euler's constant to 10 digits
+        #[allow(clippy::approx_constant)]
+        let euler_gamma = 0.577_215_664_9;
+        2.0 * ((n - 1.0).ln() + euler_gamma) - (2.0 * (n - 1.0)) / n
     }
 }
 
@@ -1530,7 +1533,7 @@ mod tests {
     fn detects_histogram_peaks() {
         let values = [1.0, 1.1, 1.2, 1.1, 10.0, 10.1, 10.2, 10.1, 10.0];
         let peaks = find_peaks(&values, false, DEFAULT_PEAK_REMOVAL);
-        assert!(!peaks.is_empty());
+        assert_eq!(peaks.len(), 2);
     }
 
     #[test]

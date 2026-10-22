@@ -2,7 +2,7 @@
 //! Gaussian kernel, `bw = "nrd0"`, `adjust = 1`, `cut = 3`, `n = 512`.
 //!
 //! The implementation mirrors R step by step: linear binning onto a `2n` grid
-//! (`BinDist`), circular convolution with the kernel sampled on R's
+//! (`BinDist`), FFT circular convolution with the kernel sampled on R's
 //! `kords` grid, and linear interpolation (`approx`) back onto `n` points
 //! between `min(x) - cut * bw` and `max(x) + cut * bw`.
 
@@ -50,18 +50,25 @@ pub fn density(values: &[f64]) -> Density {
         })
         .collect::<Vec<_>>();
 
-    // Re(fft(fft(y) * Conj(fft(kords)), inverse = TRUE)) / length(y) is the
-    // circular cross-correlation sum_j y[j] * kords[(j - k) mod 2n].
-    let estimates = (0..n)
-        .map(|shift| {
-            let value = binned
-                .iter()
-                .enumerate()
-                .filter(|(_, weight)| **weight != 0.0)
-                .map(|(index, weight)| weight * kernel[(index + 2 * n - shift) % (2 * n)])
-                .sum::<f64>();
-            value.max(0.0)
-        })
+    // Re(fft(fft(y) * Conj(fft(kords)), inverse = TRUE)) / length(y): the
+    // circular cross-correlation sum_j y[j] * kords[(j - k) mod 2n], computed
+    // with an FFT exactly as R does.
+    let length = 2 * n;
+    let (mut y_re, mut y_im) = (binned, vec![0.0; length]);
+    let (mut k_re, mut k_im) = (kernel, vec![0.0; length]);
+    fft(&mut y_re, &mut y_im, false);
+    fft(&mut k_re, &mut k_im, false);
+    for index in 0..length {
+        // y * conj(k)
+        let (y_real, y_imag) = (y_re[index], y_im[index]);
+        let (k_real, k_imag) = (k_re[index], k_im[index]);
+        y_re[index] = y_real * k_real + y_imag * k_imag;
+        y_im[index] = y_imag * k_real - y_real * k_imag;
+    }
+    fft(&mut y_re, &mut y_im, true);
+    let estimates = y_re[..n]
+        .iter()
+        .map(|value| (value / length as f64).max(0.0))
         .collect::<Vec<_>>();
 
     let grid_step = (up - lo) / (n - 1) as f64;
@@ -80,6 +87,45 @@ pub fn density(values: &[f64]) -> Density {
         .collect();
 
     Density { x, y }
+}
+
+/// In-place iterative radix-2 FFT; `inverse` uses the conjugate twiddles
+/// without the `1/N` factor, like R's `fft(z, inverse = TRUE)`.
+fn fft(re: &mut [f64], im: &mut [f64], inverse: bool) {
+    let length = re.len();
+    debug_assert!(length.is_power_of_two());
+    let mut j = 0;
+    for i in 1..length {
+        let mut bit = length >> 1;
+        while j & bit != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
+    }
+    let sign = if inverse { 1.0 } else { -1.0 };
+    let mut block = 2;
+    while block <= length {
+        let angle = sign * 2.0 * std::f64::consts::PI / block as f64;
+        let half = block / 2;
+        for start in (0..length).step_by(block) {
+            for offset in 0..half {
+                let (sine, cosine) = (angle * offset as f64).sin_cos();
+                let (even, odd) = (start + offset, start + offset + half);
+                let odd_re = re[odd] * cosine - im[odd] * sine;
+                let odd_im = re[odd] * sine + im[odd] * cosine;
+                re[odd] = re[even] - odd_re;
+                im[odd] = im[even] - odd_im;
+                re[even] += odd_re;
+                im[even] += odd_im;
+            }
+        }
+        block *= 2;
+    }
 }
 
 /// R's `bw.nrd0`: `0.9 * min(sd, IQR / 1.34) * n^-0.2` with its fallbacks.

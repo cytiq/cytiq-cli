@@ -14,9 +14,10 @@ Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
 | `autospread` | — (no upstream) | — | — (regression test only) |
 | `autospectral` | AutoSpectral 1.8.7 (OLS) | ❌ abundances inflated 1.39–1.60× (L2 normalisation) | ✅ scale 0.992–1.0003, RMSE equal to upstream |
 | `peacoqc` | PeacoQC 1.20.0 | ❌ 82–85% mask agreement, IT precision 0.04; 1.5× slower than R | ✅ 100% mask agreement in every mode; 11× faster than R |
+| `cytoscan` | CytoScan 0.1.0 (`c97f403`) | ❌ binning off by up to 0.004, sample depends on path spelling, outlier scores 3× outside isotree noise, novelty model unlike mclust | ✅ features = R to 5e-13 on identical events; outlier flags = R; novelty reproduces mclust's model choice when it is full-covariance |
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 
-**36 deviations** from the upstream algorithms were found and fixed, plus
+**44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
 two performance defects (section 2.6). All key
 ports (`stats::density`, `smooth.spline`, logicle, hyperlog, `flowjo_biexp`)
 are pinned by unit tests against reference values produced by R.
@@ -262,6 +263,114 @@ The new Rust 1.99 toolchain (CI installs `@stable`) adds clippy lints that
 pre-existing code in `cytiq-fcs` failed (`with_capacity(0)`, `chunks_exact(2)`
 → `as_chunks`). These were fixed so `clippy -D warnings` stays green.
 
+### 2.7 `cytoscan`
+
+Upstream: CytoScan 0.1.0 (`AUMC-HEMA/CytoScan@c97f403`) with isotree 0.6.1.5,
+mclust 6.1.3, transport 0.15.4, flowFP 1.68.0. Baseline: the cytoscan branch
+before these fixes (`7b1e2f6`).
+
+**Datasets** (`parity/gen/cytoscan.py`):
+- Cohorts follow `CytoScan::generateDemo`: 6 channels, each a two-normal
+  mixture.
+- Every file carries `$PnR` and a non-trivial `SPILL`.
+- Anomalies were injected into known test files: gain shift, wrong `SPILL`,
+  population loss, signal compression and debris.
+
+| Dataset | Test / reference files | Events per file | Purpose |
+|---|---|---|---|
+| `cytoscan_exact` | 10 / 10 (3 anomalous) | 1,000 | Both tools use every event (`which.lines = 1000`, `nAgg = 1000`), so features compare without subsampling |
+| `cytoscan` | 20 / 20 (5 anomalous) | 20,000 | Realistic cohort; subsamples differ, so the comparison is statistical |
+| `cytoscan_ref100` | 20 / 100 (5 anomalous) | 20,000 | More reference files than features (the full-covariance regime) |
+
+**Features.** Max |Δ| Rust vs R.
+
+| Method | `cytoscan_exact` before | after | `cytoscan` mean \|Δ\| after | R subsample noise (seed 42 vs 1, 2) |
+|---|---|---|---|---|
+| summary | 5.0e-13 | 5.0e-13 | 0.103 | 0.095 |
+| quantiles | 5.0e-13 | 5.0e-13 | 0.112 | 0.104 |
+| EMD | 5.2e-13 | 5.2e-13 | 0.077 | 0.073 |
+| binning | **4.4e-3** | 5.0e-13 | 0.011 | 0.011 |
+| fingerprint | 0 | 0 | 0.021 | 0.021 |
+
+- On identical events all five feature methods match upstream to rounding.
+- On subsampled files the Rust–R difference equals R's own difference between
+  subsample seeds. The draws come from `rand` rather than R's Mersenne
+  Twister, so they are not bit-identical.
+
+**Outlier (isotree).**
+- Monte Carlo noise: isotree seeds tree `t` with `seed + t`, so seeds 42/43/44
+  share 999 of 1000 trees. The noise band is therefore measured with
+  independent seeds 42/1042/2042: 0.009–0.017 in score.
+
+| Dataset | max \|Δscore\| before → after | isotree noise | flags agree with R | Rust TP/FP | R TP/FP |
+|---|---|---|---|---|---|
+| `cytoscan_exact` (5 methods) | 0.011–0.036 → **0.005–0.012** | 0.009–0.014 | 100% | 2–3 / 0 | 2–3 / 0 |
+| `cytoscan` | 0.029–0.070 → 0.021–0.080 | 0.007–0.014 | 95–100% | 3–5 / 0 | 3–5 / 0 |
+| `cytoscan_ref100` | 0.029–0.067 → 0.021–0.056 | 0.008–0.017 | 95–100% | 4–5 / 0 | 3–5 / 0–1 |
+
+- On identical features the scores are now within isotree's own noise.
+- On subsampled cohorts the larger Δ comes from the different feature values,
+  not from the forest.
+
+**Novelty (GMM).**
+- The fit uses `linfa-clustering` (full covariance) with mclust's BIC over
+  G = 1..9.
+- Unit tests against `Mclust(modelNames = "VVV")` on fixed data:
+  - 2-cluster data: same G, BIC within 1e-3, log-densities within 1e-3;
+  - 1-cluster data: log-likelihood within 1e-6.
+- On the parity cohorts:
+
+| Dataset | Upstream model (`Mclust` default) | Rust model | Flag agreement with R | Rust TP/FP | R TP/FP |
+|---|---|---|---|---|---|
+| `cytoscan_exact` | fails for 4 of 5 methods (n_ref = 10 < d); EII for fingerprint | diagonal fallback, or G = 1 full for EMD | 100% where R fits | 3 / 6–7 | 3 / 7 |
+| `cytoscan` (n_ref = 20) | EEI/VEI/VII/XII constrained models; XXX for fingerprint | diagonal fallback (d ≥ 20); G = 1 full for EMD and fingerprint | 50–100% | 5 / 4–15 | 5 / 3–15 |
+| `cytoscan_ref100` | XXX (G = 1 full) for 4 of 5 methods; XII for EMD | G = 1 full for all 5 | 65–100% (95–100% when both are XXX) | 4–5 / 1–15 | 4–5 / 0–15 |
+
+- Where mclust picks a full-covariance model, Rust picks the same model.
+- The remaining Rust–R difference in those cases comes from the different
+  subsamples: with d = 54 features and 100 files the covariance is close to
+  singular and very sensitive to input.
+- Upstream behaves the same way: full-covariance novelty on quantile or
+  binning features flags 14–15 of 20 test files in R as well.
+- The baseline's z-scored diagonal model flagged fewer files, but it did not
+  follow upstream.
+
+**Fixed:**
+1. The subsample used a hand-written LCG seeded with `42 ^ FNV(path)`, so a
+   relative and an absolute path gave different samples. It is now `rand`'s
+   `StdRng` reseeded with 42 for every file, as `set.seed(42)` in `readInput`.
+2. The aggregate was truncated to 10,000 events. It now takes
+   `ceiling(10000 / n_files)` from every file, as `getAggregate` does.
+3. Binning used `value <= boundary` and kept out-of-range values. It now
+   follows `table(cut(x, breaks))`: right-closed bins, and values outside the
+   aggregate range are dropped from counts and denominator.
+4. Fingerprint is now a port of `flowFP`:
+   - `dequantize` (event i gets i·1e-8);
+   - one-pass variance for axis choice, first maximum from `DBL_MIN`;
+   - median split, with ties going to the lower bin;
+   - children numbered 2b / 2b+1;
+   - an error on empty bins instead of an index-halving fallback.
+5. Isolation forest:
+   - `max_depth = ceil(log2 n)`; it was one deeper;
+   - `c(n) = 2(H_n − 1)` with exact harmonic numbers; it was the logarithmic
+     approximation;
+   - column drawn uniformly among non-constant columns without replacement;
+   - threshold from `rand_distr::Uniform`;
+   - deterministic summation over rayon-parallel trees.
+6. Novelty: the self-written z-scored diagonal EM (k ≤ 4) was replaced by
+   `linfa-clustering` full-covariance mixtures. Features are not z-scored,
+   as in upstream, and G is chosen by mclust's BIC (`2 loglik − npar ln n`)
+   over G = 1..9. G values with components of ≤ d members are skipped. With
+   no valid G it falls back to a single diagonal Gaussian and writes a
+   warning.
+7. `aggregate_events` in the diagnostics now reports the aggregate size,
+   not the total number of events in all files.
+8. The README stated the wrong preprocessing order. The code was already
+   right: truncate to `$PnR` on read, compensate, then `asinh(x/150)`.
+
+**Time.** Rust takes 0.04–0.3 s per run. R CytoScan takes 0.8–7.3 s for the
+features alone.
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
@@ -274,6 +383,10 @@ pre-existing code in `cytiq-fcs` failed (`with_capacity(0)`, `chunks_exact(2)`
 | AutoSpectral | no WLS/Poisson/per-cell AF (R's default `AutoSpectral` method) | comparable only to `method = "OLS"` | separate task |
 | AutoSpread | no upstream; units are σ/√F while AutoSpectral expects σ²/F | format incompatibility | document the units |
 | transform | biexponential parameters cannot be set from the CLI (defaults hard-coded) | functionality | add `--biex-*` flags |
+| cytoscan | subsamples come from `rand`, not R's MT19937, so features on large files agree only statistically | Rust–R Δ equals R's seed-to-seed Δ | port R's RNG if bit-identical features are needed |
+| cytoscan | isotree uses its own C++ RNG | scores agree within isotree's Monte Carlo noise (≈0.014 at 1000 trees) | — |
+| cytoscan | `linfa` fits full covariance only; mclust also searches 13 constrained structures (EEI, VII, …) | with fewer reference files than features, Rust uses a diagonal Gaussian where mclust picks a constrained model; flags agree 50–100% | add constrained covariance models, or require n_ref > d |
+| cytoscan | upstream errors without `SPILL`; Rust warns and keeps raw values | only files without spillover metadata | — |
 | autospill | on a perfectly regular lattice the KDE produces exact ties, broken in a different order than R | degenerate data only | — |
 
 ## 4. Changed files
@@ -285,6 +398,10 @@ pre-existing code in `cytiq-fcs` failed (`with_capacity(0)`, `chunks_exact(2)`
 - `crates/cytiq-peacoqc/src/{density,smooth_spline}.rs` (new), `runner.rs`,
   `lib.rs`
 - `crates/cytiq-flowsom/src/{runner,lib}.rs`
+- `crates/cytiq-cytoscan/src/{runner,novelty,lib,error}.rs`, `Cargo.toml`
+  (`linfa`, `linfa-clustering`, `ndarray`, `rand`, `rand_distr`,
+  `rand_xoshiro`); `crates/cytiq-cli/tests/cytoscan_cli.rs`;
+  `data/fixtures/cytoscan/reference.rs`
 - `crates/cytiq-fcs/src/writer.rs` (buffered output), `data.rs`, `text.rs`
   (Rust 1.99 clippy lints)
 - Tests and fixtures:

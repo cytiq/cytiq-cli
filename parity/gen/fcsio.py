@@ -11,10 +11,11 @@ PNR = 262144
 
 
 def write_fcs(path: Path, data: np.ndarray, channels: list[str], labels: list[str] | None = None,
-              pnr: int = PNR) -> None:
+              pnr: int = PNR, extra_keywords: dict[str, str] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = np.asarray(data, dtype=np.float32)
     metadata = {f"p{i + 1}r": str(pnr) for i in range(len(channels))}
+    metadata.update(extra_keywords or {})
     with open(path, "wb") as handle:
         flowio.create_fcs(handle, data.ravel(order="C").tolist(), channels,
                           opt_channel_names=labels, metadata_dict=metadata)

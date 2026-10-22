@@ -516,39 +516,951 @@
       }
     }
   },
+  "cytoscan": {
+    "cytoscan_exact": {
+      "summary": {
+        "feature_count": 24,
+        "feature_names_match": true,
+        "features_max_abs_diff": 5.00044e-13,
+        "features_mean_abs_diff": 2.4609e-13,
+        "outlier": {
+          "max_abs_score_diff": 0.0118883,
+          "spearman": 0.9636,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0136726,
+          "rust": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          },
+          "upstream": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 9,
+            "tp": 3,
+            "fp": 6,
+            "fn": 0,
+            "precision": 0.3333,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "quantiles": {
+        "feature_count": 54,
+        "feature_names_match": true,
+        "features_max_abs_diff": 5.00044e-13,
+        "features_mean_abs_diff": 2.62345e-13,
+        "outlier": {
+          "max_abs_score_diff": 0.011181,
+          "spearman": 0.9636,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0116059,
+          "rust": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          },
+          "upstream": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 9,
+            "tp": 3,
+            "fp": 6,
+            "fn": 0,
+            "precision": 0.3333,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "emd": {
+        "feature_count": 6,
+        "feature_names_match": true,
+        "features_max_abs_diff": 5.1803e-13,
+        "features_mean_abs_diff": 2.57892e-13,
+        "outlier": {
+          "max_abs_score_diff": 0.00689489,
+          "spearman": 1.0,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.00919019,
+          "rust": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          },
+          "upstream": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 10,
+            "tp": 3,
+            "fp": 7,
+            "fn": 0,
+            "precision": 0.3,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "binning": {
+        "feature_count": 60,
+        "feature_names_match": true,
+        "features_max_abs_diff": 4.95e-13,
+        "features_mean_abs_diff": 9.14864e-15,
+        "outlier": {
+          "max_abs_score_diff": 0.00518564,
+          "spearman": 0.9394,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.00998053,
+          "rust": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          },
+          "upstream": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 10,
+            "tp": 3,
+            "fp": 7,
+            "fn": 0,
+            "precision": 0.3,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "fingerprint": {
+        "feature_count": 16,
+        "feature_names_match": false,
+        "features_max_abs_diff": 0.0,
+        "features_mean_abs_diff": 0.0,
+        "outlier": {
+          "max_abs_score_diff": 0.00657152,
+          "spearman": 1.0,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0116742,
+          "rust": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          },
+          "upstream": {
+            "flagged": 2,
+            "tp": 2,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.6667
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 10,
+            "tp": 3,
+            "fp": 7,
+            "fn": 0,
+            "precision": 0.3,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "EII",
+            "G": 9,
+            "ll_spearman_vs_rust": 0.7,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      }
+    },
+    "cytoscan": {
+      "summary": {
+        "feature_count": 24,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.713067,
+        "features_mean_abs_diff": 0.103487,
+        "r_subsample_noise_mean_abs_diff": 0.0951029,
+        "outlier": {
+          "max_abs_score_diff": 0.0372641,
+          "spearman": 0.8752,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.00716508,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 11,
+            "tp": 5,
+            "fp": 6,
+            "fn": 0,
+            "precision": 0.4545,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "EEI",
+            "G": 2,
+            "ll_spearman_vs_rust": 0.6225,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.75,
+            "flags": {
+              "flagged": 8,
+              "tp": 5,
+              "fp": 3,
+              "fn": 0,
+              "precision": 0.625,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "quantiles": {
+        "feature_count": 54,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.850908,
+        "features_mean_abs_diff": 0.111674,
+        "r_subsample_noise_mean_abs_diff": 0.103941,
+        "outlier": {
+          "max_abs_score_diff": 0.0371823,
+          "spearman": 0.9068,
+          "flag_agreement": 0.95,
+          "r_isotree_seed_band": 0.0123291,
+          "rust": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 0.6
+          },
+          "upstream": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 9,
+            "tp": 5,
+            "fp": 4,
+            "fn": 0,
+            "precision": 0.5556,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "VEI",
+            "G": 6,
+            "ll_spearman_vs_rust": 0.5765,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.5,
+            "flags": {
+              "flagged": 19,
+              "tp": 5,
+              "fp": 14,
+              "fn": 0,
+              "precision": 0.2632,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "emd": {
+        "feature_count": 6,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.283828,
+        "features_mean_abs_diff": 0.0772984,
+        "r_subsample_noise_mean_abs_diff": 0.072755,
+        "outlier": {
+          "max_abs_score_diff": 0.0514813,
+          "spearman": 0.7113,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0110513,
+          "rust": {
+            "flagged": 5,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          },
+          "upstream": {
+            "flagged": 5,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 12,
+            "tp": 5,
+            "fp": 7,
+            "fn": 0,
+            "precision": 0.4167,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XII",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.7429,
+            "ll_max_abs_diff": 42.2548,
+            "flag_agreement_with_rust": 0.75,
+            "flags": {
+              "flagged": 11,
+              "tp": 5,
+              "fp": 6,
+              "fn": 0,
+              "precision": 0.4545,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.7233,
+            "ll_max_abs_diff": 181.852,
+            "flag_agreement_with_rust": 0.65,
+            "flags": {
+              "flagged": 17,
+              "tp": 5,
+              "fp": 12,
+              "fn": 0,
+              "precision": 0.2941,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "binning": {
+        "feature_count": 60,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.081,
+        "features_mean_abs_diff": 0.0110072,
+        "r_subsample_noise_mean_abs_diff": 0.0109135,
+        "outlier": {
+          "max_abs_score_diff": 0.0205276,
+          "spearman": 0.8526,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0138583,
+          "rust": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 0.6
+          },
+          "upstream": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 0.6
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 9,
+            "tp": 5,
+            "fp": 4,
+            "fn": 0,
+            "precision": 0.5556,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "VII",
+            "G": 3,
+            "ll_spearman_vs_rust": 0.7317,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.7,
+            "flags": {
+              "flagged": 15,
+              "tp": 5,
+              "fp": 10,
+              "fn": 0,
+              "precision": 0.3333,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          }
+        }
+      },
+      "fingerprint": {
+        "feature_count": 16,
+        "feature_names_match": false,
+        "features_max_abs_diff": 0.108,
+        "features_mean_abs_diff": 0.0208313,
+        "r_subsample_noise_mean_abs_diff": 0.0214625,
+        "outlier": {
+          "max_abs_score_diff": 0.0803861,
+          "spearman": 0.6436,
+          "flag_agreement": 0.95,
+          "r_isotree_seed_band": 0.0141961,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 5,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 20,
+            "tp": 5,
+            "fp": 15,
+            "fn": 0,
+            "precision": 0.25,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5377,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5377,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          }
+        }
+      }
+    },
+    "cytoscan_ref100": {
+      "summary": {
+        "feature_count": 24,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.740294,
+        "features_mean_abs_diff": 0.0903954,
+        "outlier": {
+          "max_abs_score_diff": 0.0305123,
+          "spearman": 0.8541,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.00782897,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 12,
+            "tp": 5,
+            "fp": 7,
+            "fn": 0,
+            "precision": 0.4167,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5123,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.65,
+            "flags": {
+              "flagged": 9,
+              "tp": 5,
+              "fp": 4,
+              "fn": 0,
+              "precision": 0.5556,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5123,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.65,
+            "flags": {
+              "flagged": 9,
+              "tp": 5,
+              "fp": 4,
+              "fn": 0,
+              "precision": 0.5556,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "quantiles": {
+        "feature_count": 54,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.740294,
+        "features_mean_abs_diff": 0.0965947,
+        "outlier": {
+          "max_abs_score_diff": 0.0394545,
+          "spearman": 0.8812,
+          "flag_agreement": 0.95,
+          "r_isotree_seed_band": 0.0104984,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 0.6
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 20,
+            "tp": 5,
+            "fp": 15,
+            "fn": 0,
+            "precision": 0.25,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": -0.1571,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 19,
+              "tp": 5,
+              "fp": 14,
+              "fn": 0,
+              "precision": 0.2632,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": -0.1571,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 19,
+              "tp": 5,
+              "fp": 14,
+              "fn": 0,
+              "precision": 0.2632,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "emd": {
+        "feature_count": 6,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.240579,
+        "features_mean_abs_diff": 0.0543535,
+        "outlier": {
+          "max_abs_score_diff": 0.0562799,
+          "spearman": 0.5504,
+          "flag_agreement": 1.0,
+          "r_isotree_seed_band": 0.0127956,
+          "rust": {
+            "flagged": 5,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          },
+          "upstream": {
+            "flagged": 5,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 7,
+            "tp": 5,
+            "fp": 2,
+            "fn": 0,
+            "precision": 0.7143,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XII",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.6045,
+            "ll_max_abs_diff": 13.6975,
+            "flag_agreement_with_rust": 0.9,
+            "flags": {
+              "flagged": 5,
+              "tp": 5,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1.0,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5654,
+            "ll_max_abs_diff": 43.0978,
+            "flag_agreement_with_rust": 0.9,
+            "flags": {
+              "flagged": 5,
+              "tp": 5,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1.0,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "binning": {
+        "feature_count": 60,
+        "feature_names_match": true,
+        "features_max_abs_diff": 0.062,
+        "features_mean_abs_diff": 0.0106405,
+        "outlier": {
+          "max_abs_score_diff": 0.0207425,
+          "spearman": 0.8707,
+          "flag_agreement": 0.95,
+          "r_isotree_seed_band": 0.0157242,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 3,
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 0.6
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 20,
+            "tp": 5,
+            "fp": 15,
+            "fn": 0,
+            "precision": 0.25,
+            "recall": 1.0
+          },
+          "upstream_default": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.3015,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.3015,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          }
+        }
+      },
+      "fingerprint": {
+        "feature_count": 16,
+        "feature_names_match": false,
+        "features_max_abs_diff": 0.122,
+        "features_mean_abs_diff": 0.017625,
+        "outlier": {
+          "max_abs_score_diff": 0.0394192,
+          "spearman": 0.6872,
+          "flag_agreement": 0.95,
+          "r_isotree_seed_band": 0.0165599,
+          "rust": {
+            "flagged": 4,
+            "tp": 4,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.8
+          },
+          "upstream": {
+            "flagged": 5,
+            "tp": 4,
+            "fp": 1,
+            "fn": 1,
+            "precision": 0.8,
+            "recall": 0.8
+          }
+        },
+        "novelty": {
+          "rust": {
+            "flagged": 5,
+            "tp": 4,
+            "fp": 1,
+            "fn": 1,
+            "precision": 0.8,
+            "recall": 0.8
+          },
+          "upstream_default": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5526,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 6,
+              "tp": 4,
+              "fp": 2,
+              "fn": 1,
+              "precision": 0.6667,
+              "recall": 0.8
+            }
+          },
+          "upstream_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "ll_spearman_vs_rust": 0.5526,
+            "ll_max_abs_diff": Infinity,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 6,
+              "tp": 4,
+              "fp": 2,
+              "fn": 1,
+              "precision": 0.6667,
+              "recall": 0.8
+            }
+          }
+        }
+      }
+    }
+  },
   "timing": {
     "autospill": {
       "rust": {
-        "seconds": 2.19,
-        "max_rss_mb": 57.91
+        "seconds": 2.04,
+        "max_rss_mb": 57.12
       },
-      "upstream_seconds": 8.832
+      "upstream_seconds": 8.558
     },
     "peacoqc_all": {
       "rust": {
-        "seconds": 0.14,
-        "max_rss_mb": 95.28
+        "seconds": 0.12,
+        "max_rss_mb": 93.61
       },
-      "upstream_seconds": 1.548
+      "upstream_seconds": 1.338
     },
     "flowsom": {
       "rust": {
         "seconds": 0.52,
-        "max_rss_mb": 39.27
+        "max_rss_mb": 39.38
       },
-      "upstream_seconds": 3.997
+      "upstream_seconds": 4.09
     },
     "flowsom_hard": {
       "rust": {
-        "seconds": 0.53,
-        "max_rss_mb": 39.33
+        "seconds": 0.66,
+        "max_rss_mb": 38.92
       },
-      "upstream_seconds": 4.25
+      "upstream_seconds": 4.105
     },
     "autospectral": {
       "rust": {
         "seconds": 0.03,
-        "max_rss_mb": 56.52
+        "max_rss_mb": 56.03
       }
     }
   }

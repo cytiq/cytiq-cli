@@ -15,6 +15,10 @@ use cytiq_autospill::{
     export_matrix, export_spread_matrix, read_controls_manifest, read_detectors_manifest,
     read_transform_manifest,
 };
+use cytiq_cytoscan::{
+    CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
+    parse_channel_list as parse_cytoscan_channel_list,
+};
 use cytiq_flowsom::{
     FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
@@ -134,6 +138,33 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+    /// Flag anomalous FCS files using a CytoScan-style cohort workflow.
+    Cytoscan {
+        /// Input .fcs file, glob pattern, or directory. Can be passed multiple times.
+        #[arg(long, required = true)]
+        input: Vec<PathBuf>,
+        /// Reference .fcs file, glob pattern, or directory for novelty detection.
+        #[arg(long)]
+        reference: Vec<PathBuf>,
+        /// Output directory for summary, feature, and configuration tables.
+        #[arg(long)]
+        output: PathBuf,
+        /// Comma-separated channel names used for feature generation.
+        #[arg(long)]
+        channels: Option<String>,
+        /// Channel name used for feature generation; can be repeated.
+        #[arg(long = "channel")]
+        channel: Vec<String>,
+        #[arg(long, value_enum, default_value_t = CliCytoScanFeatureMethod::Quantiles)]
+        method: CliCytoScanFeatureMethod,
+        #[arg(long, value_enum, default_value_t = CliCytoScanFlagMethod::Outlier)]
+        flag_method: CliCytoScanFlagMethod,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+    },
     /// Transform FCS signal intensities into analysis-ready values.
     Transform {
         /// Input .fcs file, glob pattern, or directory. Can be passed multiple times.
@@ -236,6 +267,44 @@ enum CliTransformMethod {
     Hyperlog,
     Logicle,
     None,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliCytoScanFeatureMethod {
+    Summary,
+    Quantiles,
+    Emd,
+    Binning,
+    Fingerprint,
+}
+
+impl From<CliCytoScanFeatureMethod> for FeatureMethod {
+    fn from(value: CliCytoScanFeatureMethod) -> Self {
+        match value {
+            CliCytoScanFeatureMethod::Summary => Self::Summary,
+            CliCytoScanFeatureMethod::Quantiles => Self::Quantiles,
+            CliCytoScanFeatureMethod::Emd => Self::Emd,
+            CliCytoScanFeatureMethod::Binning => Self::Binning,
+            CliCytoScanFeatureMethod::Fingerprint => Self::Fingerprint,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliCytoScanFlagMethod {
+    Outlier,
+    Novelty,
+    Both,
+}
+
+impl From<CliCytoScanFlagMethod> for FlagMethod {
+    fn from(value: CliCytoScanFlagMethod) -> Self {
+        match value {
+            CliCytoScanFlagMethod::Outlier => Self::Outlier,
+            CliCytoScanFlagMethod::Novelty => Self::Novelty,
+            CliCytoScanFlagMethod::Both => Self::Both,
+        }
+    }
 }
 
 impl From<CliTransformMethod> for TransformMethod {
@@ -545,6 +614,49 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("peacoqc completed successfully");
             Ok(())
         }
+        Commands::Cytoscan {
+            input,
+            reference,
+            output,
+            channels,
+            channel,
+            method,
+            flag_method,
+            debug_dir,
+            threads,
+        } => {
+            info!(
+                "starting cytoscan: inputs={}, references={}, output={}, method={:?}, flag_method={:?}",
+                input.len(),
+                reference.len(),
+                output.display(),
+                method,
+                flag_method
+            );
+            let channels = parse_cytoscan_channels(channels.as_deref(), &channel)
+                .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            let config = CytoScanConfig {
+                inputs: input,
+                reference_inputs: reference,
+                output_dir: output,
+                channels,
+                feature_method: method.into(),
+                flag_method: flag_method.into(),
+                debug_dir,
+                threads,
+            };
+            let result = CytoScanRunner::run(&config)?;
+            info!(
+                "cytoscan wrote {} summary row(s) and {} feature column(s)",
+                result.summary_rows.len(),
+                result.test_features.feature_names.len()
+            );
+            if let Some(debug_dir) = config.debug_dir.as_ref() {
+                info!("wrote cytoscan debug artifacts to {}", debug_dir.display());
+            }
+            info!("cytoscan completed successfully");
+            Ok(())
+        }
         Commands::Transform {
             input,
             output,
@@ -808,6 +920,28 @@ fn parse_flowsom_channels(
 ) -> Result<Vec<String>, String> {
     let mut parsed = channels
         .map(parse_flowsom_channel_list)
+        .transpose()?
+        .unwrap_or_default();
+    for channel in repeated_channels {
+        let channel = channel.trim();
+        if channel.is_empty() {
+            return Err("channel must not be empty".to_owned());
+        }
+        parsed.push(channel.to_owned());
+    }
+    if parsed.is_empty() {
+        Err("at least one `--channels` or `--channel` value is required".to_owned())
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn parse_cytoscan_channels(
+    channels: Option<&str>,
+    repeated_channels: &[String],
+) -> Result<Vec<String>, String> {
+    let mut parsed = channels
+        .map(parse_cytoscan_channel_list)
         .transpose()?
         .unwrap_or_default();
     for channel in repeated_channels {

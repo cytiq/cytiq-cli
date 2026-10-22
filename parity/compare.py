@@ -250,6 +250,101 @@ def compare_flowsom(data: Path, rust: Path, upstream: Path, dataset: str = "flow
     return out
 
 
+# --------------------------------------------------------------------------- cytoscan
+CYTOSCAN_METHODS = ["summary", "quantiles", "emd", "binning", "fingerprint"]
+
+
+def _flag_metrics(flags: np.ndarray, truth: np.ndarray) -> dict:
+    tp = int((flags & truth).sum())
+    fp = int((flags & ~truth).sum())
+    fn = int((~flags & truth).sum())
+    return {"flagged": int(flags.sum()), "tp": tp, "fp": fp, "fn": fn,
+            "precision": _r(tp / (tp + fp), 4) if tp + fp else None,
+            "recall": _r(tp / (tp + fn), 4) if tp + fn else None}
+
+
+def _spearman(a: np.ndarray, b: np.ndarray) -> float | None:
+    from scipy.stats import spearmanr
+    mask = np.isfinite(a) & np.isfinite(b)
+    if mask.sum() < 3:
+        return None
+    return _r(spearmanr(a[mask], b[mask]).statistic, 4)
+
+
+def compare_cytoscan_dataset(data: Path, rust: Path, upstream: Path, dataset: str) -> dict:
+    truth_frame = pd.read_csv(data / dataset / "truth" / "files.csv")
+    test_truth = truth_frame[truth_frame.role == "test"].set_index("filename")["is_anomaly"].astype(bool)
+    out = {}
+    for method in CYTOSCAN_METHODS:
+        rust_dir = rust / dataset / method
+        up_dir = upstream / dataset
+        if not (rust_dir / "cytoscan_summary.csv").exists():
+            continue
+        rust_features = pd.read_csv(rust_dir / "cytoscan_features.csv").set_index("filename").drop(columns=["path"])
+        r_features = pd.read_csv(up_dir / f"features_test_{method}.csv").set_index("filename")
+        r_features = r_features.loc[rust_features.index]
+        names_match = list(rust_features.columns) == list(r_features.columns)
+        delta = np.abs(rust_features.to_numpy() - r_features.to_numpy())
+        entry = {"feature_count": int(rust_features.shape[1]), "feature_names_match": names_match,
+                 "features_max_abs_diff": _r(np.nanmax(delta)),
+                 "features_mean_abs_diff": _r(np.nanmean(delta))}
+        seed_band = []
+        for seed in (1, 2):
+            path = up_dir / f"features_test_{method}_seed{seed}.csv"
+            if path.exists():
+                other = pd.read_csv(path).set_index("filename").loc[rust_features.index]
+                seed_band.append(np.nanmean(np.abs(other.to_numpy() - r_features.to_numpy())))
+        if seed_band:
+            entry["r_subsample_noise_mean_abs_diff"] = _r(float(np.mean(seed_band)))
+
+        summary = pd.read_csv(rust_dir / "cytoscan_summary.csv").set_index("filename")
+        truth = test_truth.loc[summary.index].to_numpy()
+        outlier = pd.read_csv(up_dir / f"outlier_{method}.csv").set_index("filename").loc[summary.index]
+        r_scores = outlier["score_seed42"].to_numpy()
+        rust_scores = summary["outlier_score"].to_numpy(dtype=float)
+        rust_out_flags = rust_scores >= 0.5
+        r_out_flags = r_scores >= 0.5
+        entry["outlier"] = {
+            "max_abs_score_diff": _r(np.max(np.abs(rust_scores - r_scores))),
+            "spearman": _spearman(rust_scores, r_scores),
+            "flag_agreement": _r((rust_out_flags == r_out_flags).mean(), 4),
+            "r_isotree_seed_band": _r(float(np.max(np.abs(outlier[["score_seed1042", "score_seed2042"]].to_numpy()
+                                                          - r_scores[:, None])))),
+            "rust": _flag_metrics(rust_out_flags, truth),
+            "upstream": _flag_metrics(r_out_flags, truth),
+        }
+
+        novelty = pd.read_csv(up_dir / f"novelty_{method}.csv").set_index("filename").loc[summary.index]
+        meta = json.loads((up_dir / f"novelty_{method}.json").read_text())
+        rust_ll = summary["novelty_log_likelihood"].to_numpy(dtype=float)
+        rust_nov = summary["is_novelty"].astype(str).str.lower().eq("true").to_numpy()
+        nov = {"rust": _flag_metrics(rust_nov, truth)}
+        for key in ("default", "VVV"):
+            info = meta.get(key, {})
+            ll = pd.to_numeric(novelty[f"ll_{key}"], errors="coerce").to_numpy(dtype=float)
+            threshold = info.get("threshold")
+            if threshold is None or not np.isfinite(ll).any():
+                nov[f"upstream_{key}"] = {"model": None, "note": "Mclust returned no model"}
+                continue
+            r_flags = ll <= threshold
+            nov[f"upstream_{key}"] = {
+                "model": info.get("model"), "G": info.get("G"),
+                "ll_spearman_vs_rust": _spearman(rust_ll, ll),
+                "ll_max_abs_diff": _r(float(np.nanmax(np.abs(rust_ll - ll)))),
+                "flag_agreement_with_rust": _r((rust_nov == r_flags).mean(), 4),
+                "flags": _flag_metrics(r_flags, truth),
+            }
+        entry["novelty"] = nov
+        out[method] = entry
+    return out
+
+
+def compare_cytoscan(data: Path, rust: Path, upstream: Path) -> dict:
+    return {dataset: compare_cytoscan_dataset(data, rust, upstream, dataset)
+            for dataset in ("cytoscan_exact", "cytoscan", "cytoscan_ref100")
+            if (data / dataset).exists() and (rust / dataset).exists()}
+
+
 def main() -> None:
     data, rust, upstream, target = (Path(p) for p in sys.argv[1:5])
     up_t = upstream_times(upstream)
@@ -261,6 +356,7 @@ def main() -> None:
         "peacoqc": compare_peacoqc(data, rust, upstream),
         "flowsom": compare_flowsom(data, rust, upstream),
         "flowsom_hard": compare_flowsom(data, rust, upstream, "flowsom_hard"),
+        "cytoscan": compare_cytoscan(data, rust, upstream),
         "timing": {
             "autospill": {"rust": rust_time(rust, "autospill"), "upstream_seconds": up_t.get("autospill")},
             "peacoqc_all": {"rust": rust_time(rust, "peacoqc_all"), "upstream_seconds": up_t.get("peacoqc_all")},

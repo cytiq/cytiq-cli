@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from cytoscan import gen_cytoscan, gen_cytoscan_exact, gen_cytoscan_ref100
 from fcsio import PNR, write_fcs
 
 SEED = 20261022
@@ -217,7 +218,9 @@ def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "parity/.data")
     for name, fn in [("transform", gen_transform), ("autospill", gen_autospill), ("autospectral", gen_autospectral),
                      ("peacoqc", gen_peacoqc), ("flowsom", gen_flowsom),
-                     ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True))]:
+                     ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True)),
+                     ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
+                     ("cytoscan_ref100", gen_cytoscan_ref100)]:
         target = out / name
         target.mkdir(parents=True, exist_ok=True)
         fn(target)

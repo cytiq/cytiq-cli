@@ -53,4 +53,13 @@ for dataset in flowsom flowsom_hard; do
     --debug-dir "$OUT/${dataset}_debug"
 done
 
+for dataset in cytoscan_exact cytoscan cytoscan_ref100; do
+  [[ -d "$DATA/$dataset" ]] || continue
+  for method in summary quantiles emd binning fingerprint; do
+    timed "${dataset}_$method" "$BIN" cytoscan --input "$DATA/$dataset/test" \
+      --reference "$DATA/$dataset/reference" --output "$OUT/$dataset/$method" \
+      --channels "$(cat "$DATA/$dataset/channels.txt")" --method "$method" --flag-method both
+  done
+done
+
 echo "rust outputs in $OUT"

@@ -9,6 +9,8 @@ algorithmic implementations are:
   `cytiq autospill` and `cytiq autospread`
 - AutoSpectral-style reference-based spectral unmixing in
   `crates/cytiq-autospectral`, exposed through `cytiq autospectral`
+- CytoScan-style anomaly detection in `crates/cytiq-cytoscan`, exposed through
+  `cytiq cytoscan`
 - PeacoQC-style acquisition quality control in `crates/cytiq-peacoqc`,
   exposed through `cytiq peacoqc`
 - FlowSOM-style clustering in `crates/cytiq-flowsom`, exposed through
@@ -68,6 +70,44 @@ Relevant code:
 - `crates/cytiq-autospectral/src/runner.rs`
 - `crates/cytiq-autospectral/src/export.rs`
 - `crates/cytiq-autospectral/src/manifest.rs`
+
+## CytoScan
+
+If you use `cytiq cytoscan`, or reuse the implementation in
+`crates/cytiq-cytoscan`, cite the CytoScan preprint:
+
+Mocking, T.R. et al. CytoScan: automated flagging of technical anomalies for
+cytometry quality control. *bioRxiv* (2025).
+<https://doi.org/10.1101/2025.09.24.678276>
+
+Project links:
+- Preprint: <https://www.biorxiv.org/content/10.1101/2025.09.24.678276v1>
+- Upstream R reference implementation: <https://github.com/AUMC-HEMA/CytoScan>
+- Manuscript repository: <https://github.com/AUMC-HEMA/CytoScan-manuscript>
+
+The current Rust implementation is aligned with the repository's FCS
+input/output model:
+- file-level feature generation using summary statistics, quantiles, EMD
+  (`transport::wasserstein1d`), aggregate binning (`cut()` semantics), and
+  `flowFP` probability-binning fingerprints
+- spillover compensation and arcsinh preprocessing from FCS metadata
+- `isotree`-style isolation-forest outlier scoring
+- reference-based novelty detection with Gaussian mixtures from
+  `linfa-clustering` (mclust-style BIC model selection over `G = 1..9`)
+- summary, feature, config, and debug artifact export
+
+Feature values match upstream to ~1e-12 when both use the same events; see
+`parity/REPORT.md` for the comparison and the remaining differences.
+
+The novelty model uses `linfa-clustering` (<https://github.com/rust-ml/linfa>)
+in place of `mclust`; please also cite mclust when comparing with upstream:
+Scrucca, L. et al. mclust 5: clustering, classification and density estimation
+using Gaussian finite mixture models. *The R Journal* 8(1), 289–317 (2016).
+
+Relevant code:
+- `crates/cytiq-cytoscan/src/runner.rs`
+- `crates/cytiq-cytoscan/src/novelty.rs`
+- `crates/cytiq-cytoscan/src/export.rs`
 
 ## PeacoQC
 

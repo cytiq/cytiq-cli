@@ -121,10 +121,10 @@ fn parameter_width(parameter: &ResolvedParameter) -> Result<u64, FcsError> {
 fn new_column(parameter: &ResolvedParameter) -> ColumnData {
     match parameter.encoding {
         ParameterEncoding::AsciiFixed { .. } | ParameterEncoding::Integer { .. } => {
-            ColumnData::UInt(Vec::with_capacity(0))
+            ColumnData::UInt(Vec::new())
         }
-        ParameterEncoding::Float32 => ColumnData::F32(Vec::with_capacity(0)),
-        ParameterEncoding::Float64 => ColumnData::F64(Vec::with_capacity(0)),
+        ParameterEncoding::Float32 => ColumnData::F32(Vec::new()),
+        ParameterEncoding::Float64 => ColumnData::F64(Vec::new()),
     }
 }
 

@@ -24,8 +24,10 @@ pub const FLOWSOM_METACLUSTERS: usize = 20;
 pub const FLOWSOM_TRAINING_ITERATIONS: usize = 10;
 pub const FLOWSOM_LEARNING_RATE_START: f64 = 0.05;
 pub const FLOWSOM_LEARNING_RATE_END: f64 = 0.01;
-pub const FLOWSOM_RADIUS_START: f64 = 5.0;
-pub const FLOWSOM_RADIUS_END: f64 = 1.0;
+/// Quantile of the Chebyshev grid-distance matrix used as the starting radius,
+/// matching `FlowSOM::SOM(radius = stats::quantile(nhbrdist, 0.67) * c(1, 0))`.
+pub const FLOWSOM_RADIUS_START_QUANTILE: f64 = 0.67;
+pub const FLOWSOM_RADIUS_END: f64 = 0.0;
 pub const FLOWSOM_RANDOM_SEED: u64 = 1;
 pub const FLOWSOM_SCALE_INPUT: bool = true;
 
@@ -170,8 +172,11 @@ impl DeterministicRng {
         self.state
     }
 
+    /// Uniform index in `0..upper_bound` drawn from the high 53 bits, which are
+    /// far better distributed than the low bits of an LCG.
     fn next_index(&mut self, upper_bound: usize) -> usize {
-        (self.next_u64() % upper_bound as u64) as usize
+        let unit = (self.next_u64() >> 11) as f64 / (1_u64 << 53) as f64;
+        ((unit * upper_bound as f64) as usize).min(upper_bound - 1)
     }
 }
 
@@ -405,7 +410,7 @@ fn scale_matrix(mut values: Vec<Vec<f64>>, channels: &[ResolvedChannel]) -> Scal
                     centered * centered
                 })
                 .sum::<f64>()
-                / events as f64;
+                / events.saturating_sub(1).max(1) as f64;
             let standard_deviation = variance.sqrt();
             FlowSomScaleSummary {
                 channel: channel.display_name.clone(),
@@ -473,25 +478,46 @@ where
         .collect()
 }
 
+/// Online SOM training following `FlowSOM`'s `C_SOM` (`src/som.c`): `rlen * n`
+/// single-event updates with events drawn at random, linearly decaying learning
+/// rate and radius per update, a bubble neighbourhood on the Chebyshev grid
+/// distance, and only the best-matching node updated once the radius drops
+/// below one.
 fn train_som(events: &[Vec<f64>]) -> SomTrainingResult {
-    let mut codebook = initialize_codebook(events);
-    for iteration in 0..FLOWSOM_TRAINING_ITERATIONS {
-        let progress = if FLOWSOM_TRAINING_ITERATIONS <= 1 {
-            1.0
-        } else {
-            iteration as f64 / (FLOWSOM_TRAINING_ITERATIONS - 1) as f64
-        };
+    let mut rng = DeterministicRng::new(FLOWSOM_RANDOM_SEED);
+    let mut codebook = initialize_codebook(events, &mut rng);
+    let node_count = codebook.len();
+    let grid_distances = (0..node_count)
+        .map(|left| {
+            (0..node_count)
+                .map(|right| grid_distance_chebyshev(left, right))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let radius_start = default_radius_start();
+    let total_updates = FLOWSOM_TRAINING_ITERATIONS * events.len();
+    let radius_step = (radius_start - FLOWSOM_RADIUS_END) / total_updates as f64;
+    let mut threshold = radius_start;
+    for update in 0..total_updates {
+        let event = &events[rng.next_index(events.len())];
+        let best_node = best_matching_node(&codebook, event);
+        if threshold < 1.0 {
+            threshold = 0.5;
+        }
         let learning_rate = interpolate(
             FLOWSOM_LEARNING_RATE_START,
             FLOWSOM_LEARNING_RATE_END,
-            progress,
+            update as f64 / total_updates as f64,
         );
-        let radius =
-            interpolate(FLOWSOM_RADIUS_START, FLOWSOM_RADIUS_END, progress).max(EQUALITY_EPSILON);
-        for event in events {
-            let best_node = best_matching_node(&codebook, event);
-            update_neighborhood(&mut codebook, best_node, event, learning_rate, radius);
+        for (prototype, distance) in codebook.iter_mut().zip(&grid_distances[best_node]) {
+            if *distance > threshold {
+                continue;
+            }
+            for (prototype_value, event_value) in prototype.iter_mut().zip(event) {
+                *prototype_value += learning_rate * (*event_value - *prototype_value);
+            }
         }
+        threshold -= radius_step;
     }
     let assignments = assign_events(events, &codebook);
     let node_counts = count_nodes(&assignments, codebook.len());
@@ -503,11 +529,33 @@ fn train_som(events: &[Vec<f64>]) -> SomTrainingResult {
     }
 }
 
-fn initialize_codebook(events: &[Vec<f64>]) -> Vec<Vec<f64>> {
-    let mut rng = DeterministicRng::new(FLOWSOM_RANDOM_SEED);
-    (0..FLOWSOM_XDIM * FLOWSOM_YDIM)
-        .map(|_| events[rng.next_index(events.len())].clone())
+/// Initial codes are distinct events sampled without replacement, as in
+/// `FlowSOM::SOM(init = FALSE)`; small inputs repeat events once exhausted.
+fn initialize_codebook(events: &[Vec<f64>], rng: &mut DeterministicRng) -> Vec<Vec<f64>> {
+    let node_count = FLOWSOM_XDIM * FLOWSOM_YDIM;
+    let mut indices = (0..events.len()).collect::<Vec<_>>();
+    let distinct = node_count.min(events.len());
+    for position in 0..distinct {
+        let swap_with = position + rng.next_index(events.len() - position);
+        indices.swap(position, swap_with);
+    }
+    (0..node_count)
+        .map(|node| events[indices[node % distinct]].clone())
         .collect()
+}
+
+/// Type-7 quantile of the full Chebyshev grid-distance matrix (diagonal
+/// included), which is 6 for the default 10x10 grid.
+fn default_radius_start() -> f64 {
+    let node_count = FLOWSOM_XDIM * FLOWSOM_YDIM;
+    let mut distances = (0..node_count)
+        .flat_map(|left| (0..node_count).map(move |right| grid_distance_chebyshev(left, right)))
+        .collect::<Vec<_>>();
+    distances.sort_by(f64::total_cmp);
+    let position = FLOWSOM_RADIUS_START_QUANTILE * (distances.len() - 1) as f64;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    distances[lower] + (distances[upper] - distances[lower]) * (position - lower as f64)
 }
 
 fn assign_events(events: &[Vec<f64>], codebook: &[Vec<f64>]) -> Vec<usize> {
@@ -523,30 +571,6 @@ fn count_nodes(assignments: &[usize], node_count: usize) -> Vec<usize> {
         counts[*node] += 1;
     }
     counts
-}
-
-fn update_neighborhood(
-    codebook: &mut [Vec<f64>],
-    best_node: usize,
-    event: &[f64],
-    learning_rate: f64,
-    radius: f64,
-) {
-    let radius_squared = radius * radius;
-    codebook
-        .par_iter_mut()
-        .enumerate()
-        .for_each(|(node_index, prototype)| {
-            let grid_distance = grid_distance_squared(best_node, node_index);
-            if grid_distance > radius_squared {
-                return;
-            }
-            let influence = (-grid_distance / (2.0 * radius_squared)).exp();
-            let update_weight = learning_rate * influence;
-            for (prototype_value, event_value) in prototype.iter_mut().zip(event) {
-                *prototype_value += update_weight * (*event_value - *prototype_value);
-            }
-        });
 }
 
 fn best_matching_node(codebook: &[Vec<f64>], event: &[f64]) -> usize {
@@ -727,7 +751,7 @@ fn build_summary(
             training_iterations: FLOWSOM_TRAINING_ITERATIONS,
             learning_rate_start: FLOWSOM_LEARNING_RATE_START,
             learning_rate_end: FLOWSOM_LEARNING_RATE_END,
-            radius_start: FLOWSOM_RADIUS_START,
+            radius_start: default_radius_start(),
             radius_end: FLOWSOM_RADIUS_END,
             random_seed: FLOWSOM_RANDOM_SEED,
             scale_input: FLOWSOM_SCALE_INPUT,
@@ -758,14 +782,12 @@ fn squared_distance(left: &[f64], right: &[f64]) -> f64 {
         .sum()
 }
 
-fn grid_distance_squared(left: usize, right: usize) -> f64 {
-    let left_x = left % FLOWSOM_XDIM;
-    let left_y = left / FLOWSOM_XDIM;
-    let right_x = right % FLOWSOM_XDIM;
-    let right_y = right / FLOWSOM_XDIM;
-    let dx = left_x.abs_diff(right_x) as f64;
-    let dy = left_y.abs_diff(right_y) as f64;
-    dx * dx + dy * dy
+/// Chebyshev ("maximum") distance between SOM grid nodes, as
+/// `stats::dist(grid, method = "maximum")` in `FlowSOM::SOM`.
+fn grid_distance_chebyshev(left: usize, right: usize) -> f64 {
+    let dx = (left % FLOWSOM_XDIM).abs_diff(right % FLOWSOM_XDIM);
+    let dy = (left / FLOWSOM_XDIM).abs_diff(right / FLOWSOM_XDIM);
+    dx.max(dy) as f64
 }
 
 fn find_parameter_index(parameters: &[Parameter], channel: &str) -> Option<usize> {
@@ -830,6 +852,33 @@ mod tests {
         assert_eq!(first.assignments, second.assignments);
         assert_eq!(first.node_counts, second.node_counts);
         assert_eq!(first.codebook, second.codebook);
+    }
+
+    #[test]
+    fn default_radius_matches_flowsom_quantile() {
+        // stats::quantile(as.matrix(dist(expand.grid(1:10, 1:10), "maximum")), 0.67) == 6
+        assert!((default_radius_start() - 6.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn chebyshev_grid_distance_uses_maximum_axis_offset() {
+        assert!((grid_distance_chebyshev(0, 0) - 0.0).abs() < f64::EPSILON);
+        assert!((grid_distance_chebyshev(0, 11) - 1.0).abs() < f64::EPSILON);
+        assert!((grid_distance_chebyshev(0, 23) - 3.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn codebook_initialization_samples_distinct_events() {
+        let events = (0..200)
+            .map(|index| vec![f64::from(index)])
+            .collect::<Vec<_>>();
+        let mut rng = DeterministicRng::new(FLOWSOM_RANDOM_SEED);
+        let codebook = initialize_codebook(&events, &mut rng);
+        let distinct = codebook
+            .iter()
+            .map(|code| code[0].to_bits())
+            .collect::<HashSet<_>>();
+        assert_eq!(distinct.len(), FLOWSOM_XDIM * FLOWSOM_YDIM);
     }
 
     #[test]

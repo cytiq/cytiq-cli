@@ -1,6 +1,7 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
     clippy::missing_errors_doc,
     clippy::module_name_repetitions,
     clippy::must_use_candidate,
@@ -10,6 +11,9 @@
 
 mod error;
 mod export;
+pub mod scales;
+
+use scales::{FlowJoBiexp, Hyperlog, Logicle, ScaleParameterError};
 
 use std::collections::HashSet;
 use std::fs;
@@ -338,6 +342,7 @@ fn validate_config(config: &TransformConfig) -> Result<(), TransformError> {
             parameter: "threads",
         });
     }
+    TransformOperator::from_config(config)?;
 
     Ok(())
 }
@@ -673,7 +678,7 @@ fn transformed_columns(
         .iter()
         .map(|channel| (channel.index, channel.name.clone()))
         .collect::<std::collections::HashMap<_, _>>();
-    let operator = TransformOperator::from_config(config);
+    let operator = TransformOperator::from_config(config)?;
     let column_results = dataset
         .data
         .columns
@@ -684,7 +689,7 @@ fn transformed_columns(
             transform_column(
                 column,
                 selected_channel,
-                operator,
+                &operator,
                 input,
                 &dataset.parameters[index].name,
             )
@@ -712,7 +717,7 @@ struct TransformedColumn {
 fn transform_column(
     column: &ColumnData,
     selected_channel: Option<&str>,
-    operator: TransformOperator,
+    operator: &TransformOperator,
     input: &Path,
     channel: &str,
 ) -> Result<TransformedColumn, TransformError> {
@@ -779,7 +784,7 @@ struct TransformedValue {
 fn transform_raw_value(
     value: f64,
     selected: bool,
-    operator: TransformOperator,
+    operator: &TransformOperator,
     input: &Path,
     channel: &str,
 ) -> Result<TransformedValue, TransformError> {
@@ -859,113 +864,66 @@ fn summarize_values(values: &[f64]) -> TransformValueMetrics {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Per-value transform. Logicle follows `flowCore::logicleTransform` (output
+/// on `[0, M]`), hyperlog follows `flowCore::hyperlogtGml2` (output on
+/// `[0, 1]`), and biexponential follows `flowWorkspace::flowjo_biexp` (output
+/// on `[0, length]`).
+#[derive(Clone, Debug)]
 enum TransformOperator {
     Arcsinh { cofactor: f64 },
-    Biexponential(BiExponentialTransform),
-    Hyperlog(LogicleParameters),
-    Logicle(LogicleParameters),
+    Biexponential(FlowJoBiexp),
+    Hyperlog(Hyperlog),
+    Logicle { scale: Logicle, decades: f64 },
     None,
 }
 
 impl TransformOperator {
-    fn from_config(config: &TransformConfig) -> Self {
-        match config.method {
+    fn from_config(config: &TransformConfig) -> Result<Self, TransformError> {
+        let invalid = |method: TransformMethod| {
+            move |error: ScaleParameterError| TransformError::InvalidScaleParameters {
+                method: method.as_str(),
+                message: error.to_string(),
+            }
+        };
+        let LogicleParameters { t, m, w, a } = config.logicle;
+        Ok(match config.method {
             TransformMethod::Arcsinh => Self::Arcsinh {
                 cofactor: config.cofactor,
             },
-            TransformMethod::Biexponential => Self::Biexponential(
-                BiExponentialTransform::from_parameters(config.biexponential),
+            TransformMethod::Biexponential => {
+                let parameters = config.biexponential;
+                Self::Biexponential(
+                    FlowJoBiexp::new(
+                        // validated as finite and positive in `validate_config`
+                        parameters.length.round().max(1.0) as usize,
+                        parameters.max_range,
+                        parameters.pos,
+                        parameters.neg,
+                        parameters.width,
+                    )
+                    .map_err(invalid(TransformMethod::Biexponential))?,
+                )
+            }
+            TransformMethod::Hyperlog => Self::Hyperlog(
+                Hyperlog::new(t, w, m, a).map_err(invalid(TransformMethod::Hyperlog))?,
             ),
-            TransformMethod::Hyperlog => Self::Hyperlog(config.logicle),
-            TransformMethod::Logicle => Self::Logicle(config.logicle),
+            TransformMethod::Logicle => Self::Logicle {
+                scale: Logicle::new(t, w, m, a).map_err(invalid(TransformMethod::Logicle))?,
+                decades: m,
+            },
             TransformMethod::None => Self::None,
-        }
+        })
     }
 
-    fn apply(self, value: f64) -> f64 {
+    fn apply(&self, value: f64) -> f64 {
         match self {
             Self::Arcsinh { cofactor } => (value / cofactor).asinh(),
-            Self::Biexponential(transform) => transform.apply(value),
-            Self::Hyperlog(parameters) => hyperlog_transform(value, parameters),
-            Self::Logicle(parameters) => logicle_transform(value, parameters),
+            Self::Biexponential(transform) => transform.scale(value),
+            Self::Hyperlog(transform) => transform.scale(value),
+            Self::Logicle { scale, decades } => decades * scale.scale(value),
             Self::None => value,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct BiExponentialTransform {
-    linear: f64,
-    positive: f64,
-    negative: f64,
-}
-
-impl BiExponentialTransform {
-    fn from_parameters(parameters: BiexponentialParameters) -> Self {
-        let max_range = parameters.max_range;
-        let length = parameters.length;
-        let width = parameters.width;
-        let pos = parameters.pos;
-        let neg = parameters.neg;
-        let width_abs = if width < 0.0 { -width } else { width };
-        let width_factor = 1.0 + width_abs / 100.0;
-        let positive_decades = if pos < 1.0 { 1.0 } else { pos };
-        let negative_decades = if neg < 0.0 { 1.0 } else { neg + 1.0 };
-        let linear_scale = max_f64(max_range / pow10(positive_decades), 1.0) * width_factor;
-        let negative_linear_scale = max_f64(max_range / pow10(negative_decades), linear_scale);
-        let positive_scale = length / (1.0 + max_range / linear_scale).ln();
-        let negative_scale = length / (1.0 + max_range / negative_linear_scale).ln();
-
-        Self {
-            linear: linear_scale,
-            positive: positive_scale,
-            negative: negative_scale,
-        }
-    }
-
-    fn apply(self, value: f64) -> f64 {
-        if value >= 0.0 {
-            self.positive * (1.0 + value / self.linear).ln()
-        } else {
-            -self.negative * (1.0 + (-value) / self.linear).ln()
-        }
-    }
-}
-
-fn logicle_transform(value: f64, parameters: LogicleParameters) -> f64 {
-    let positive_scale = log_like_linear_scale(parameters);
-    let negative_scale = positive_scale * pow10(parameters.a);
-    let scale = if value < 0.0 {
-        negative_scale
-    } else {
-        positive_scale
-    };
-
-    (value / scale).asinh() / std::f64::consts::LN_10
-}
-
-fn hyperlog_transform(value: f64, parameters: LogicleParameters) -> f64 {
-    let positive_scale = log_like_linear_scale(parameters);
-    let negative_scale = positive_scale * pow10(parameters.a);
-    if value >= 0.0 {
-        (1.0 + value / positive_scale).ln() / std::f64::consts::LN_10
-    } else {
-        -((1.0 + (-value) / negative_scale).ln() / std::f64::consts::LN_10)
-    }
-}
-
-fn log_like_linear_scale(parameters: LogicleParameters) -> f64 {
-    let decade_scale = parameters.t / pow10(parameters.m);
-    max_f64(decade_scale * pow10(parameters.w), f64::MIN_POSITIVE)
-}
-
-fn pow10(value: f64) -> f64 {
-    10_f64.powf(value)
-}
-
-const fn max_f64(left: f64, right: f64) -> f64 {
-    if left > right { left } else { right }
 }
 
 fn write_fcs_output(
@@ -1252,6 +1210,7 @@ mod tests {
                 debug_dir: None,
                 threads: None,
             })
+            .expect("valid parameters")
             .apply(value);
             assert!((actual - expected).abs() <= f64::EPSILON);
         }
@@ -1267,7 +1226,8 @@ mod tests {
         ] {
             let mut config = config.clone();
             config.method = method;
-            let operator = super::TransformOperator::from_config(&config);
+            let operator =
+                super::TransformOperator::from_config(&config).expect("valid parameters");
             for value in [-1_000.0, -1.0, 0.0, 1.0, 1_000_000.0] {
                 assert!(operator.apply(value).is_finite());
             }

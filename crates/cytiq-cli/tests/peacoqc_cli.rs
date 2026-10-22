@@ -105,8 +105,31 @@ fn cli_rejects_non_fcs_peacoqc_output() {
     assert!(stderr.contains("MVP supports `.fcs`"));
 }
 
+/// Repeats of the fixture rows: `PeacoQC` needs at least `consecutive_bins`
+/// (5) bins of `min_cells` events, otherwise every bin is a short region.
+const PEACOQC_FIXTURE_REPEATS: u16 = 50;
+
 fn write_peacoqc_fixture_fcs(path: &Path) {
-    let columns = read_peacoqc_fixture_columns();
+    let base = read_peacoqc_fixture_columns();
+    let rows = f32::from(u16::try_from(base[0].len()).expect("fixture rows fit in u16"));
+    let columns = base
+        .iter()
+        .enumerate()
+        .map(|(column_index, column)| {
+            (0..PEACOQC_FIXTURE_REPEATS)
+                .flat_map(|repeat| {
+                    column.iter().map(move |value| {
+                        // keep acquisition time increasing across repeats
+                        if column_index == 0 {
+                            value + f32::from(repeat) * rows
+                        } else {
+                            *value
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let parameters = vec![
         FcsWriteParameter::new("Time"),
         FcsWriteParameter::new("FSC-A"),

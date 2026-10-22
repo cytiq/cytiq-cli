@@ -7,9 +7,11 @@
 //! Upstream R reference implementation:
 //! <https://github.com/saeyslab/PeacoQC>
 
+mod density;
 mod error;
 mod export;
 mod runner;
+mod smooth_spline;
 
 pub use crate::error::PeacoQcError;
 pub use crate::runner::{

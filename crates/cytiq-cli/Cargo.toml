@@ -15,7 +15,7 @@ cytiq-cytoscan = { path = "../cytiq-cytoscan" }
 cytiq-flowsom = { path = "../cytiq-flowsom" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
 cytiq-transform = { path = "../cytiq-transform" }
-log = "0.4.28"
+log = "0.4.30"
 
 [dev-dependencies]
 csv = "1.3.1"

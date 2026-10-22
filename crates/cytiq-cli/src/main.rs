@@ -16,7 +16,7 @@ use cytiq_autospill::{
     read_transform_manifest,
 };
 use cytiq_cytoscan::{
-    CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
+    CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod, PreprocessingMode,
     parse_channel_list as parse_cytoscan_channel_list,
 };
 use cytiq_flowsom::{
@@ -159,6 +159,10 @@ enum Commands {
         method: CliCytoScanFeatureMethod,
         #[arg(long, value_enum, default_value_t = CliCytoScanFlagMethod::Outlier)]
         flag_method: CliCytoScanFlagMethod,
+        /// `default` truncates at `$PnR`, compensates with `SPILL` and applies
+        /// `asinh(x / 150)`; `none` uses already normalized input values as-is.
+        #[arg(long, value_enum, default_value_t = CliCytoScanPreprocessing::Default)]
+        preprocessing: CliCytoScanPreprocessing,
         #[arg(long)]
         debug_dir: Option<PathBuf>,
         /// Worker thread limit; defaults to all available logical CPUs.
@@ -303,6 +307,21 @@ impl From<CliCytoScanFlagMethod> for FlagMethod {
             CliCytoScanFlagMethod::Outlier => Self::Outlier,
             CliCytoScanFlagMethod::Novelty => Self::Novelty,
             CliCytoScanFlagMethod::Both => Self::Both,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliCytoScanPreprocessing {
+    Default,
+    None,
+}
+
+impl From<CliCytoScanPreprocessing> for PreprocessingMode {
+    fn from(value: CliCytoScanPreprocessing) -> Self {
+        match value {
+            CliCytoScanPreprocessing::Default => Self::Default,
+            CliCytoScanPreprocessing::None => Self::None,
         }
     }
 }
@@ -622,16 +641,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             channel,
             method,
             flag_method,
+            preprocessing,
             debug_dir,
             threads,
         } => {
             info!(
-                "starting cytoscan: inputs={}, references={}, output={}, method={:?}, flag_method={:?}",
+                "starting cytoscan: inputs={}, references={}, output={}, method={:?}, flag_method={:?}, preprocessing={:?}",
                 input.len(),
                 reference.len(),
                 output.display(),
                 method,
-                flag_method
+                flag_method,
+                preprocessing
             );
             let channels = parse_cytoscan_channels(channels.as_deref(), &channel)
                 .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
@@ -642,6 +663,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 channels,
                 feature_method: method.into(),
                 flag_method: flag_method.into(),
+                preprocessing: preprocessing.into(),
                 debug_dir,
                 threads,
             };

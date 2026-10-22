@@ -286,6 +286,128 @@ fn cli_fails_when_cytoscan_channel_is_missing() {
     assert!(stderr.contains("CD45"));
 }
 
+#[test]
+fn cli_runs_cytoscan_without_preprocessing() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-no-preprocessing");
+    let input_dir = directory.join("test");
+    let output_dir = directory.join("out");
+    write_cytoscan_fixture_set(&input_dir, &[0.0, 4.0, 8.0, 280.0]);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "cytoscan",
+            "--input",
+            utf8(&input_dir),
+            "--output",
+            utf8(&output_dir),
+            "--channels",
+            "CD3,CD4,CD8",
+            "--method",
+            "summary",
+            "--preprocessing",
+            "none",
+            "--threads",
+            "1",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config =
+        fs::read_to_string(output_dir.join("cytoscan_config.json")).expect("config should exist");
+    assert!(config.contains("\"preprocessing\": \"none\""));
+
+    // summary features are per-channel means first; raw FL1-A of the
+    // unshifted file is 100 + 1.2 * mean(0..80) = 147.4, untouched by
+    // SPILL compensation or arcsinh
+    let header = read_csv_header(&output_dir.join("cytoscan_features.csv"));
+    let mean_column = header
+        .iter()
+        .position(|column| column.starts_with("FL1-A [CD3]"))
+        .expect("CD3 feature column should exist");
+    let features = read_csv_rows(&output_dir.join("cytoscan_features.csv"));
+    let first_mean = features[0][mean_column]
+        .parse::<f64>()
+        .expect("feature should be numeric");
+    assert!((first_mean - 147.4).abs() < 1e-3, "{first_mean}");
+
+    let rows = read_csv_rows(&output_dir.join("cytoscan_summary.csv"));
+    // columns: ..., channels, warnings
+    let warnings = &rows[0][9];
+    assert!(warnings.contains("CYTIQ_TRANSFORM"), "{warnings}");
+    assert!(!warnings.contains("spillover"), "{warnings}");
+}
+
+#[test]
+fn cli_runs_cytoscan_without_preprocessing_on_transform_output() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-transformed");
+    let raw_dir = directory.join("raw");
+    let transformed_dir = directory.join("transformed");
+    let output_dir = directory.join("out");
+    write_cytoscan_fixture_set(&raw_dir, &[0.0, 4.0, 8.0, 280.0]);
+
+    let transform = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "transform",
+            "--input",
+            utf8(&raw_dir),
+            "--output",
+            utf8(&transformed_dir),
+            "--method",
+            "arcsinh",
+            "--cofactor",
+            "150",
+            "--channels",
+            "FL1-A,FL2-A,FL3-A",
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        transform.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&transform.stderr)
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "cytoscan",
+            "--input",
+            utf8(&transformed_dir),
+            "--output",
+            utf8(&output_dir),
+            "--channels",
+            "CD3,CD4,CD8",
+            "--preprocessing",
+            "none",
+            "--threads",
+            "1",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows = read_csv_rows(&output_dir.join("cytoscan_summary.csv"));
+    assert_eq!(rows.len(), 4);
+    for row in &rows {
+        let warnings = &row[9];
+        assert!(warnings.is_empty(), "{warnings}");
+    }
+    let flagged = rows
+        .iter()
+        .filter(|row| &row[4] == "true")
+        .map(|row| row[0].to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(flagged, vec!["sample_03.transformed.fcs".to_owned()]);
+}
+
 fn write_cytoscan_fixture_set(directory: &Path, offsets: &[f32]) {
     fs::create_dir_all(directory).expect("fixture directory should be created");
     for (index, offset) in offsets.iter().enumerate() {

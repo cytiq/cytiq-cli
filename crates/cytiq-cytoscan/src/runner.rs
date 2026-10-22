@@ -34,6 +34,7 @@ pub const DEFAULT_NOVELTY_QUANTILE: f64 = 0.05;
 pub const DEFAULT_ISOLATION_TREES: usize = 1_000;
 pub const DEFAULT_FINGERPRINT_RECURSIONS: usize = 4;
 pub const DEFAULT_ARCSINH_COFACTOR: f64 = 150.0;
+const TRANSFORM_METADATA_KEY: &str = "CYTIQ_TRANSFORM";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +92,29 @@ impl FlagMethod {
     }
 }
 
+/// How FCS values are prepared before feature generation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreprocessingMode {
+    /// Upstream `CytoScan::readInput`: `$PnR` truncation, `SPILL` compensation
+    /// and `asinh(value / 150)`.
+    #[default]
+    Default,
+    /// Use selected channel values as-is; inputs are expected to be already
+    /// compensated and transformed (e.g. by `cytiq transform`).
+    None,
+}
+
+impl PreprocessingMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::None => "none",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CytoScanConfig {
     pub inputs: Vec<PathBuf>,
@@ -99,6 +123,7 @@ pub struct CytoScanConfig {
     pub channels: Vec<String>,
     pub feature_method: FeatureMethod,
     pub flag_method: FlagMethod,
+    pub preprocessing: PreprocessingMode,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
 }
@@ -113,6 +138,7 @@ impl CytoScanConfig {
             channels,
             feature_method: FeatureMethod::Quantiles,
             flag_method: FlagMethod::Outlier,
+            preprocessing: PreprocessingMode::Default,
             debug_dir: None,
             threads: None,
         }
@@ -135,6 +161,7 @@ pub struct CytoScanParameters {
     pub version: String,
     pub feature_method: FeatureMethod,
     pub flag_method: FlagMethod,
+    pub preprocessing: PreprocessingMode,
     pub requested_channels: Vec<String>,
     pub resolved_test_inputs: Vec<PathBuf>,
     pub resolved_reference_inputs: Vec<PathBuf>,
@@ -311,8 +338,8 @@ impl CytoScanRunner {
             test_paths.len(),
             reference_paths.len()
         );
-        let test_files = load_files(&test_paths, &config.channels)?;
-        let reference_files = load_files(&reference_paths, &config.channels)?;
+        let test_files = load_files(&test_paths, &config.channels, config.preprocessing)?;
+        let reference_files = load_files(&reference_paths, &config.channels, config.preprocessing)?;
         let aggregate_files = if config.flag_method.includes_novelty() {
             &reference_files
         } else {
@@ -478,6 +505,7 @@ fn build_parameters(
         version: env!("CARGO_PKG_VERSION").to_owned(),
         feature_method: config.feature_method,
         flag_method: config.flag_method,
+        preprocessing: config.preprocessing,
         requested_channels: config.channels.clone(),
         resolved_test_inputs: test_paths.to_vec(),
         resolved_reference_inputs: reference_paths.to_vec(),
@@ -621,15 +649,20 @@ fn wildcard_match_inner(pattern: &[u8], value: &[u8]) -> bool {
     }
 }
 
-fn load_files(paths: &[PathBuf], channels: &[String]) -> Result<Vec<LoadedFile>, CytoScanError> {
+fn load_files(
+    paths: &[PathBuf],
+    channels: &[String],
+    preprocessing: PreprocessingMode,
+) -> Result<Vec<LoadedFile>, CytoScanError> {
     parallel_try_map(paths, "CytoScan FCS preprocessing", |_, path| {
-        load_processed_file(path, channels)
+        load_processed_file(path, channels, preprocessing)
     })
 }
 
 fn load_processed_file(
     path: &Path,
     requested_channels: &[String],
+    preprocessing: PreprocessingMode,
 ) -> Result<LoadedFile, CytoScanError> {
     debug!("loading FCS file {}", path.display());
     let dataset = FcsReader::open(path)
@@ -644,8 +677,13 @@ fn load_processed_file(
         });
     }
     let channels = resolve_channels(path, &dataset, requested_channels)?;
-    let spillover = parse_spillover(path, &dataset)?;
-    let (matrix, warnings) = preprocess_matrix(path, &dataset, &channels, spillover.as_ref())?;
+    let (matrix, warnings) = match preprocessing {
+        PreprocessingMode::Default => {
+            let spillover = parse_spillover(path, &dataset)?;
+            preprocess_matrix(path, &dataset, &channels, spillover.as_ref())?
+        }
+        PreprocessingMode::None => passthrough_matrix(path, &dataset, &channels)?,
+    };
     Ok(LoadedFile {
         path: path.to_path_buf(),
         filename: file_name(path),
@@ -736,16 +774,34 @@ fn preprocess_matrix(
         warnings.push("FCS spillover metadata was not found; selected channels were not compensated or arcsinh transformed".to_owned());
     }
 
-    let matrix = (0..event_count)
+    Ok((rows_from_columns(&output_columns, event_count), warnings))
+}
+
+/// Selected channel values without truncation, compensation or transformation.
+fn passthrough_matrix(
+    path: &Path,
+    dataset: &FcsDataset,
+    channels: &[ResolvedChannel],
+) -> Result<(Vec<Vec<f64>>, Vec<String>), CytoScanError> {
+    let mut warnings = Vec::new();
+    if dataset.text.get(TRANSFORM_METADATA_KEY).is_none() {
+        warnings.push(format!(
+            "preprocessing is disabled but FCS has no {TRANSFORM_METADATA_KEY} metadata; assuming values are already normalized"
+        ));
+    }
+    let columns = selected_raw_columns(path, dataset, channels)?;
+    Ok((rows_from_columns(&columns, event_count(dataset)), warnings))
+}
+
+fn rows_from_columns(columns: &[Vec<f64>], event_count: usize) -> Vec<Vec<f64>> {
+    (0..event_count)
         .map(|event_index| {
-            output_columns
+            columns
                 .iter()
                 .map(|column| column[event_index])
                 .collect::<Vec<_>>()
         })
-        .collect::<Vec<_>>();
-
-    Ok((matrix, warnings))
+        .collect()
 }
 
 fn selected_raw_columns(
@@ -1802,5 +1858,64 @@ mod tests {
         let files = vec![file(5_000), file(5_000), file(5_000)];
         assert_eq!(aggregate_matrix(&files).expect("aggregate").len(), 10_002);
         assert_eq!(aggregate_event_count(&files), 10_002);
+    }
+
+    fn write_and_read_fcs(name: &str, keywords: &[(&str, &str)]) -> FcsDataset {
+        let path =
+            std::env::temp_dir().join(format!("cytiq-cytoscan-{name}-{}.fcs", std::process::id()));
+        let parameters = vec![
+            cytiq_fcs::FcsWriteParameter::new("FL1-A"),
+            cytiq_fcs::FcsWriteParameter::new("FL2-A"),
+        ];
+        let columns = vec![vec![1.0, 50.0, 100.0], vec![2.0, 20.0, 200.0]];
+        let options = keywords.iter().fold(
+            cytiq_fcs::FcsWriteOptions::new(),
+            |options, (key, value)| options.with_text_keyword(*key, *value),
+        );
+        cytiq_fcs::write_fcs3_1_f32_with_options(&path, &parameters, &columns, &options)
+            .expect("fixture FCS should write");
+        let dataset = FcsReader::open(&path)
+            .and_then(FcsReader::read)
+            .expect("fixture FCS should read");
+        std::fs::remove_file(&path).expect("fixture FCS should be removed");
+        dataset
+    }
+
+    #[test]
+    fn passthrough_keeps_values_above_range_and_ignores_spillover() {
+        let dataset = write_and_read_fcs(
+            "passthrough",
+            &[
+                ("$SPILL", "2,FL1-A,FL2-A,1,0.5,0.5,1"),
+                (TRANSFORM_METADATA_KEY, "{}"),
+            ],
+        );
+        let mut channels = resolve_channels(
+            Path::new("passthrough.fcs"),
+            &dataset,
+            &["FL1-A".to_owned(), "FL2-A".to_owned()],
+        )
+        .expect("channels should resolve");
+        // default preprocessing would clip FL1-A at this range
+        channels[0].max_range = Some(10.0);
+        let (matrix, warnings) =
+            passthrough_matrix(Path::new("passthrough.fcs"), &dataset, &channels)
+                .expect("passthrough should succeed");
+        assert_eq!(
+            matrix,
+            vec![vec![1.0, 2.0], vec![50.0, 20.0], vec![100.0, 200.0]]
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn passthrough_warns_when_transform_metadata_is_missing() {
+        let dataset = write_and_read_fcs("passthrough-unmarked", &[]);
+        let channels = resolve_channels(Path::new("unmarked.fcs"), &dataset, &["FL1-A".to_owned()])
+            .expect("channels should resolve");
+        let (_, warnings) = passthrough_matrix(Path::new("unmarked.fcs"), &dataset, &channels)
+            .expect("passthrough should succeed");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains(TRANSFORM_METADATA_KEY));
     }
 }

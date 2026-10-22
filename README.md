@@ -308,6 +308,12 @@ Rules:
   `SPILL` / `$SPILL` and transformed with `asinh(value / 150)`. Without
   spillover metadata (upstream fails) the channels stay raw and a warning is
   written to the summary
+- `--preprocessing none` disables this step and uses selected channel values
+  as-is (no `$PnR` truncation, compensation, or arcsinh), so CytoScan runs on
+  the same normalized data as downstream stages, e.g.
+  `cytiq transform ... --output transformed/` followed by
+  `cytiq cytoscan --input transformed/ --preprocessing none ...`. Files without
+  `CYTIQ_TRANSFORM` metadata get a warning in the summary
 - each file contributes a 1000-event subsample drawn with a fixed seed (42),
   reseeded per file as upstream's `set.seed(42)`, so results do not depend on
   how paths are spelled; EMD, binning, and fingerprint use an aggregate of

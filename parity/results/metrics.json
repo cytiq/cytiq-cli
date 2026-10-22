@@ -1,0 +1,555 @@
+{
+  "transform": {
+    "arcsinh": {
+      "rust_sample": {
+        "-1000": -2.59585,
+        "0": 0.0,
+        "100": 0.625145,
+        "1000": 2.59585,
+        "10000": 4.89325,
+        "262144": 8.15916
+      },
+      "references": {
+        "flowCore arcsinhTransform(b=1/150)": {
+          "max_abs_diff": 4.38389e-07,
+          "max_abs_diff_rel_to_range": 4.07614e-08,
+          "affine_fit_max_resid_rel_to_range": 4.0304e-08,
+          "ref_sample": {
+            "-1000": -2.59585,
+            "0": 0.0,
+            "100": 0.625145,
+            "1000": 2.59585,
+            "10000": 4.89325,
+            "262144": 8.15916
+          }
+        }
+      }
+    },
+    "logicle": {
+      "rust_sample": {
+        "-1000": -1.04452,
+        "0": 0.5,
+        "100": 0.959315,
+        "1000": 2.04452,
+        "10000": 3.0774,
+        "262144": 4.5
+      },
+      "references": {
+        "flowCore logicleTransform (0..M decades)": {
+          "max_abs_diff": 2.36788e-07,
+          "max_abs_diff_rel_to_range": 4.27067e-08,
+          "affine_fit_max_resid_rel_to_range": 4.28579e-08,
+          "ref_sample": {
+            "-1000": -1.04452,
+            "0": 0.5,
+            "100": 0.959315,
+            "1000": 2.04452,
+            "10000": 3.0774,
+            "262144": 4.5
+          }
+        },
+        "FlowKit/GatingML logicle (0..1)": {
+          "max_abs_diff": 3.5,
+          "max_abs_diff_rel_to_range": 2.84064,
+          "affine_fit_max_resid_rel_to_range": 1.98393e-07,
+          "ref_sample": {
+            "-1000": -0.232115,
+            "0": 0.111111,
+            "100": 0.213181,
+            "1000": 0.454338,
+            "10000": 0.683866,
+            "262144": 1.0
+          }
+        }
+      }
+    },
+    "hyperlog": {
+      "rust_sample": {
+        "-1000": -0.216836,
+        "0": 0.111111,
+        "100": 0.195964,
+        "1000": 0.439058,
+        "10000": 0.681117,
+        "262144": 1.0
+      },
+      "references": {
+        "flowCore hyperlogtGml2 (0..1)": {
+          "max_abs_diff": 2.94271e-08,
+          "max_abs_diff_rel_to_range": 2.41833e-08,
+          "affine_fit_max_resid_rel_to_range": 2.4246e-08,
+          "ref_sample": {
+            "-1000": -0.216836,
+            "0": 0.111111,
+            "100": 0.195964,
+            "1000": 0.439058,
+            "10000": 0.681117,
+            "262144": 1.0
+          }
+        },
+        "FlowKit hyperlog (0..1)": {
+          "max_abs_diff": 3.39187e-08,
+          "max_abs_diff_rel_to_range": 2.78745e-08,
+          "affine_fit_max_resid_rel_to_range": 2.73899e-08,
+          "ref_sample": {
+            "-1000": -0.216836,
+            "0": 0.111111,
+            "100": 0.195964,
+            "1000": 0.439058,
+            "10000": 0.681117,
+            "262144": 1.0
+          }
+        }
+      }
+    },
+    "biexponential": {
+      "rust_sample": {
+        "-1000": 10.2716,
+        "0": 57.0,
+        "100": 62.6782,
+        "1000": 103.728,
+        "10000": 173.466,
+        "262144": 256.915
+      },
+      "references": {
+        "flowWorkspace flowjo_biexp(256, autospill params)": {
+          "max_abs_diff": 7.59878e-06,
+          "max_abs_diff_rel_to_range": 3.08088e-08,
+          "affine_fit_max_resid_rel_to_range": 3.21463e-08,
+          "ref_sample": {
+            "-1000": 10.2716,
+            "0": 57.0,
+            "100": 62.6782,
+            "1000": 103.728,
+            "10000": 173.466,
+            "262144": 256.915
+          }
+        },
+        "flowWorkspace flowjo_biexp(4096)": {
+          "max_abs_diff": 3839.92,
+          "max_abs_diff_rel_to_range": 0.544058,
+          "affine_fit_max_resid_rel_to_range": 0.00863972,
+          "ref_sample": {
+            "-1000": -2961.1,
+            "0": 455.0,
+            "100": 873.941,
+            "1000": 1861.87,
+            "10000": 2801.96,
+            "262144": 4096.84
+          }
+        }
+      }
+    }
+  },
+  "autospill": {
+    "rust_vs_truth": {
+      "mae": 5.45231e-05,
+      "max_abs": 0.000216559,
+      "compensation_frobenius": 0.000384069
+    },
+    "upstream_vs_truth": {
+      "mae": 5.45231e-05,
+      "max_abs": 0.000216559,
+      "compensation_frobenius": 0.000384069
+    },
+    "rust_vs_upstream": {
+      "mae": 2.3556e-13,
+      "max_abs": 4.80079e-13,
+      "compensation_frobenius": 1.58604e-12
+    },
+    "rust_iterations": 3,
+    "gates": [
+      {
+        "dye": "BV421-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11837,
+        "upstream_gated": 11837,
+        "upstream_debris_in_gate": 0
+      },
+      {
+        "dye": "FITC-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11764,
+        "upstream_gated": 11764,
+        "upstream_debris_in_gate": 0
+      },
+      {
+        "dye": "PE-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11807,
+        "upstream_gated": 11807,
+        "upstream_debris_in_gate": 0
+      },
+      {
+        "dye": "PE-Cy7-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11726,
+        "upstream_gated": 11726,
+        "upstream_debris_in_gate": 0
+      },
+      {
+        "dye": "APC-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11863,
+        "upstream_gated": 11863,
+        "upstream_debris_in_gate": 0
+      },
+      {
+        "dye": "APC-Cy7-A",
+        "events": 20000,
+        "true_non_debris": 17000,
+        "rust_gated": 11633,
+        "upstream_gated": 11633,
+        "upstream_debris_in_gate": 0
+      }
+    ]
+  },
+  "autospread": {
+    "shape": [
+      6,
+      6
+    ],
+    "min_offdiag": 0.0989946,
+    "max_offdiag": 1.94135,
+    "note": "no upstream reference implementation exists (autospill/AutoSpectral do not compute it)"
+  },
+  "autospectral": {
+    "spectra": {
+      "BV421": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000222291
+      },
+      "BV510": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000180906
+      },
+      "FITC": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000357944
+      },
+      "PE": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000148609
+      },
+      "PE-Cy5": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000274472
+      },
+      "APC": {
+        "cosine": 1.0,
+        "rust_peak_value": 1.0,
+        "max_abs_diff_after_peak_norm": 0.000195323
+      }
+    },
+    "unmixing": {
+      "BV421": {
+        "rust_rmse": 861.662,
+        "rust_scale_vs_truth": 0.992021,
+        "rust_pearson": 0.9979,
+        "upstream_ols_truth_spectra_rmse": 859.651,
+        "upstream_ols_truth_spectra_pearson": 0.997909,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 3.62039e-08
+      },
+      "BV510": {
+        "rust_rmse": 340.735,
+        "rust_scale_vs_truth": 1.00029,
+        "rust_pearson": 0.999685,
+        "upstream_ols_truth_spectra_rmse": 339.379,
+        "upstream_ols_truth_spectra_pearson": 0.999687,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.56782e-08
+      },
+      "FITC": {
+        "rust_rmse": 263.345,
+        "rust_scale_vs_truth": 1.00006,
+        "rust_pearson": 0.999802,
+        "upstream_ols_truth_spectra_rmse": 262.672,
+        "upstream_ols_truth_spectra_pearson": 0.999803,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.35928e-08
+      },
+      "PE": {
+        "rust_rmse": 129.678,
+        "rust_scale_vs_truth": 1.00012,
+        "rust_pearson": 0.999953,
+        "upstream_ols_truth_spectra_rmse": 129.563,
+        "upstream_ols_truth_spectra_pearson": 0.999953,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.08232e-08
+      },
+      "PE-Cy5": {
+        "rust_rmse": 119.217,
+        "rust_scale_vs_truth": 1.00007,
+        "rust_pearson": 0.99996,
+        "upstream_ols_truth_spectra_rmse": 119.119,
+        "upstream_ols_truth_spectra_pearson": 0.99996,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 3.25467e-08
+      },
+      "APC": {
+        "rust_rmse": 89.0615,
+        "rust_scale_vs_truth": 1.00007,
+        "rust_pearson": 0.999977,
+        "upstream_ols_truth_spectra_rmse": 89.0445,
+        "upstream_ols_truth_spectra_pearson": 0.999977,
+        "rust_vs_upstream_ols_same_spectra_max_rel": 3.671e-08
+      }
+    }
+  },
+  "peacoqc": {
+    "true_bad_fraction": 0.09836,
+    "all": {
+      "rust": {
+        "removed_fraction": 0.205,
+        "precision": 0.4798,
+        "recall": 1.0
+      },
+      "upstream": {
+        "removed_fraction": 0.205,
+        "precision": 0.4798,
+        "recall": 1.0
+      },
+      "agreement": 1.0,
+      "jaccard_removed": 1.0,
+      "rust_n_bins": 400,
+      "rust_events_per_bin": 1000
+    },
+    "mad": {
+      "rust": {
+        "removed_fraction": 0.22,
+        "precision": 0.4471,
+        "recall": 1.0
+      },
+      "upstream": {
+        "removed_fraction": 0.22,
+        "precision": 0.4471,
+        "recall": 1.0
+      },
+      "agreement": 1.0,
+      "jaccard_removed": 1.0,
+      "rust_n_bins": 400,
+      "rust_events_per_bin": 1000
+    },
+    "it": {
+      "rust": {
+        "removed_fraction": 0.04,
+        "precision": 1.0,
+        "recall": 0.4067
+      },
+      "upstream": {
+        "removed_fraction": 0.04,
+        "precision": 1.0,
+        "recall": 0.4067
+      },
+      "agreement": 1.0,
+      "jaccard_removed": 1.0,
+      "rust_n_bins": 400,
+      "rust_events_per_bin": 1000
+    }
+  },
+  "flowsom": {
+    "vs_truth": {
+      "rust": {
+        "ari": 1.0,
+        "nmi": 1.0,
+        "purity": 1.0,
+        "n_clusters": 15
+      },
+      "scaleF_seed1": {
+        "ari": 1.0,
+        "nmi": 1.0,
+        "purity": 1.0,
+        "n_clusters": 15
+      },
+      "scaleF_seed2": {
+        "ari": 0.9999,
+        "nmi": 0.9999,
+        "purity": 1.0,
+        "n_clusters": 16
+      },
+      "scaleF_seed3": {
+        "ari": 1.0,
+        "nmi": 1.0,
+        "purity": 1.0,
+        "n_clusters": 15
+      },
+      "scaleT_seed1": {
+        "ari": 1.0,
+        "nmi": 0.9999,
+        "purity": 1.0,
+        "n_clusters": 17
+      },
+      "scaleT_seed2": {
+        "ari": 0.9997,
+        "nmi": 0.9996,
+        "purity": 0.9999,
+        "n_clusters": 16
+      },
+      "scaleT_seed3": {
+        "ari": 1.0,
+        "nmi": 1.0,
+        "purity": 1.0,
+        "n_clusters": 15
+      }
+    },
+    "rust_vs_upstream": {
+      "scaleF_seed1": {
+        "ari": 1.0,
+        "nmi": 1.0
+      },
+      "scaleF_seed2": {
+        "ari": 0.9999,
+        "nmi": 0.9999
+      },
+      "scaleF_seed3": {
+        "ari": 1.0,
+        "nmi": 1.0
+      },
+      "scaleT_seed1": {
+        "ari": 1.0,
+        "nmi": 0.9999
+      },
+      "scaleT_seed2": {
+        "ari": 0.9997,
+        "nmi": 0.9996
+      },
+      "scaleT_seed3": {
+        "ari": 1.0,
+        "nmi": 1.0
+      }
+    },
+    "upstream_seed_to_seed": {
+      "scaleF": {
+        "ari_mean": 0.9999,
+        "ari_min": 0.9999
+      },
+      "scaleT": {
+        "ari_mean": 0.9998,
+        "ari_min": 0.9997
+      }
+    }
+  },
+  "flowsom_hard": {
+    "vs_truth": {
+      "rust": {
+        "ari": 0.9526,
+        "nmi": 0.9609,
+        "purity": 0.9692,
+        "n_clusters": 20
+      },
+      "scaleF_seed1": {
+        "ari": 0.9543,
+        "nmi": 0.955,
+        "purity": 0.9715,
+        "n_clusters": 20
+      },
+      "scaleF_seed2": {
+        "ari": 0.9564,
+        "nmi": 0.9627,
+        "purity": 0.9707,
+        "n_clusters": 20
+      },
+      "scaleF_seed3": {
+        "ari": 0.9481,
+        "nmi": 0.9559,
+        "purity": 0.965,
+        "n_clusters": 20
+      },
+      "scaleT_seed1": {
+        "ari": 0.9497,
+        "nmi": 0.9486,
+        "purity": 0.9664,
+        "n_clusters": 20
+      },
+      "scaleT_seed2": {
+        "ari": 0.9655,
+        "nmi": 0.9598,
+        "purity": 0.9776,
+        "n_clusters": 20
+      },
+      "scaleT_seed3": {
+        "ari": 0.9492,
+        "nmi": 0.9564,
+        "purity": 0.9659,
+        "n_clusters": 20
+      }
+    },
+    "rust_vs_upstream": {
+      "scaleF_seed1": {
+        "ari": 0.9355,
+        "nmi": 0.9524
+      },
+      "scaleF_seed2": {
+        "ari": 0.9786,
+        "nmi": 0.9714
+      },
+      "scaleF_seed3": {
+        "ari": 0.972,
+        "nmi": 0.965
+      },
+      "scaleT_seed1": {
+        "ari": 0.9302,
+        "nmi": 0.9486
+      },
+      "scaleT_seed2": {
+        "ari": 0.9511,
+        "nmi": 0.9608
+      },
+      "scaleT_seed3": {
+        "ari": 0.9781,
+        "nmi": 0.9693
+      }
+    },
+    "upstream_seed_to_seed": {
+      "scaleF": {
+        "ari_mean": 0.9484,
+        "ari_min": 0.931
+      },
+      "scaleT": {
+        "ari_mean": 0.9434,
+        "ari_min": 0.9286
+      }
+    }
+  },
+  "timing": {
+    "autospill": {
+      "rust": {
+        "seconds": 1.82,
+        "max_rss_mb": 59.84
+      },
+      "upstream_seconds": 8.317
+    },
+    "peacoqc_all": {
+      "rust": {
+        "seconds": 2.88,
+        "max_rss_mb": 93.52
+      },
+      "upstream_seconds": 1.539
+    },
+    "flowsom": {
+      "rust": {
+        "seconds": 0.58,
+        "max_rss_mb": 38.7
+      },
+      "upstream_seconds": 4.297
+    },
+    "flowsom_hard": {
+      "rust": {
+        "seconds": 0.57,
+        "max_rss_mb": 39.44
+      },
+      "upstream_seconds": 4.14
+    },
+    "autospectral": {
+      "rust": {
+        "seconds": 0.47,
+        "max_rss_mb": 59.3
+      }
+    }
+  }
+}

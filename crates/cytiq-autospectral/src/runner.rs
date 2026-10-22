@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, FcsWriteParameter, Parameter};
-use log::{debug, info};
+use log::{debug, info, warn};
 use nalgebra::{DMatrix, DVector};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
@@ -27,9 +27,14 @@ pub const DEFAULT_FSC_CHANNEL: &str = "FSC-A";
 pub const DEFAULT_SSC_CHANNEL: &str = "SSC-A";
 pub const SCATTER_GATE_LOWER_QUANTILE: f64 = 0.01;
 pub const SCATTER_GATE_UPPER_QUANTILE: f64 = 0.99;
-pub const POSITIVE_GATE_QUANTILE: f64 = 0.80;
+/// `asp$positivity.threshold`: positives lie above this quantile of the
+/// negative (autofluorescence) control's primary channel.
+pub const POSITIVITY_THRESHOLD: f64 = 0.99;
+/// `asp$positive.n`: the brightest positives used for each spectrum.
+pub const POSITIVE_EVENT_LIMIT: usize = 500;
 pub const MIN_RETAINED_EVENTS: usize = 20;
-pub const MIN_POSITIVE_EVENTS: usize = 10;
+/// `asp$min.cell.stop.n`.
+pub const MIN_POSITIVE_EVENTS: usize = 20;
 pub const CONDITION_NUMBER_LIMIT: f64 = 1.0e8;
 pub const AUTO_EXCLUDED_CHANNELS: &[&str] = &["Time"];
 
@@ -423,7 +428,7 @@ fn build_references(
         config,
     )?;
     let af_raw = mean_spectrum(&af_columns, &af_gate);
-    let af_spectrum = normalize_spectrum(&af_raw, &autofluorescence.path)?;
+    let af_spectrum = normalize_spectrum(&af_raw, &autofluorescence.path, PeakNorm::Absolute)?;
 
     let single_stain_controls = controls
         .iter()
@@ -432,7 +437,9 @@ fn build_references(
     let built_single_stains = parallel_try_map(
         &single_stain_controls,
         "single-stain reference spectra",
-        |_, control| build_single_stain_reference(control, detectors, config, &af_raw),
+        |_, control| {
+            build_single_stain_reference(control, detectors, config, &af_raw, &af_columns, &af_gate)
+        },
     )?;
     let mut components = built_single_stains
         .iter()
@@ -456,8 +463,17 @@ fn build_references(
         spectrum: af_spectrum,
     });
 
+    // calculate.condition.number: fluorophores only, warn when kappa > n.
+    let fluorophore_count = components.len() - AF_COMPONENT_COUNT;
+    let fluorophore_matrix = reference_matrix(detectors.len(), &components[..fluorophore_count]);
+    let fluorophore_condition = condition_number(&fluorophore_matrix)?;
     let matrix = reference_matrix(detectors.len(), &components);
     let condition_number = condition_number(&matrix)?;
+    if fluorophore_condition > fluorophore_count as f64 {
+        warn!(
+            "fluorophore mixing matrix condition number {fluorophore_condition:.2} exceeds the number of fluorophores ({fluorophore_count})"
+        );
+    }
     if condition_number > CONDITION_NUMBER_LIMIT {
         return Err(AutoSpectralError::IllConditionedReferenceMatrix {
             condition: condition_number,
@@ -483,6 +499,8 @@ fn build_single_stain_reference(
     detectors: &[String],
     config: &AutoSpectralConfig,
     af_raw: &[f64],
+    af_columns: &[Vec<f64>],
+    af_gate: &[usize],
 ) -> Result<BuiltControlReference, AutoSpectralError> {
     let primary_channel = control
         .primary_channel
@@ -497,9 +515,19 @@ fn build_single_stain_reference(
         })?;
     let columns = detector_columns(&control.path, &control.dataset, detectors)?;
     let retained = retained_indices(&control.path, &control.dataset, &columns, config)?;
-    let positive = positive_indices(&control.path, &columns, &retained, primary_detector_index)?;
+    let negative_primary = af_gate
+        .iter()
+        .map(|&index| af_columns[primary_detector_index][index])
+        .collect::<Vec<_>>();
+    let positive = positive_indices(
+        &control.path,
+        &columns,
+        &retained,
+        primary_detector_index,
+        negative_primary,
+    )?;
     let raw = subtract_background(&mean_spectrum(&columns, &positive), af_raw);
-    let spectrum = normalize_spectrum(&raw, &control.path)?;
+    let spectrum = normalize_spectrum(&raw, &control.path, PeakNorm::Signed)?;
 
     Ok(BuiltControlReference {
         component: SpectralComponent {
@@ -558,22 +586,25 @@ fn retained_indices(
     Ok(retained)
 }
 
+/// `get.universal.negative`: events above the 99th percentile of the negative
+/// control's primary channel, keeping the brightest `positive.n` (500).
 fn positive_indices(
     path: &Path,
     detector_columns: &[Vec<f64>],
     retained: &[usize],
     primary_detector_index: usize,
+    negative_primary_values: Vec<f64>,
 ) -> Result<Vec<usize>, AutoSpectralError> {
-    let primary_values = retained
-        .iter()
-        .map(|&index| detector_columns[primary_detector_index][index])
-        .collect::<Vec<_>>();
-    let threshold = quantile(primary_values, POSITIVE_GATE_QUANTILE);
-    let positive = retained
+    let primary = &detector_columns[primary_detector_index];
+    let threshold = quantile(negative_primary_values, POSITIVITY_THRESHOLD);
+    let mut positive = retained
         .iter()
         .copied()
-        .filter(|&index| detector_columns[primary_detector_index][index] >= threshold)
+        .filter(|&index| primary[index] > threshold)
         .collect::<Vec<_>>();
+    positive.sort_by(|left, right| primary[*right].total_cmp(&primary[*left]));
+    positive.truncate(POSITIVE_EVENT_LIMIT);
+    positive.sort_unstable();
     if positive.len() < MIN_POSITIVE_EVENTS {
         return Err(AutoSpectralError::TooFewPositiveEvents {
             path: path.to_path_buf(),
@@ -866,19 +897,38 @@ fn subtract_background(values: &[f64], background: &[f64]) -> Vec<f64> {
     values
         .iter()
         .zip(background)
-        .map(|(value, background)| (value - background).max(0.0))
+        .map(|(value, background)| value - background)
         .collect()
 }
 
-fn normalize_spectrum(values: &[f64], path: &Path) -> Result<Vec<f64>, AutoSpectralError> {
-    let norm = values.iter().map(|value| value * value).sum::<f64>().sqrt();
-    if norm <= SPECTRUM_EPSILON || !norm.is_finite() {
+#[derive(Clone, Copy, Debug)]
+enum PeakNorm {
+    /// `spectrum / max(spectrum)` (`get.fluorophore.spectra`).
+    Signed,
+    /// `spectrum / max(abs(spectrum))` (autofluorescence spectra).
+    Absolute,
+}
+
+/// Peak (L-infinity) normalisation as in upstream `AutoSpectral`, so unmixed
+/// abundances are expressed in units of the peak detector.
+fn normalize_spectrum(
+    values: &[f64],
+    path: &Path,
+    norm: PeakNorm,
+) -> Result<Vec<f64>, AutoSpectralError> {
+    let peak = match norm {
+        PeakNorm::Signed => values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        PeakNorm::Absolute => values
+            .iter()
+            .fold(0.0_f64, |peak, value| peak.max(value.abs())),
+    };
+    if peak <= SPECTRUM_EPSILON || !peak.is_finite() {
         return Err(AutoSpectralError::ZeroSpectrum {
             path: path.to_path_buf(),
         });
     }
 
-    Ok(values.iter().map(|value| value / norm).collect())
+    Ok(values.iter().map(|value| value / peak).collect())
 }
 
 fn infer_primary_channel(
@@ -1026,13 +1076,16 @@ fn column_to_f32(column: &ColumnData) -> Vec<f32> {
     }
 }
 
+/// R's default (type 7) quantile.
 fn quantile(mut values: Vec<f64>, q: f64) -> f64 {
     values.sort_by(f64::total_cmp);
     if values.is_empty() {
         return 0.0;
     }
-    let index = ((values.len() - 1) as f64 * q).round() as usize;
-    values[index]
+    let position = (values.len() - 1) as f64 * q;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    values[lower] + (position - lower as f64) * (values[upper] - values[lower])
 }
 
 fn mean(values: &[f64]) -> f64 {

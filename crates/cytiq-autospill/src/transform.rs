@@ -1,4 +1,8 @@
+#![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+
 use std::collections::HashMap;
+
+use cytiq_transform::scales::FlowJoBiexp;
 
 use crate::manifest::TransformSpec;
 
@@ -8,36 +12,26 @@ const DEFAULT_POS: f64 = 4.418_539_922;
 const DEFAULT_NEG: f64 = 0.0;
 const DEFAULT_WIDTH: f64 = -100.0;
 
+/// Per-dye transform used by the bi-exponential refinement stage, as
+/// autospill's `get.transformation`: `flowWorkspace::flowjo_biexp(channelRange
+/// = length, maxValue = max.range, pos, neg, widthBasis = width)`.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BiExponentialTransform {
-    length: f64,
-    max_range: f64,
-    linear_scale: f64,
-    positive_scale: f64,
-    negative_scale: f64,
+    scale: FlowJoBiexp,
 }
 
 impl BiExponentialTransform {
     #[must_use]
     pub fn from_spec(spec: &TransformSpec) -> Self {
-        let max_range = spec.max_range.max(1.0);
-        let length = spec.length.max(1.0);
-        let width_factor = 1.0 + spec.width.abs() / 100.0;
-        let positive_decades = spec.pos.max(1.0);
-        let negative_decades = spec.neg.max(0.0) + 1.0;
-
-        let linear_scale = (max_range / 10_f64.powf(positive_decades)).max(1.0) * width_factor;
-        let negative_linear_scale = (max_range / 10_f64.powf(negative_decades)).max(linear_scale);
-        let positive_scale = length / (1.0 + max_range / linear_scale).ln();
-        let negative_scale = length / (1.0 + max_range / negative_linear_scale).ln();
-
-        Self {
-            length,
-            max_range,
-            linear_scale,
-            positive_scale,
-            negative_scale,
-        }
+        let scale = FlowJoBiexp::new(
+            spec.length.round().max(1.0) as usize,
+            spec.max_range,
+            spec.pos,
+            spec.neg,
+            spec.width,
+        )
+        .unwrap_or_else(|_| default_scale());
+        Self { scale }
     }
 
     #[must_use]
@@ -54,29 +48,24 @@ impl BiExponentialTransform {
 
     #[must_use]
     pub fn apply(&self, value: f64) -> f64 {
-        if !value.is_finite() {
-            return value;
-        }
-
-        if value >= 0.0 {
-            self.positive_scale * (1.0 + value / self.linear_scale).ln()
-        } else {
-            -self.negative_scale * (1.0 + (-value) / self.linear_scale).ln()
-        }
+        self.scale.scale(value)
     }
 
     #[must_use]
     pub fn inverse(&self, value: f64) -> f64 {
-        if !value.is_finite() {
-            return value;
-        }
-
-        if value >= 0.0 {
-            self.linear_scale * ((value / self.positive_scale).exp() - 1.0)
-        } else {
-            -self.linear_scale * (((-value) / self.negative_scale).exp() - 1.0)
-        }
+        self.scale.inverse(value)
     }
+}
+
+fn default_scale() -> FlowJoBiexp {
+    FlowJoBiexp::new(
+        DEFAULT_LENGTH as usize,
+        DEFAULT_MAX_RANGE,
+        DEFAULT_POS,
+        DEFAULT_NEG,
+        DEFAULT_WIDTH,
+    )
+    .expect("autospill default bi-exponential parameters are valid")
 }
 
 pub(crate) fn resolve_transforms(
@@ -135,6 +124,15 @@ pub(crate) fn transformed_slope_to_linear(
 #[cfg(test)]
 mod tests {
     use super::{BiExponentialTransform, transformed_slope_to_linear};
+
+    #[test]
+    fn default_transform_matches_autospill_flowjo_biexp() {
+        // flowWorkspace::flowjo_biexp(256, 262144, 4.418539922, 0, -100)
+        let transform = BiExponentialTransform::default_for_channel("FITC");
+        assert!((transform.apply(0.0) - 57.0).abs() < 1e-9);
+        assert!((transform.apply(-1_000.0) - 10.271_648_150_319_1).abs() < 1e-9);
+        assert!((transform.apply(1_000.0) - 103.728_351_851_371_09).abs() < 1e-9);
+    }
 
     #[test]
     fn transform_round_trips_values() {

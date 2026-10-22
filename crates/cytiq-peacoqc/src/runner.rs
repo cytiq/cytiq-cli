@@ -15,10 +15,14 @@ use log::{debug, info};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
+use crate::density::density;
 use crate::error::PeacoQcError;
 use crate::export::write_debug_artifacts;
+use crate::smooth_spline::smooth_spline_fitted;
 
 pub const DEFAULT_MAD_THRESHOLD: f64 = 6.0;
+/// `PeacoQC::MADOutliers` smooths each peak series with `smooth.spline(spar = 0.5)`.
+const MAD_SMOOTHING_SPAR: f64 = 0.5;
 pub const DEFAULT_IT_LIMIT: f64 = 0.6;
 pub const DEFAULT_CONSECUTIVE_BINS: usize = 5;
 pub const DEFAULT_MIN_CELLS: usize = 150;
@@ -29,8 +33,6 @@ pub const DEFAULT_PEAK_REMOVAL: f64 = 1.0 / 3.0;
 pub const DEFAULT_MIN_PEAK_BIN_PERCENT: f64 = 10.0;
 pub const DEFAULT_TIME_CHANNEL: &str = "Time";
 
-const PEAK_HISTOGRAM_MIN_BINS: usize = 16;
-const PEAK_HISTOGRAM_MAX_BINS: usize = 256;
 const MEDIAN_ABSOLUTE_DEVIATION_SCALE: f64 = 1.4826;
 const EQUALITY_EPSILON: f64 = 1.0e-12;
 
@@ -522,9 +524,15 @@ fn margin_events_for_channel(channel: &ResolvedChannel) -> (Vec<bool>, ChannelMa
         .iter()
         .copied()
         .fold(f64::NEG_INFINITY, f64::max);
-    let min_range = parameter_min_range(&channel.parameter).unwrap_or(0.0);
+    // flowCore: minRange = realMin = min($PnE zero value, max(-111, min(e)));
+    // maxRange = $PnR - 1. PeacoQC::RemoveMargins keeps
+    // e > max(min(minRange, 0), min(e)) and e < min(maxRange, max(e)).
+    let real_min = (-111.0_f64).max(minimum);
+    let min_range = parameter_min_range(&channel.parameter).unwrap_or_else(|| {
+        parameter_zero_value(&channel.parameter).map_or(real_min, |zero| zero.min(real_min))
+    });
     let max_range = parameter_max_range(&channel.parameter).unwrap_or(maximum);
-    let min_threshold = min_range.max(0.0).max(minimum);
+    let min_threshold = min_range.min(0.0).max(minimum);
     let max_threshold = max_range.min(maximum);
 
     let min_flags = channel
@@ -560,8 +568,19 @@ fn parameter_min_range(parameter: &Parameter) -> Option<f64> {
 
 fn parameter_max_range(parameter: &Parameter) -> Option<f64> {
     keyword_value(parameter, &format!("$P{}R", parameter.index))
-        .or_else(|| keyword_value(parameter, "maxRange"))
-        .or_else(|| keyword_value(parameter, "max"))
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .map(|range| range - 1.0)
+        .or_else(|| {
+            keyword_value(parameter, "maxRange")
+                .or_else(|| keyword_value(parameter, "max"))
+                .and_then(|value| value.trim().parse::<f64>().ok())
+        })
+}
+
+/// Second field of `$PnE`, which flowCore uses as the channel's zero value.
+fn parameter_zero_value(parameter: &Parameter) -> Option<f64> {
+    keyword_value(parameter, &format!("$P{}E", parameter.index))
+        .and_then(|value| value.split(',').nth(1))
         .and_then(|value| value.trim().parse::<f64>().ok())
 }
 
@@ -577,22 +596,17 @@ fn find_events_per_bin(
     channel_values: &[Vec<f64>],
     event_count: usize,
 ) -> usize {
-    let mut max_bins = DEFAULT_MAX_BINS.max(1);
+    let mut max_bins = DEFAULT_MAX_BINS.max(1) as f64;
     if remove_zeros {
         let min_non_zero = channel_values
             .iter()
-            .map(|values| {
-                values
-                    .iter()
-                    .filter(|value| value.abs() > EQUALITY_EPSILON)
-                    .count()
-            })
+            .map(|values| values.iter().filter(|value| **value != 0.0).count())
             .min()
             .unwrap_or(event_count);
-        max_bins = max_bins.min((min_non_zero / DEFAULT_MIN_CELLS).max(1));
+        max_bins = max_bins.min(min_non_zero as f64 / DEFAULT_MIN_CELLS as f64);
     }
 
-    let raw_max_cells = ((event_count as f64 / max_bins as f64) * 2.0).ceil() as usize;
+    let raw_max_cells = ((event_count as f64 / max_bins) * 2.0).ceil() as usize;
     let rounded_max_cells = ((raw_max_cells / DEFAULT_STEP) * DEFAULT_STEP) + DEFAULT_STEP;
     DEFAULT_MIN_CELLS.max(rounded_max_cells)
 }
@@ -608,9 +622,6 @@ fn make_bins(events_per_bin: usize, event_count: usize) -> Vec<Vec<usize>> {
     while start < event_count {
         let end = start.saturating_add(events_per_bin).min(event_count);
         bins.push((start..end).collect());
-        if end == event_count {
-            break;
-        }
         start = start.saturating_add(step);
     }
 
@@ -710,17 +721,32 @@ fn build_channel_peak_features(
     }
 
     let mut centers = Vec::with_capacity(target_peak_count);
-    for peak_index in 0..target_peak_count {
-        let values_for_peak = non_empty
-            .iter()
-            .filter(|peaks| peaks.len() == target_peak_count)
-            .map(|peaks| peaks[peak_index])
-            .collect::<Vec<_>>();
-        centers.push(median(values_for_peak));
+    if target_peak_count == 1 {
+        // PeacoQC::DetermineAllPeaks uses the median of all detected peaks.
+        centers.push(median(
+            non_empty
+                .iter()
+                .flat_map(|peaks| peaks.iter().copied())
+                .collect(),
+        ));
+    } else {
+        for peak_index in 0..target_peak_count {
+            let values_for_peak = non_empty
+                .iter()
+                .filter(|peaks| peaks.len() == target_peak_count)
+                .map(|peaks| peaks[peak_index])
+                .collect::<Vec<_>>();
+            centers.push(median(values_for_peak));
+        }
     }
 
     let assigned = assign_peak_clusters(&peaks_by_bin, &centers);
-    let kept_clusters = kept_peak_clusters(&assigned, bins.len(), centers.len());
+    // TooSmallClusters compares against the largest bin id that has peaks.
+    let peak_bin_count = peaks_by_bin
+        .iter()
+        .rposition(|peaks| !peaks.is_empty())
+        .map_or(0, |index| index + 1);
+    let kept_clusters = kept_peak_clusters(&assigned, peak_bin_count, centers.len());
     if kept_clusters.is_empty() {
         return None;
     }
@@ -761,74 +787,47 @@ fn build_channel_peak_features(
     })
 }
 
+/// `PeacoQC::FindThemPeaks`: local maxima of `stats::density(x)` above
+/// `peak_removal * max(density)`, falling back to the global maximum.
 fn find_peaks(values: &[f64], remove_zeros: bool, peak_removal: f64) -> Vec<f64> {
-    let mut data = values
+    let data = values
         .iter()
         .copied()
         .filter(|value| value.is_finite())
-        .filter(|value| !remove_zeros || value.abs() > EQUALITY_EPSILON)
+        .filter(|value| !remove_zeros || *value != 0.0)
         .collect::<Vec<_>>();
     if data.len() < 3 {
         return Vec::new();
     }
-    data.sort_by(f64::total_cmp);
-    let minimum = data[0];
-    let maximum = data[data.len() - 1];
-    if (maximum - minimum).abs() <= EQUALITY_EPSILON {
-        return vec![minimum];
-    }
-
-    let bin_count = (((data.len() as f64).sqrt().ceil() as usize) * 4)
-        .clamp(PEAK_HISTOGRAM_MIN_BINS, PEAK_HISTOGRAM_MAX_BINS);
-    let width = (maximum - minimum) / bin_count as f64;
-    let mut histogram = vec![0.0_f64; bin_count];
-    for value in data {
-        let mut index = ((value - minimum) / width).floor() as usize;
-        if index >= bin_count {
-            index = bin_count - 1;
-        }
-        histogram[index] += 1.0;
-    }
-    let smoothed = smooth_histogram(&histogram);
-    let max_height = smoothed.iter().copied().fold(0.0, f64::max);
-    if max_height <= EQUALITY_EPSILON {
-        return Vec::new();
-    }
+    let estimate = density(&data);
+    let max_height = estimate.y.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
     let mut peaks = Vec::new();
-    for index in 1..(smoothed.len() - 1) {
-        if smoothed[index] > smoothed[index - 1]
-            && smoothed[index] > smoothed[index + 1]
-            && smoothed[index] > peak_removal * max_height
+    for index in 1..(estimate.y.len() - 1) {
+        if estimate.y[index] > estimate.y[index - 1]
+            && estimate.y[index] > estimate.y[index + 1]
+            && estimate.y[index] > peak_removal * max_height
         {
-            peaks.push(minimum + (index as f64 + 0.5) * width);
+            peaks.push(estimate.x[index]);
         }
     }
     if peaks.is_empty() {
-        let max_index = smoothed
+        let max_index = estimate
+            .y
             .iter()
             .enumerate()
-            .max_by(|(_, left), (_, right)| left.total_cmp(right))
-            .map_or(0, |(index, _)| index);
-        peaks.push(minimum + (max_index as f64 + 0.5) * width);
+            .fold((0, f64::NEG_INFINITY), |best, (index, value)| {
+                if *value > best.1 {
+                    (index, *value)
+                } else {
+                    best
+                }
+            })
+            .0;
+        peaks.push(estimate.x[max_index]);
     }
 
     peaks
-}
-
-fn smooth_histogram(histogram: &[f64]) -> Vec<f64> {
-    let mut current = histogram.to_vec();
-    for _ in 0..2 {
-        let mut next = current.clone();
-        for index in 0..current.len() {
-            let previous = index.checked_sub(1).map_or(current[index], |i| current[i]);
-            let following = current.get(index + 1).copied().unwrap_or(current[index]);
-            next[index] = (previous + (2.0 * current[index]) + following) / 4.0;
-        }
-        current = next;
-    }
-
-    current
 }
 
 fn assign_peak_clusters(peaks_by_bin: &[Vec<f64>], centers: &[f64]) -> Vec<Vec<(usize, f64)>> {
@@ -947,7 +946,9 @@ fn isolation_tree_good_bins(matrix: &[Vec<f64>], gain_limit: f64) -> Vec<bool> {
     nodes
         .iter()
         .filter(|node| node.path_length.is_some())
-        .max_by_key(|node| node.selection.iter().filter(|selected| **selected).count())
+        .min_by_key(|node| {
+            std::cmp::Reverse(node.selection.iter().filter(|selected| **selected).count())
+        })
         .map_or_else(|| vec![true; matrix.len()], |node| node.selection.clone())
 }
 
@@ -966,6 +967,7 @@ fn best_isolation_split(
 ) -> Option<IsolationSplit> {
     let column_count = matrix.first().map_or(0, Vec::len);
     let mut best = None;
+    let mut gain_max = gain_limit;
     for column in 0..column_count {
         let mut values = rows
             .iter()
@@ -996,7 +998,8 @@ fn best_isolation_split(
                 best_col_value = Some(values[split_index - 1]);
             }
         }
-        if best_col_gain > gain_limit {
+        if best_col_gain > gain_max {
+            gain_max = best_col_gain;
             best = Some(IsolationSplit {
                 column,
                 value: best_col_value.unwrap_or(values[0]),
@@ -1018,7 +1021,10 @@ fn avg_path_length(n_datapoints: usize) -> f64 {
         0.0
     } else {
         let n = n_datapoints as f64;
-        2.0 * ((n - 1.0).ln() + 0.577_215_664_9) - (2.0 * (n - 1.0)) / n
+        // PeacoQC's avgPL hard-codes Euler's constant to 10 digits
+        #[allow(clippy::approx_constant)]
+        let euler_gamma = 0.577_215_664_9;
+        2.0 * ((n - 1.0).ln() + euler_gamma) - (2.0 * (n - 1.0)) / n
     }
 }
 
@@ -1048,7 +1054,7 @@ fn mad_bad_bins_for_features(
             .iter()
             .map(|&row| matrix.values[row][feature_index])
             .collect::<Vec<_>>();
-        let smoothed = smooth_series(&series);
+        let smoothed = smooth_spline_fitted(&series, MAD_SMOOTHING_SPAR);
         let median_value = median(smoothed.clone());
         let mad_value = median_absolute_deviation(&smoothed);
         let mut feature_bad_bins = vec![false; matrix.values.len()];
@@ -1083,16 +1089,6 @@ fn mad_bad_bins_for_features(
     }
 }
 
-fn smooth_series(values: &[f64]) -> Vec<f64> {
-    (0..values.len())
-        .map(|index| {
-            let start = index.saturating_sub(2);
-            let end = (index + 3).min(values.len());
-            mean(&values[start..end])
-        })
-        .collect()
-}
-
 fn remove_short_good_regions(good_bins: &[bool], consecutive_bins: usize) -> Vec<bool> {
     let mut output = good_bins.to_vec();
     let mut start = 0;
@@ -1102,9 +1098,7 @@ fn remove_short_good_regions(good_bins: &[bool], consecutive_bins: usize) -> Vec
         while end < good_bins.len() && good_bins[end] == value {
             end += 1;
         }
-        let bounded_by_bad_bins =
-            start > 0 && end < good_bins.len() && !good_bins[start - 1] && !good_bins[end];
-        if value && end - start < consecutive_bins && bounded_by_bad_bins {
+        if value && end - start < consecutive_bins {
             output[start..end].fill(false);
         }
         start = end;
@@ -1484,9 +1478,39 @@ mod tests {
                 vec![0, 1, 2, 3, 4, 5],
                 vec![3, 4, 5, 6, 7, 8],
                 vec![6, 7, 8, 9, 10, 11],
-                vec![9, 10, 11, 12, 13]
+                vec![9, 10, 11, 12, 13],
+                vec![12, 13]
             ]
         );
+    }
+
+    #[test]
+    fn removes_short_good_regions_at_file_edges() {
+        // R: rle() marks every good run shorter than `consecutive_bins` as bad.
+        let good = [
+            true, true, false, true, true, true, true, true, true, false, true,
+        ];
+        let cleaned = remove_short_good_regions(&good, 5);
+        assert_eq!(
+            cleaned,
+            vec![
+                false, false, false, true, true, true, true, true, true, false, false
+            ]
+        );
+    }
+
+    #[test]
+    fn isolation_split_picks_best_column_not_last_qualifying() {
+        // column 0 has a clean two-cluster split, column 1 is a weak ramp
+        let matrix = (0..20)
+            .map(|row| {
+                let first = if row < 10 { 0.0 } else { 10.0 } + f64::from(row) * 0.01;
+                vec![first, f64::from(row)]
+            })
+            .collect::<Vec<_>>();
+        let rows = (0..20).collect::<Vec<_>>();
+        let split = best_isolation_split(&matrix, &rows, 0.0).expect("split");
+        assert_eq!(split.column, 0);
     }
 
     #[test]
@@ -1509,19 +1533,29 @@ mod tests {
     fn detects_histogram_peaks() {
         let values = [1.0, 1.1, 1.2, 1.1, 10.0, 10.1, 10.2, 10.1, 10.0];
         let peaks = find_peaks(&values, false, DEFAULT_PEAK_REMOVAL);
-        assert!(!peaks.is_empty());
+        assert_eq!(peaks.len(), 2);
     }
 
     #[test]
     fn mad_detects_feature_outlier() {
+        // R: which(PeacoQC:::MADOutliers(c(rep(1, 20), 1000, rep(1, 20)), 6)) == 13:29
         let matrix = PeakMatrix {
-            values: (0..13)
-                .map(|index| if index == 6 { vec![1_000.0] } else { vec![1.0] })
+            values: (0..41)
+                .map(|index| {
+                    if index == 20 {
+                        vec![1_000.0]
+                    } else {
+                        vec![1.0]
+                    }
+                })
                 .collect(),
             feature_names: vec!["CD3:peak1".to_owned()],
         };
-        let bins = (0..13).map(|index| vec![index]).collect::<Vec<_>>();
-        let result = mad_bad_bins_for_features(&matrix, &[true; 13], &bins, 13, 13);
-        assert!(result.bad_bins[6]);
+        let bins = (0..41).map(|index| vec![index]).collect::<Vec<_>>();
+        let result = mad_bad_bins_for_features(&matrix, &[true; 41], &bins, 41, 41);
+        let flagged = (0..41)
+            .filter(|index| result.bad_bins[*index])
+            .collect::<Vec<_>>();
+        assert_eq!(flagged, (12..29).collect::<Vec<_>>());
     }
 }

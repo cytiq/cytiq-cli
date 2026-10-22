@@ -63,13 +63,27 @@ pub(crate) struct GateComputation {
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) fn gate_events(points: &[[f64; 2]]) -> Result<GateComputation, &'static str> {
+pub(crate) fn gate_events(
+    points: &[[f64; 2]],
+    data_max: Option<f64>,
+) -> Result<GateComputation, &'static str> {
     if points.len() < 3 {
         return Err("not enough FSC/SSC events");
     }
 
-    let (x_min, x_max) = range(points.iter().map(|point| point[0])).ok_or("missing FSC values")?;
-    let (y_min, y_max) = range(points.iter().map(|point| point[1])).ok_or("missing SSC values")?;
+    // do.gate: clamp the scatter range to [expr.data.min = 0, expr.data.max = max($P1R)]
+    let clamp = |(low, high): (f64, f64)| {
+        (
+            low.max(0.0),
+            data_max.map_or(high, |maximum| high.min(maximum)),
+        )
+    };
+    let (x_min, x_max) = range(points.iter().map(|point| point[0]))
+        .map(clamp)
+        .ok_or("missing FSC values")?;
+    let (y_min, y_max) = range(points.iter().map(|point| point[1]))
+        .map(clamp)
+        .ok_or("missing SSC values")?;
     if (x_max - x_min).abs() <= f64::EPSILON || (y_max - y_min).abs() <= f64::EPSILON {
         return Err("scatter values are constant");
     }
@@ -108,8 +122,7 @@ pub(crate) fn gate_events(points: &[[f64; 2]]) -> Result<GateComputation, &'stat
     // Step 2: coarse KDE + maxima search over the trimmed bounds. The maxima
     // play the role of tessellation seeds, so the exact density values matter
     // less than finding the right dominant peak ordering.
-    let bound_density =
-        DensityGrid::from_points(&bound_points, trimmed_bounds, BOUND_BW_FACTOR, BOUND_GRID);
+    let bound_density = DensityGrid::from_points(&bound_points, BOUND_BW_FACTOR, BOUND_GRID);
     let bound_maxima = bound_density.local_maxima(BOUND_NEIGHBORHOOD);
     let bound_target =
         select_target_peak(&bound_maxima, trimmed_bounds).ok_or("failed to find a density peak")?;
@@ -167,8 +180,7 @@ pub(crate) fn gate_events(points: &[[f64; 2]]) -> Result<GateComputation, &'stat
         .collect::<Vec<_>>();
     // Step 4: rerun density estimation inside the narrowed region. The second
     // tessellation matters when two nearby populations survived the first pass.
-    let region_density =
-        DensityGrid::from_points(&region_points, region_bounds, REGION_BW_FACTOR, REGION_GRID);
+    let region_density = DensityGrid::from_points(&region_points, REGION_BW_FACTOR, REGION_GRID);
     let region_maxima = region_density.local_maxima(REGION_NEIGHBORHOOD);
     if region_maxima.is_empty() {
         return Err("refined FSC/SSC tessellation found no maxima");
@@ -182,10 +194,10 @@ pub(crate) fn gate_events(points: &[[f64; 2]]) -> Result<GateComputation, &'stat
         .iter()
         .map(|&index| region_points[index])
         .collect::<Vec<_>>();
-    let final_bounds =
-        bounds_from_points(&strict_source).ok_or("strict FSC/SSC region is empty")?;
-    let final_density =
-        DensityGrid::from_points(&strict_source, final_bounds, FINAL_BW_FACTOR, FINAL_GRID);
+    if strict_source.is_empty() {
+        return Err("strict FSC/SSC region is empty");
+    }
+    let final_density = DensityGrid::from_points(&strict_source, FINAL_BW_FACTOR, FINAL_GRID);
     let densities = strict_source
         .iter()
         .map(|point| final_density.interpolate(point[0], point[1]))
@@ -279,18 +291,21 @@ struct DensityGrid {
 }
 
 impl DensityGrid {
-    fn from_points(
-        points: &[[f64; 2]],
-        bounds: Bounds,
-        bandwidth_factor: f64,
-        grid_size: usize,
-    ) -> Self {
+    /// `MASS::kde2d(x, y, h = factor * bandwidth.nrd, n = grid_size)`: the grid
+    /// spans the points' own range and the Gaussian sd is `h / 4`.
+    fn from_points(points: &[[f64; 2]], bandwidth_factor: f64, grid_size: usize) -> Self {
+        let bounds = bounds_from_points(points).unwrap_or(Bounds {
+            x_low: 0.0,
+            x_high: 0.0,
+            y_low: 0.0,
+            y_high: 0.0,
+        });
         let x_values = points.iter().map(|point| point[0]).collect::<Vec<_>>();
         let y_values = points.iter().map(|point| point[1]).collect::<Vec<_>>();
-        let bandwidth_x = (bandwidth_factor * bandwidth_nrd(&x_values))
-            .max((bounds.x_high - bounds.x_low) / 250.0);
-        let bandwidth_y = (bandwidth_factor * bandwidth_nrd(&y_values))
-            .max((bounds.y_high - bounds.y_low) / 250.0);
+        let bandwidth_x =
+            (bandwidth_factor * bandwidth_nrd(&x_values) / 4.0).max(f64::MIN_POSITIVE);
+        let bandwidth_y =
+            (bandwidth_factor * bandwidth_nrd(&y_values) / 4.0).max(f64::MIN_POSITIVE);
         let x = linspace(bounds.x_low, bounds.x_high, grid_size);
         let y = linspace(bounds.y_low, bounds.y_high, grid_size);
         let mut z = vec![0.0; grid_size * grid_size];
@@ -403,13 +418,10 @@ impl DensityGrid {
 fn select_target_peak(peaks: &[Peak], bounds: Bounds) -> Option<usize> {
     let x_range = (bounds.x_high - bounds.x_low).max(f64::EPSILON);
     let y_range = (bounds.y_high - bounds.y_low).max(f64::EPSILON);
-    peaks
-        .iter()
-        .position(|peak| {
-            ((peak.x - bounds.x_low) / x_range) > LOWER_LEFT_EXCLUSION
-                || ((peak.y - bounds.y_low) / y_range) > LOWER_LEFT_EXCLUSION
-        })
-        .or(if peaks.is_empty() { None } else { Some(0) })
+    peaks.iter().position(|peak| {
+        ((peak.x - bounds.x_low) / x_range) > LOWER_LEFT_EXCLUSION
+            || ((peak.y - bounds.y_low) / y_range) > LOWER_LEFT_EXCLUSION
+    })
 }
 
 fn select_cluster_points(points: &[[f64; 2]], peaks: &[Peak], target_peak: usize) -> Vec<usize> {
@@ -636,14 +648,17 @@ mod tests {
             points.push([20.0 + f64::from(index), 25.0 + f64::from(index % 7)]);
         }
 
-        let gate = gate_events(&points).expect("gate should succeed");
+        let gate = gate_events(&points, None).expect("gate should succeed");
         let retained_main = gate
             .gated_indices
             .iter()
             .filter(|index| **index < 120)
             .count();
-        assert!(retained_main > 60);
-        assert!(retained_main * 10 >= gate.gated_indices.len() * 9);
+        // autospill:::do.gate keeps 27 lattice points and no debris here; the
+        // regular lattice produces exactly tied KDE values, so the retained
+        // count depends on floating-point tie-breaking and is not asserted.
+        assert!(retained_main >= 20);
+        assert_eq!(retained_main, gate.gated_indices.len());
         assert!(gate.bound_maxima >= 1);
         assert!(gate.region_maxima >= 1);
     }

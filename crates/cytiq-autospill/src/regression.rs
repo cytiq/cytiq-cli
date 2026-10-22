@@ -17,63 +17,79 @@ pub(crate) struct LinearModelSummary {
     pub slope_t: f64,
 }
 
-// AutoSpill estimates each spillover term from `secondary ~ primary` using a
-// robust linear fit with an intercept. The upstream R implementation falls back
-// to OLS when robust fitting does not converge; we do the same.
+// AutoSpill estimates each spillover term from `secondary ~ primary` with
+// `MASS::rlm(y ~ x, maxit)`: Huber psi (k = 1.345), scale re-estimated each
+// iteration as `median(|resid|) / 0.6745`, IRLS until the relative change of
+// the residuals is <= 1e-4. `fit.robust.linear.model` falls back to OLS
+// (`lm(y ~ x)`) when rlm does not converge; we do the same.
 pub(crate) fn robust_linear_regression(
     x: &[f64],
     y: &[f64],
     max_iterations: usize,
 ) -> Option<RegressionResult> {
+    const HUBER_K: f64 = 1.345;
+    const IRLS_ACCURACY: f64 = 1e-4;
+
     if x.len() != y.len() || x.len() < 3 {
         return None;
     }
+    let ordinary = || {
+        ordinary_linear_regression(x, y).map(|summary| RegressionResult {
+            intercept: summary.intercept,
+            slope: summary.slope,
+        })
+    };
+    let residuals_for = |intercept: f64, slope: f64| {
+        x.iter()
+            .zip(y)
+            .map(|(x_value, y_value)| y_value - (intercept + slope * x_value))
+            .collect::<Vec<_>>()
+    };
 
     let mut weights = vec![1.0; x.len()];
     let Some((mut intercept, mut slope)) = weighted_fit(x, y, &weights) else {
-        return ordinary_linear_regression(x, y).map(|summary| RegressionResult {
-            intercept: summary.intercept,
-            slope: summary.slope,
-        });
+        return ordinary();
     };
+    let mut residuals = residuals_for(intercept, slope);
 
     for _ in 0..max_iterations {
-        let residuals = x
-            .iter()
-            .zip(y)
-            .map(|(x_value, y_value)| y_value - (intercept + slope * x_value))
-            .collect::<Vec<_>>();
-        let scale = scaled_mad(&residuals);
-        if scale <= f64::EPSILON {
+        let scale = median_absolute(&residuals) / 0.6745;
+        if scale == 0.0 {
             return Some(RegressionResult { intercept, slope });
         }
-
         for (weight, residual) in weights.iter_mut().zip(&residuals) {
-            let threshold = 1.345 * scale;
-            let absolute = residual.abs();
-            *weight = if absolute <= threshold {
-                1.0
-            } else {
-                threshold / absolute
-            };
+            *weight = (HUBER_K / (residual / scale).abs()).min(1.0);
         }
-
         let Some((next_intercept, next_slope)) = weighted_fit(x, y, &weights) else {
-            return ordinary_linear_regression(x, y).map(|summary| RegressionResult {
-                intercept: summary.intercept,
-                slope: summary.slope,
-            });
+            return ordinary();
         };
-        if (next_intercept - intercept).abs() < 1e-9 && (next_slope - slope).abs() < 1e-9 {
-            intercept = next_intercept;
-            slope = next_slope;
-            break;
-        }
+        let next_residuals = residuals_for(next_intercept, next_slope);
+        let change = residuals
+            .iter()
+            .zip(&next_residuals)
+            .map(|(old, new)| (old - new) * (old - new))
+            .sum::<f64>();
+        let previous = residuals.iter().map(|old| old * old).sum::<f64>();
         intercept = next_intercept;
         slope = next_slope;
+        residuals = next_residuals;
+        if (change / previous.max(1e-20)).sqrt() <= IRLS_ACCURACY {
+            return Some(RegressionResult { intercept, slope });
+        }
     }
 
-    Some(RegressionResult { intercept, slope })
+    ordinary()
+}
+
+fn median_absolute(values: &[f64]) -> f64 {
+    let mut absolute = values.iter().map(|value| value.abs()).collect::<Vec<_>>();
+    absolute.sort_by(f64::total_cmp);
+    let middle = absolute.len() / 2;
+    if absolute.len() % 2 == 0 {
+        f64::midpoint(absolute[middle - 1], absolute[middle])
+    } else {
+        absolute[middle]
+    }
 }
 
 pub(crate) fn ordinary_linear_regression(x: &[f64], y: &[f64]) -> Option<LinearModelSummary> {
@@ -184,7 +200,7 @@ pub(crate) fn trim_joint_pairs(
         return (Vec::new(), Vec::new());
     }
 
-    let trim_n = ((primary.len() as f64) * trim_factor).round() as usize;
+    let trim_n = ((primary.len() as f64) * trim_factor).round_ties_even() as usize;
     let trim_n = trim_n.clamp(1, primary.len());
     let primary_bounds = sorted_trim_bounds(primary, trim_n - 1);
     let secondary_bounds = sorted_trim_bounds(secondary, trim_n - 1);
@@ -337,15 +353,6 @@ fn weighted_fit(x: &[f64], y: &[f64], weights: &[f64]) -> Option<(f64, f64)> {
     let slope = covariance / variance;
     let intercept = mean_y - slope * mean_x;
     Some((intercept, slope))
-}
-
-fn scaled_mad(values: &[f64]) -> f64 {
-    let center = median(values);
-    let deviations = values
-        .iter()
-        .map(|value| (value - center).abs())
-        .collect::<Vec<_>>();
-    1.4826 * median(&deviations)
 }
 
 fn sorted_trim_bounds(values: &[f64], index: usize) -> (f64, f64) {

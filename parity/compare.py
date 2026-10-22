@@ -1,0 +1,278 @@
+"""Compute parity metrics between cytiq (Rust), upstream tools and ground truth.
+
+Usage: python compare.py <data_dir> <rust_out> <upstream_out> <metrics_json>
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+
+sys.path.insert(0, str(Path(__file__).parent / "gen"))
+from fcsio import read_fcs  # noqa: E402
+
+
+def _r(value: float, digits: int = 6) -> float:
+    return float(f"{value:.{digits}g}")
+
+
+def rust_time(rust: Path, name: str) -> dict:
+    text = (rust / f"{name}.time").read_text()
+    real = float(re.search(r"([\d.]+) real", text).group(1))
+    rss = int(re.search(r"(\d+)\s+maximum resident set size", text).group(1))
+    return {"seconds": real, "max_rss_mb": _r(rss / 2**20, 4)}
+
+
+def upstream_times(upstream: Path) -> dict:
+    timings = pd.read_csv(upstream / "timings.csv", header=None, names=["name", "seconds"])
+    return timings.groupby("name")["seconds"].last().to_dict()
+
+
+# --------------------------------------------------------------------------- transform
+def flowkit_reference(x: np.ndarray) -> dict:
+    import flowkit as fk
+
+    sample = fk.Sample(pd.DataFrame({"X": x}), sample_id="grid")
+    refs = {}
+    for key, xform in {
+        "logicle": fk.transforms.LogicleTransform(param_t=262144, param_w=0.5, param_m=4.5, param_a=0),
+        "hyperlog": fk.transforms.HyperlogTransform(param_t=262144, param_w=0.5, param_m=4.5, param_a=0),
+        "asinh_gml": fk.transforms.AsinhTransform(param_t=262144, param_m=4.5, param_a=0),
+    }.items():
+        refs[key] = xform.apply(x.reshape(-1, 1)).ravel()
+    return refs
+
+
+def compare_transform(data: Path, rust: Path, upstream: Path) -> dict:
+    grid = np.loadtxt(data / "transform" / "truth" / "grid.csv", delimiter=",")
+    up = pd.read_csv(upstream / "transform.csv")
+    fk = flowkit_reference(grid)
+    references = {
+        "arcsinh": {"flowCore arcsinhTransform(b=1/150)": up["flowcore_arcsinh"].to_numpy()},
+        "logicle": {
+            "flowCore logicleTransform (0..M decades)": up["flowcore_logicle"].to_numpy(),
+            "FlowKit/GatingML logicle (0..1)": fk["logicle"],
+        },
+        "hyperlog": {
+            "flowCore hyperlogtGml2 (0..1)": up["flowcore_hyperlog_gml2"].to_numpy(),
+            "FlowKit hyperlog (0..1)": fk["hyperlog"],
+        },
+        "biexponential": {
+            "flowWorkspace flowjo_biexp(256, autospill params)": up["flowjo_biexp_autospill"].to_numpy(),
+            "flowWorkspace flowjo_biexp(4096)": up["flowjo_biexp_4096"].to_numpy(),
+        },
+    }
+    out = {}
+    for method, refs in references.items():
+        values, names = read_fcs(rust / "transform" / f"{method}.fcs")
+        rust_values = values[:, names.index("X")]
+        entry = {"rust_sample": {str(v): _r(rust_values[np.argmin(abs(grid - v))]) for v in (-1000, 0, 100, 1000, 10000, 262144)},
+                 "references": {}}
+        for ref_name, ref in refs.items():
+            diff = rust_values - ref
+            # monotone rescaling check: are the curves the same shape up to an affine map?
+            design = np.column_stack([ref, np.ones_like(ref)])
+            coef, *_ = np.linalg.lstsq(design, rust_values, rcond=None)
+            affine_resid = rust_values - design @ coef
+            span = np.ptp(ref)
+            entry["references"][ref_name] = {
+                "max_abs_diff": _r(np.max(np.abs(diff))),
+                "max_abs_diff_rel_to_range": _r(np.max(np.abs(diff)) / span),
+                "affine_fit_max_resid_rel_to_range": _r(np.max(np.abs(affine_resid)) / span),
+                "ref_sample": {str(v): _r(ref[np.argmin(abs(grid - v))]) for v in (-1000, 0, 100, 1000, 10000, 262144)},
+            }
+        out[method] = entry
+    return out
+
+
+# --------------------------------------------------------------------------- autospill
+def _read_matrix(path: Path, order: list[str]) -> np.ndarray:
+    frame = pd.read_csv(path, index_col=0)
+    frame.index = [str(i) for i in frame.index]
+    return frame.loc[order, order].to_numpy(dtype=float)
+
+
+def _offdiag(matrix: np.ndarray) -> np.ndarray:
+    return matrix[~np.eye(len(matrix), dtype=bool)]
+
+
+def compare_autospill(data: Path, rust: Path, upstream: Path) -> dict:
+    truth_frame = pd.read_csv(data / "autospill" / "truth" / "spillover.csv", index_col=0)
+    order = list(truth_frame.index)
+    truth = truth_frame.to_numpy()
+    rust_m = _read_matrix(rust / "autospill_spillover.csv", order)
+    up_m = _read_matrix(upstream / "autospill_spillover.csv", order)
+
+    def stats(a: np.ndarray, b: np.ndarray) -> dict:
+        d = _offdiag(a - b)
+        comp = np.linalg.inv(a) - np.linalg.inv(b)
+        return {"mae": _r(np.mean(np.abs(d))), "max_abs": _r(np.max(np.abs(d))),
+                "compensation_frobenius": _r(np.linalg.norm(comp))}
+
+    summary = json.loads((rust / "autospill_debug" / "summary.json").read_text())
+    rust_gated = {g["dye"]: g["gated_events"] for g in summary["gate_stats"]}
+    gates = pd.read_csv(upstream / "autospill_gates.csv")
+    controls = pd.read_csv(data / "autospill" / "controls.csv")
+    gate_rows = []
+    for _, row in controls.iterrows():
+        debris = pd.read_csv(data / "autospill" / "truth" / f"{row.filename}.debris.csv")["debris"].to_numpy().astype(bool)
+        r_ids = gates.loc[gates["sample"] == row.dye, "event"].to_numpy() - 1
+        gate_rows.append({
+            "dye": row.dye, "events": len(debris), "true_non_debris": int((~debris).sum()),
+            "rust_gated": rust_gated[row.dye], "upstream_gated": len(r_ids),
+            "upstream_debris_in_gate": int(debris[r_ids].sum()),
+        })
+    convergence = summary.get("extra", {}).get("convergence", {})
+    return {
+        "rust_vs_truth": stats(rust_m, truth),
+        "upstream_vs_truth": stats(up_m, truth),
+        "rust_vs_upstream": stats(rust_m, up_m),
+        "rust_iterations": convergence.get("iterations"),
+        "gates": gate_rows,
+    }
+
+
+def compare_autospread(data: Path, rust: Path) -> dict:
+    frame = pd.read_csv(rust / "autospread.csv", index_col=0)
+    values = frame.to_numpy()
+    return {"shape": list(values.shape), "min_offdiag": _r(_offdiag(values).min()), "max_offdiag": _r(_offdiag(values).max()),
+            "note": "no upstream reference implementation exists (autospill/AutoSpectral do not compute it)"}
+
+
+# --------------------------------------------------------------------------- autospectral
+def compare_autospectral(data: Path, rust: Path, upstream: Path) -> dict:
+    truth = pd.read_csv(data / "autospectral" / "truth" / "spectra.csv", index_col=0)
+    fluors = [n for n in truth.index if n != "AF"]
+    rust_spec = pd.read_csv(rust / "autospectral" / "references" / "fluorophore_spectra.csv")
+    rust_spec = rust_spec.set_index("component")
+    detectors = list(truth.columns)
+    spec_rows = {}
+    for f in fluors:
+        t = truth.loc[f, detectors].to_numpy()
+        r = rust_spec.loc[f, detectors].to_numpy(dtype=float)
+        cos = float(t @ r / np.linalg.norm(t) / np.linalg.norm(r))
+        spec_rows[f] = {"cosine": _r(cos), "rust_peak_value": _r(r.max()),
+                        "max_abs_diff_after_peak_norm": _r(np.max(np.abs(r / r.max() - t)))}
+
+    abundance = pd.read_csv(data / "autospectral" / "truth" / "sample_abundance.csv")
+    unmixed, names = read_fcs(rust / "autospectral" / "unmixed" / "sample.unmixed.fcs")
+    up_unmix = pd.read_csv(upstream / "autospectral_unmix_truth_spectra.csv")
+    rows = {}
+    for f in fluors:
+        t = abundance[f].to_numpy()
+        r = unmixed[:, names.index(f)]
+        u = up_unmix[f].to_numpy()
+        slope = float(np.polyfit(t, r, 1)[0])
+        rows[f] = {
+            "rust_rmse": _r(np.sqrt(np.mean((r - t) ** 2))),
+            "rust_scale_vs_truth": _r(slope),
+            "rust_pearson": _r(np.corrcoef(r, t)[0, 1]),
+            "upstream_ols_truth_spectra_rmse": _r(np.sqrt(np.mean((u - t) ** 2))),
+            "upstream_ols_truth_spectra_pearson": _r(np.corrcoef(u, t)[0, 1]),
+        }
+    cross = upstream / "autospectral_unmix_rust_spectra.csv"
+    if cross.exists():
+        up_rust = pd.read_csv(cross)
+        for f in fluors:
+            r = unmixed[:, names.index(f)]
+            u = up_rust[f].to_numpy()
+            rows[f]["rust_vs_upstream_ols_same_spectra_max_rel"] = _r(np.max(np.abs(r - u)) / np.max(np.abs(u)))
+    return {"spectra": spec_rows, "unmixing": rows}
+
+
+# --------------------------------------------------------------------------- peacoqc
+def _mask_metrics(good: np.ndarray, bad_truth: np.ndarray) -> dict:
+    removed = ~good
+    tp = int((removed & bad_truth).sum())
+    fp = int((removed & ~bad_truth).sum())
+    fn = int((~removed & bad_truth).sum())
+    return {"removed_fraction": _r(removed.mean(), 4),
+            "precision": _r(tp / (tp + fp), 4) if tp + fp else None,
+            "recall": _r(tp / (tp + fn), 4) if tp + fn else None}
+
+
+def compare_peacoqc(data: Path, rust: Path, upstream: Path) -> dict:
+    bad = pd.read_csv(data / "peacoqc" / "truth" / "bad_mask.csv")["bad"].to_numpy().astype(bool)
+    out = {"true_bad_fraction": _r(bad.mean(), 4)}
+    for method, r_method in [("all", "all"), ("mad", "mad"), ("it", "it")]:
+        mask = pd.read_csv(rust / f"peacoqc_{method}_debug" / "mask.csv")
+        rust_good = mask["is_good"].astype(str).str.lower().eq("true").to_numpy()
+        up_good = pd.read_csv(upstream / f"peacoqc_{r_method}_mask.csv")["good"].to_numpy().astype(bool)
+        r_rem, u_rem = ~rust_good, ~up_good
+        union = (r_rem | u_rem).sum()
+        summary = json.loads((rust / f"peacoqc_{method}_debug" / "summary.json").read_text())
+        out[method] = {
+            "rust": _mask_metrics(rust_good, bad),
+            "upstream": _mask_metrics(up_good, bad),
+            "agreement": _r((rust_good == up_good).mean(), 4),
+            "jaccard_removed": _r((r_rem & u_rem).sum() / union, 4) if union else 1.0,
+            "rust_n_bins": summary["metrics"].get("n_bins"),
+            "rust_events_per_bin": summary["metrics"].get("events_per_bin"),
+        }
+    return out
+
+
+# --------------------------------------------------------------------------- flowsom
+def _hungarian_accuracy(truth: np.ndarray, pred: np.ndarray) -> float:
+    t_ids, t_inv = np.unique(truth, return_inverse=True)
+    p_ids, p_inv = np.unique(pred, return_inverse=True)
+    table = np.zeros((len(p_ids), len(t_ids)))
+    np.add.at(table, (p_inv, t_inv), 1)
+    # many-to-one: each predicted cluster maps to its majority truth label (purity)
+    return float(table.max(axis=1).sum() / len(truth))
+
+
+def compare_flowsom(data: Path, rust: Path, upstream: Path, dataset: str = "flowsom") -> dict:
+    truth = pd.read_csv(data / dataset / "truth" / "labels.csv")["label"].to_numpy()
+    runs = {"rust": pd.read_csv(rust / f"{dataset}.csv")["flowsom_metacluster"].to_numpy()}
+    for path in sorted(upstream.glob(f"{dataset}_scale*_seed*.csv")):
+        runs[path.stem.removeprefix(f"{dataset}_")] = pd.read_csv(path)["metacluster"].to_numpy()
+    out = {"vs_truth": {}, "rust_vs_upstream": {}, "upstream_seed_to_seed": {}}
+    for name, labels in runs.items():
+        out["vs_truth"][name] = {"ari": _r(adjusted_rand_score(truth, labels), 4),
+                                 "nmi": _r(normalized_mutual_info_score(truth, labels), 4),
+                                 "purity": _r(_hungarian_accuracy(truth, labels), 4),
+                                 "n_clusters": int(len(np.unique(labels)))}
+        if name != "rust":
+            out["rust_vs_upstream"][name] = {"ari": _r(adjusted_rand_score(runs["rust"], labels), 4),
+                                             "nmi": _r(normalized_mutual_info_score(runs["rust"], labels), 4)}
+    for scale in ("F", "T"):
+        seeds = [runs[k] for k in runs if k.startswith(f"scale{scale}_")]
+        aris = [adjusted_rand_score(a, b) for i, a in enumerate(seeds) for b in seeds[i + 1:]]
+        out["upstream_seed_to_seed"][f"scale{scale}"] = {"ari_mean": _r(np.mean(aris), 4), "ari_min": _r(np.min(aris), 4)}
+    return out
+
+
+def main() -> None:
+    data, rust, upstream, target = (Path(p) for p in sys.argv[1:5])
+    up_t = upstream_times(upstream)
+    metrics = {
+        "transform": compare_transform(data, rust, upstream),
+        "autospill": compare_autospill(data, rust, upstream),
+        "autospread": compare_autospread(data, rust),
+        "autospectral": compare_autospectral(data, rust, upstream),
+        "peacoqc": compare_peacoqc(data, rust, upstream),
+        "flowsom": compare_flowsom(data, rust, upstream),
+        "flowsom_hard": compare_flowsom(data, rust, upstream, "flowsom_hard"),
+        "timing": {
+            "autospill": {"rust": rust_time(rust, "autospill"), "upstream_seconds": up_t.get("autospill")},
+            "peacoqc_all": {"rust": rust_time(rust, "peacoqc_all"), "upstream_seconds": up_t.get("peacoqc_all")},
+            "flowsom": {"rust": rust_time(rust, "flowsom"), "upstream_seconds": up_t.get("flowsom_scaleF_seed1")},
+            "flowsom_hard": {"rust": rust_time(rust, "flowsom_hard"), "upstream_seconds": up_t.get("flowsom_hard_scaleF_seed1")},
+            "autospectral": {"rust": rust_time(rust, "autospectral")},
+        },
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(metrics, indent=2))
+    print(json.dumps(metrics, indent=2))
+
+
+if __name__ == "__main__":
+    main()

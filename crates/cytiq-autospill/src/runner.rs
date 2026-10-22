@@ -186,6 +186,14 @@ impl AutospillResult {
 pub struct AutospillRunner;
 pub struct AutospreadRunner;
 
+/// `read.flow.control`: `flow.set.resolution <- max($P1R)` over all controls.
+fn scatter_resolution(controls: &[ControlData]) -> Option<f64> {
+    controls
+        .iter()
+        .filter_map(|control| control.resolution)
+        .reduce(f64::max)
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ControlData {
     pub(crate) row: ControlsManifestRow,
@@ -193,6 +201,8 @@ pub(crate) struct ControlData {
     pub(crate) primary_channel: String,
     pub(crate) detector_events: Array2<f64>,
     pub(crate) scatter: Vec<[f64; 2]>,
+    /// `$P1R` of the control file; autospill clamps scatter to `[0, max($P1R)]`.
+    pub(crate) resolution: Option<f64>,
     pub(crate) primary_detector_index: usize,
     pub(crate) dye_index: usize,
 }
@@ -263,10 +273,13 @@ impl AutospillRunner {
             loaded.detectors.len()
         );
         info!("autospill pipeline: computing FSC/SSC gates");
+        let scatter_max = scatter_resolution(&loaded.controls);
         let gates = parallel_try_map(&loaded.controls, "FSC/SSC gating", |_, control| {
-            gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
-                path: control.path.clone(),
-                reason,
+            gate_events(&control.scatter, scatter_max).map_err(|reason| {
+                AutospillError::DegenerateGate {
+                    path: control.path.clone(),
+                    reason,
+                }
             })
         })?;
 
@@ -372,10 +385,13 @@ impl AutospreadRunner {
             loaded.detectors.len()
         );
         info!("autospread pipeline: computing FSC/SSC gates");
+        let scatter_max = scatter_resolution(&loaded.controls);
         let gates = parallel_try_map(&loaded.controls, "FSC/SSC gating", |_, control| {
-            gate_events(&control.scatter).map_err(|reason| AutospillError::DegenerateGate {
-                path: control.path.clone(),
-                reason,
+            gate_events(&control.scatter, scatter_max).map_err(|reason| {
+                AutospillError::DegenerateGate {
+                    path: control.path.clone(),
+                    reason,
+                }
             })
         })?;
 
@@ -535,6 +551,13 @@ fn load_controls(
             } = control;
 
             let event_count = dataset.data.columns.first().map_or(0, ColumnData::len);
+            let resolution = dataset.parameters.first().and_then(|parameter| {
+                parameter
+                    .keywords
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case("$P1R"))
+                    .and_then(|(_, value)| value.trim().parse::<f64>().ok())
+            });
             let primary_detector_index = resolve_primary_detector_index(
                 &dataset.parameters,
                 &primary_channel,
@@ -630,6 +653,7 @@ fn load_controls(
                 primary_channel,
                 detector_events,
                 scatter,
+                resolution,
                 primary_detector_index,
                 dye_index,
             })
@@ -970,7 +994,7 @@ fn refine_spillover(
         } else {
             -1.0
         };
-        let delta_change = delta_history.iter().sum::<f64>() / (delta_history.len() as f64);
+        let mut delta_change = delta_history.iter().sum::<f64>() / (delta_history.len() as f64);
 
         steps.push(ConvergenceStep {
             iteration,
@@ -994,6 +1018,8 @@ fn refine_spillover(
             lambda = RS_LAMBDA_COARSE;
             delta = -1.0;
             delta_history.fill(-1.0);
+            // refine.spillover resets rs.delta.change <- -1 on every switch
+            delta_change = -1.0;
         }
         if delta_change > -RS_DELTA_THRESHOLD_CHANGE
             && (lambda - RS_LAMBDA_COARSE).abs() <= f64::EPSILON
@@ -1002,6 +1028,7 @@ fn refine_spillover(
             lambda = RS_LAMBDA_FINE;
             delta = -1.0;
             delta_history.fill(-1.0);
+            delta_change = -1.0;
         }
 
         let converged = matches!(scale, RefinementScale::BiExponential)
@@ -1095,7 +1122,9 @@ fn compensation_error(
                 match scale {
                     RefinementScale::Linear => {
                         slopes[secondary_index] = regression.slope;
-                        skew_values[secondary_index] = skewness(&secondary_values);
+                        let (_, trimmed_secondary) =
+                            trim_joint_pairs(&primary_values, &secondary_values, RLM_TRIM_FACTOR);
+                        skew_values[secondary_index] = skewness(&trimmed_secondary);
                     }
                     RefinementScale::BiExponential => {
                         let (trimmed_primary, trimmed_secondary) =

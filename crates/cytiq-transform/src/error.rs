@@ -42,6 +42,11 @@ pub enum TransformError {
     InvalidNonNegativeParameter { parameter: &'static str },
     #[error("{parameter} must be finite")]
     InvalidFiniteParameter { parameter: &'static str },
+    #[error("invalid {method} parameters: {message}")]
+    InvalidScaleParameters {
+        method: &'static str,
+        message: String,
+    },
     #[error("failed to read FCS input `{path}`: {source}")]
     FcsRead {
         path: PathBuf,

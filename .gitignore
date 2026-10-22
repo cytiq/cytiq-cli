@@ -26,3 +26,7 @@ tmp/
 Thumbs.db
 
 run.sh
+parity/.env/
+parity/.out/
+parity/.data/
+__pycache__/

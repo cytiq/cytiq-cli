@@ -28,11 +28,11 @@ pub(crate) fn read_text_segment<R: Read + Seek>(
     }
 
     let mut pairs = Vec::with_capacity(tokens.len() / 2);
-    for chunk in tokens.chunks_exact(2) {
-        let key = std::str::from_utf8(&chunk[0]).map_err(|_| FcsError::InvalidUtf8 {
+    for [key, value] in tokens.as_chunks::<2>().0 {
+        let key = std::str::from_utf8(key).map_err(|_| FcsError::InvalidUtf8 {
             section: section_name,
         })?;
-        let value = std::str::from_utf8(&chunk[1]).map_err(|_| FcsError::InvalidUtf8 {
+        let value = std::str::from_utf8(value).map_err(|_| FcsError::InvalidUtf8 {
             section: section_name,
         })?;
         pairs.push((key.to_owned(), value.to_owned()));

@@ -1,23 +1,30 @@
-FROM rust:1.87-bookworm AS builder
+# syntax=docker/dockerfile:1
+
+# ---- Build -------------------------------------------------------------------
+FROM rust:1.99-slim-trixie AS builder
 
 WORKDIR /app
 
+# The whole workspace is needed: every member listed in Cargo.toml must exist
+# for `cargo build --locked` to resolve, even when only cytiq-cli is built.
 COPY Cargo.toml Cargo.lock ./
-COPY crates/cytiq-cli/Cargo.toml crates/cytiq-cli/Cargo.toml
-COPY crates/cytiq-autospectral/Cargo.toml crates/cytiq-autospectral/Cargo.toml
-COPY crates/cytiq-autospill/Cargo.toml crates/cytiq-autospill/Cargo.toml
-COPY crates/cytiq-fcs/Cargo.toml crates/cytiq-fcs/Cargo.toml
-COPY crates/cytiq-autospectral/src crates/cytiq-autospectral/src
-COPY crates/cytiq-autospill/src crates/cytiq-autospill/src
-COPY crates/cytiq-cli/src crates/cytiq-cli/src
-COPY crates/cytiq-fcs/src crates/cytiq-fcs/src
+COPY crates crates
 
-RUN cargo build -p cytiq-cli --release --locked
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/app/target,sharing=locked \
+    cargo build -p cytiq-cli --release --locked \
+    && install -D -m 0755 target/release/cytiq /out/cytiq
 
-FROM debian:bookworm-slim AS runtime
+# ---- Runtime -----------------------------------------------------------------
+FROM debian:trixie-slim AS runtime
 
-WORKDIR /app
+RUN useradd --system --uid 10001 --user-group --home-dir /data --create-home cytiq
 
-COPY --from=builder /app/target/release/cytiq /usr/local/bin/cytiq
+COPY --from=builder /out/cytiq /usr/local/bin/cytiq
 
-CMD ["cytiq"]
+USER cytiq
+WORKDIR /data
+
+ENTRYPOINT ["cytiq"]
+CMD ["--help"]

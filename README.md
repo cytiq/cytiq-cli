@@ -171,6 +171,8 @@ Rules:
 - AutoSpectral-style `fluorophore` and `channel` headers are accepted as aliases for `dye` and `primary_channel`
 - if `--detectors` is omitted, spectral detectors are inferred as shared non-scatter, non-time channels
 - independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
+- reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
+- positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
 - solver, autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
 
 Outputs are always written under `--output`:
@@ -238,11 +240,15 @@ Rules:
 - `--method` supports `arcsinh`, `logicle`, `biexponential`, `hyperlog`, and
   `none`; `arcsinh` uses `asinh(value / cofactor)` with default
   `--cofactor 150`
-- `logicle` and `hyperlog` use `--logicle-t`, `--logicle-m`, `--logicle-w`,
-  and `--logicle-a` for top-of-scale, decades, linear-region width, and
-  additional negative decades
-- `biexponential` uses the same default shape parameters as the existing
-  AutoSpill transform path
+- `logicle` is the Moore & Parks logicle with the `flowCore::logicleTransform`
+  output scale `[0, M]`; `hyperlog` is the Gating-ML hyperlog with the
+  `flowCore::hyperlogtGml2` output scale `[0, 1]`. Both use `--logicle-t`,
+  `--logicle-m`, `--logicle-w`, and `--logicle-a` for top-of-scale, decades,
+  linear-region width, and additional negative decades, and reject parameters
+  outside `2W <= M` and `-W <= A <= M - 2W`
+- `biexponential` is the FlowJo biexponential as
+  `flowWorkspace::flowjo_biexp(256, 262144, 4.418539922, 0, -100)` (the
+  AutoSpill defaults), with output channels in `[0, 256]`
 - FCS files and event columns are processed with Rayon; `--threads N` caps the
   worker thread count
 - if `--channels` is omitted, obvious acquisition channels such as `Time`,
@@ -365,7 +371,8 @@ diagnostics.
 ## Algorithm Notes
 
 `cytiq-autospill` follows the published AutoSpill workflow and upstream R
-reference closely for the implemented scope:
+reference closely for the implemented scope (the spillover matrix matches
+`autospill` to about 1e-13 on the parity datasets, `parity/REPORT.md`):
 - FSC/SSC auto-gating
 - robust spillover estimation
 - iterative matrix refinement
@@ -378,23 +385,29 @@ reference closely for the implemented scope:
 the MVP scope:
 - optional margin removal
 - overlapping acquisition-order bins
-- per-channel peak detection and peak-feature matrix construction
-- MAD filtering, deterministic Isolation Tree-style splitting, and
-  consecutive-bin cleanup
+- per-channel peak detection on a port of R's `stats::density` and
+  peak-feature matrix construction
+- MAD filtering on a port of `smooth.spline(spar = 0.5)`, deterministic
+  Isolation Tree splitting, and consecutive-bin cleanup
 - cleaned FCS export with `Original_ID`
 - JSON/mask outputs and Plotly HTML diagnostics
+- the good-event mask matches `PeacoQC::PeacoQC` exactly on the parity
+  datasets (`parity/REPORT.md`)
 
 `cytiq-flowsom` follows the FlowSOM paper and upstream R implementation for
 the MVP scope:
 - selected marker matrix extraction from FCS files
 - fixed z-score preprocessing
-- deterministic self-organizing map training
+- self-organizing map training following `FlowSOM`'s `som.c` (random event
+  draws from a fixed-seed generator, bubble neighbourhood on the Chebyshev
+  grid distance, radius decaying from the 0.67 grid-distance quantile to 0)
 - deterministic hierarchical metaclustering over SOM nodes
 - per-event node/metacluster assignment CSV export
 - JSON, node/metacluster CSV outputs, and Plotly HTML diagnostics
 
 `cytiq-transform` currently implements deterministic signal transforms:
-- `arcsinh`, `logicle`, `biexponential`, `hyperlog`, and `none`
+- `arcsinh`, `logicle`, `biexponential`, `hyperlog`, and `none`, matching
+  `flowCore`/`flowWorkspace` numerically (see `parity/REPORT.md`)
 - parallel FCS file and event-column transformation with Rayon
 - explicit channel inclusion and exclusion
 - FCS output with names, labels, transform metadata, and optional Plotly debug
@@ -409,6 +422,89 @@ Upstream R implementation:
 - <https://github.com/carlosproca/autospill>
 - <https://github.com/saeyslab/PeacoQC>
 - <https://github.com/saeyslab/FlowSOM>
+
+## Data
+
+### Checked-in fixtures
+
+Everything under [`data/`](data/) is **small synthetic test data** with a
+known answer; it is used by the unit and CLI tests and is safe to commit. No
+real acquisitions are stored in the repository.
+
+| Directory | Used by | Contents |
+|---|---|---|
+| [`data/fixtures/fcs/`](data/fixtures/fcs/) | `cytiq-fcs` reader tests | FCS 3.0 / 3.1 / 3.2 files with integer, float, and double channels ([README](data/fixtures/fcs/README.md)) |
+| [`data/fixtures/autospill/`](data/fixtures/autospill/) | `cytiq autospill` | two single-colour controls, [`controls.csv`](data/fixtures/autospill/controls.csv), expected [spillover](data/fixtures/autospill/expected_spillover.csv) and [compensation](data/fixtures/autospill/expected_compensation.csv) matrices ([README](data/fixtures/autospill/README.md)) |
+| [`data/fixtures/autospread/`](data/fixtures/autospread/) | `cytiq autospread` | two controls, [`controls.csv`](data/fixtures/autospread/controls.csv), [`detectors.csv`](data/fixtures/autospread/detectors.csv), expected [spread matrix](data/fixtures/autospread/expected_spread.csv) ([README](data/fixtures/autospread/README.md)) |
+| [`data/fixtures/autospectral/`](data/fixtures/autospectral/) | `cytiq autospectral` | unstained + FITC + PE controls, fully stained `sample.fcs`, [`controls.csv`](data/fixtures/autospectral/controls.csv), [`samples.csv`](data/fixtures/autospectral/samples.csv) ([README](data/fixtures/autospectral/README.md)) |
+| [`data/fixtures/peacoqc/`](data/fixtures/peacoqc/) | `cytiq peacoqc` tests | [`sample_events.csv`](data/fixtures/peacoqc/sample_events.csv) (turned into FCS by the CLI tests), R reference values for the [`density`](data/fixtures/peacoqc/density_reference.rs) and [`smooth.spline`](data/fixtures/peacoqc/smooth_spline_reference.rs) ports ([README](data/fixtures/peacoqc/README.md)) |
+| [`data/fixtures/transform/`](data/fixtures/transform/) | `cytiq-transform` tests | [flowCore / flowWorkspace reference values](data/fixtures/transform/flowcore_reference.rs) for logicle, hyperlog, and `flowjo_biexp` |
+
+The `*_reference.rs` files are generated by
+[`parity/make_fixtures.R`](parity/make_fixtures.R); regenerate them with
+`R_LIBS_USER=parity/.env/Rlib Rscript parity/make_fixtures.R` after
+`parity/setup_env.sh`.
+
+Quick runs against the fixtures:
+
+```bash
+cytiq autospill --controls data/fixtures/autospill/controls.csv \
+  --input-dir data/fixtures/autospill --output compensation.csv
+
+cytiq autospread --controls data/fixtures/autospread/controls.csv \
+  --input-dir data/fixtures/autospread \
+  --detectors data/fixtures/autospread/detectors.csv --output spread.csv
+
+cytiq autospectral --controls data/fixtures/autospectral/controls.csv \
+  --samples data/fixtures/autospectral/samples.csv \
+  --input-dir data/fixtures/autospectral --output ./autospectral-out
+
+cytiq transform -i data/fixtures/fcs/fcs3_2_mixed.fcs -o mixed.transformed.fcs
+
+cytiq flowsom --input data/fixtures/autospectral/sample.fcs \
+  --output sample.flowsom.csv --channels FITC,PE,AF
+```
+
+### Public real datasets
+
+Real acquisitions are not redistributed here; download them from their
+original sources:
+- AutoSpill paper datasets on FlowRepository (single-colour controls plus
+  `fcs_control.csv`):
+  [MM1 (FR-FCM-Z2SS)](https://flowrepository.org/id/FR-FCM-Z2SS),
+  [HS1 & HS2 (FR-FCM-Z2ST)](https://flowrepository.org/id/FR-FCM-Z2ST),
+  [Be1 (FR-FCM-Z2SV)](https://flowrepository.org/id/FR-FCM-Z2SV).
+  The `dye` column of `fcs_control.csv` names the `$PnN` channel, so
+  `filename,dye` can be used directly as the `cytiq autospill` manifest.
+- AutoSpectral worked example (9-colour panel, 5-laser Cytek Aurora; spleen,
+  lung, and liver), linked from the
+  [AutoSpectral repository](https://github.com/DrCytometer/AutoSpectral).
+
+### Parity datasets
+
+[`parity/`](parity/) generates larger synthetic datasets with ground truth
+(spillover matrices, spectra, QC artefact masks, cluster labels) and compares
+`cytiq` against the upstream R tools. Results are in
+[`parity/REPORT.md`](parity/REPORT.md); metrics are in
+[`parity/results/`](parity/results/).
+
+```bash
+parity/setup_env.sh      # once: isolated R library and Python venv under parity/.env
+parity/run_all.sh main   # data -> cytiq (current tree + main) -> R -> parity/results/*.json
+```
+
+## Docker
+
+```bash
+just docker-build        # docker build -f docker/Dockerfile -t cytiq:dev .
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" cytiq:dev autospill \
+  --controls data/fixtures/autospill/controls.csv \
+  --input-dir data/fixtures/autospill --output compensation.csv
+```
+
+The image runs as an unprivileged user (uid 10001) with `/data` as the
+working directory; `--user "$(id -u):$(id -g)"` makes outputs in the mounted
+directory belong to you.
 
 ## Development
 

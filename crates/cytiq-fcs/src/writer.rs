@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use log::debug;
@@ -76,8 +76,7 @@ pub fn write_fcs3_1_f32(
         path.display(),
         parameters.len()
     );
-    let mut file = File::create(path).map_err(FcsError::Io)?;
-    write_fcs3_1_f32_to_writer_with_options(&mut file, parameters, columns, &FcsWriteOptions::new())
+    write_to_file(path, parameters, columns, &FcsWriteOptions::new())
 }
 
 /// Write an FCS 3.1 file with little-endian 32-bit float event data and custom
@@ -100,8 +99,20 @@ pub fn write_fcs3_1_f32_with_options(
         path.display(),
         parameters.len()
     );
-    let mut file = File::create(path).map_err(FcsError::Io)?;
-    write_fcs3_1_f32_to_writer_with_options(&mut file, parameters, columns, options)
+    write_to_file(path, parameters, columns, options)
+}
+
+/// Buffered file output: the data segment is written value by value, which
+/// would otherwise cost one `write` syscall per event and channel.
+fn write_to_file(
+    path: &Path,
+    parameters: &[FcsWriteParameter],
+    columns: &[Vec<f32>],
+    options: &FcsWriteOptions,
+) -> Result<(), FcsError> {
+    let mut writer = BufWriter::new(File::create(path).map_err(FcsError::Io)?);
+    write_fcs3_1_f32_to_writer_with_options(&mut writer, parameters, columns, options)?;
+    writer.flush().map_err(FcsError::Io)
 }
 
 /// Write an FCS 3.1 float32 dataset to any byte writer.

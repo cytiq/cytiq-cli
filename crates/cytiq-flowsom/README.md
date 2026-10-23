@@ -35,6 +35,8 @@ instead of ConsensusClusterPlus. After the parity fixes Rust-vs-R ARI is
 cytiq flowsom --input sample.fcs --output sample.flowsom.csv --channels CD3,CD4,CD8
 cytiq flowsom --input sample.fcs --output sample.flowsom.csv \
   --channel CD3 --channel CD4 --debug-dir ./flowsom-debug --threads 4
+cytiq flowsom --input big.fcs --output big.flowsom.csv --channels CD3,CD4,CD8 \
+  --xdim 12 --ydim 12 --metaclusters 25 --training-events 200000
 ```
 
 From Rust:
@@ -53,11 +55,11 @@ println!("{} metaclusters", result.summary.metrics.metaclusters);
 | Item | Purpose |
 | --- | --- |
 | `FlowSomRunner::run(input, output, &FlowSomConfig)` | Run the pipeline and write the assignment CSV |
-| `FlowSomConfig` | `channels`, optional `debug_dir`, optional `threads`, `masks` |
+| `FlowSomConfig` | `channels`, optional `debug_dir`, optional `threads`, `masks`, `xdim`, `ydim`, `metaclusters`, `seed`, `scale`, `training_events` (defaults from `FLOWSOM_*`) |
 | `FlowSomResult` | `summary`, per-event `assignments`, `nodes`, `metaclusters` |
 | `FlowSomSummary`, `FlowSomParameters`, `FlowSomMetrics`, `FlowSomScaleSummary` | Run summary, written as `summary.json` |
 | `FlowSomAssignment`, `FlowSomNode`, `FlowSomMetacluster` | Output rows |
-| `FLOWSOM_*` constants | Grid size, metaclusters, iterations, learning rate, radius, seed (1), scaling |
+| `FLOWSOM_*` constants | Defaults for grid size, metaclusters, seed (1) and scaling; fixed iterations, learning rate and radius schedule |
 | `parse_channel_list` | Parse a comma-separated `--channels` value |
 | `FlowSomError` | Error type for every failure mode |
 

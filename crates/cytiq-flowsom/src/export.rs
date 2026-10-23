@@ -12,9 +12,7 @@ use plotly::common::{Mode, Title};
 use plotly::{Bar, HeatMap, Layout, Plot, Scatter};
 
 use crate::error::FlowSomError;
-use crate::runner::{
-    FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomAssignment, FlowSomMetacluster, FlowSomNode, FlowSomSummary,
-};
+use crate::runner::{FlowSomAssignment, FlowSomMetacluster, FlowSomNode, FlowSomSummary};
 
 const REPORT_FILE_NAME: &str = "report.html";
 const GRID_PLOT_HEIGHT: usize = 620;
@@ -254,8 +252,8 @@ fn plot_panel(title: &str, plot_html: &str) -> String {
 fn node_event_count_heatmap(nodes: &[FlowSomNode]) -> Plot {
     let mut plot = Plot::new();
     plot.add_trace(HeatMap::new(
-        grid_x_labels(),
-        grid_y_labels(),
+        grid_x_labels(nodes),
+        grid_y_labels(nodes),
         node_grid(nodes, |node| node.event_count as f64),
     ));
     plot.set_layout(
@@ -269,8 +267,8 @@ fn node_event_count_heatmap(nodes: &[FlowSomNode]) -> Plot {
 fn node_metacluster_heatmap(nodes: &[FlowSomNode]) -> Plot {
     let mut plot = Plot::new();
     plot.add_trace(HeatMap::new(
-        grid_x_labels(),
-        grid_y_labels(),
+        grid_x_labels(nodes),
+        grid_y_labels(nodes),
         node_grid(nodes, |node| node.metacluster as f64),
     ));
     plot.set_layout(
@@ -323,20 +321,33 @@ fn node_assignment_trace(assignments: &[FlowSomAssignment]) -> Plot {
     plot
 }
 
+/// SOM grid size, from the 1-based node coordinates.
+fn grid_size(nodes: &[FlowSomNode]) -> (usize, usize) {
+    (
+        nodes.iter().map(|node| node.x).max().unwrap_or(0),
+        nodes.iter().map(|node| node.y).max().unwrap_or(0),
+    )
+}
+
 fn node_grid(nodes: &[FlowSomNode], value: impl Fn(&FlowSomNode) -> f64) -> Vec<Vec<f64>> {
-    let mut grid = vec![vec![0.0; FLOWSOM_XDIM]; FLOWSOM_YDIM];
+    let (xdim, ydim) = grid_size(nodes);
+    let mut grid = vec![vec![0.0; xdim]; ydim];
     for node in nodes {
         grid[node.y - 1][node.x - 1] = value(node);
     }
     grid
 }
 
-fn grid_x_labels() -> Vec<String> {
-    (1..=FLOWSOM_XDIM).map(|value| value.to_string()).collect()
+fn grid_x_labels(nodes: &[FlowSomNode]) -> Vec<String> {
+    (1..=grid_size(nodes).0)
+        .map(|value| value.to_string())
+        .collect()
 }
 
-fn grid_y_labels() -> Vec<String> {
-    (1..=FLOWSOM_YDIM).map(|value| value.to_string()).collect()
+fn grid_y_labels(nodes: &[FlowSomNode]) -> Vec<String> {
+    (1..=grid_size(nodes).1)
+        .map(|value| value.to_string())
+        .collect()
 }
 
 fn escape_html(raw: &str) -> String {

@@ -732,9 +732,15 @@ Rules:
   comma-separated `--channels` value
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display
   identifiers like `$PnN [$PnS]`
-- SOM size, metacluster count, training iterations, learning-rate schedule,
-  radius schedule, random seed, and input scaling are fixed internal constants
-  for the MVP
+- `--xdim`/`--ydim` (SOM grid, default 10×10), `--metaclusters` (default 20,
+  at most `xdim·ydim`), `--seed` (default 1) and `--no-scale` (skip z-scoring)
+  default to the previous fixed values, so runs without them are unchanged
+- `--training-events N` trains the SOM on a deterministic sample of N events
+  (without replacement, from its own RNG stream) and then assigns every event
+  to its nearest node; scaling statistics still use every event. It bounds
+  training time on large files
+- training iterations, learning-rate schedule and radius schedule stay fixed
+  internal constants
 
 When `--debug-dir` is provided, `cytiq` writes:
 

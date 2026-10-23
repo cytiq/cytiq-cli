@@ -27,7 +27,8 @@ use cytiq_cytoscan::{
     parse_channel_list as parse_cytoscan_channel_list,
 };
 use cytiq_flowsom::{
-    FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
+    FLOWSOM_METACLUSTERS, FLOWSOM_RANDOM_SEED, FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomConfig,
+    FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
 use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
@@ -319,6 +320,25 @@ enum Commands {
         threads: Option<usize>,
         /// Event mask Parquet (`masks.parquet`); only kept events are
         /// clustered. Repeat to combine several masks with AND.
+        /// SOM grid width.
+        #[arg(long, default_value_t = FLOWSOM_XDIM, value_parser = parse_positive_usize)]
+        xdim: usize,
+        /// SOM grid height.
+        #[arg(long, default_value_t = FLOWSOM_YDIM, value_parser = parse_positive_usize)]
+        ydim: usize,
+        /// Number of metaclusters (at most xdim × ydim).
+        #[arg(long, default_value_t = FLOWSOM_METACLUSTERS, value_parser = parse_positive_usize)]
+        metaclusters: usize,
+        /// Training seed.
+        #[arg(long, default_value_t = FLOWSOM_RANDOM_SEED)]
+        seed: u64,
+        /// Cluster channel values as given instead of z-scoring them.
+        #[arg(long)]
+        no_scale: bool,
+        /// Train the SOM on this many events (a deterministic sample), then
+        /// assign every event; default trains on all events.
+        #[arg(long, value_parser = parse_positive_usize)]
+        training_events: Option<usize>,
         #[arg(long = "mask")]
         masks: Vec<PathBuf>,
     },
@@ -1140,6 +1160,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             channel,
             debug_dir,
             threads,
+            xdim,
+            ydim,
+            metaclusters,
+            seed,
+            no_scale,
+            training_events,
             masks,
         } => {
             info!(
@@ -1153,6 +1179,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 channels,
                 debug_dir,
                 threads,
+                xdim,
+                ydim,
+                metaclusters,
+                seed,
+                scale: !no_scale,
+                training_events,
                 masks,
             };
             let result = FlowSomRunner::run(&input, &output, &config)?;
@@ -1223,6 +1255,13 @@ fn parse_threads(raw: &str) -> Result<usize, String> {
         Err("thread count must be greater than zero".to_owned())
     } else {
         Ok(threads)
+    }
+}
+
+fn parse_positive_usize(raw: &str) -> Result<usize, String> {
+    match raw.parse::<usize>() {
+        Ok(value) if value > 0 => Ok(value),
+        _ => Err(format!("expected a positive integer, got `{raw}`")),
     }
 }
 

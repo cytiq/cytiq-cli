@@ -278,6 +278,83 @@ fn cli_clusters_only_events_kept_by_the_mask() {
     );
 }
 
+fn run_flowsom(input: &Path, output: &Path, extra: &[&str]) -> std::process::Output {
+    let mut args = vec![
+        "flowsom",
+        "--input",
+        utf8(input),
+        "--output",
+        utf8(output),
+        "--channels",
+        "FL1-A,FL2-A,FL3-A",
+    ];
+    args.extend_from_slice(extra);
+    Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args(&args)
+        .output()
+        .expect("command should run")
+}
+
+#[test]
+fn cli_trains_on_a_subsample_and_assigns_every_event() {
+    let directory = create_temp_dir("cytiq-cli-flowsom-subsample");
+    let input = directory.join("sample.fcs");
+    write_flowsom_fixture_fcs(&input);
+    let first = directory.join("first.csv");
+    let second = directory.join("second.csv");
+    let debug_dir = directory.join("debug");
+    let flags = [
+        "--training-events",
+        "20",
+        "--xdim",
+        "3",
+        "--ydim",
+        "3",
+        "--metaclusters",
+        "4",
+    ];
+
+    let output = run_flowsom(
+        &input,
+        &first,
+        &[flags.as_slice(), &["--debug-dir", utf8(&debug_dir)]].concat(),
+    );
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(run_flowsom(&input, &second, &flags).status.success());
+
+    let rows = fs::read_to_string(&first).expect("assignments should exist");
+    assert_eq!(rows, fs::read_to_string(&second).expect("second run"));
+    assert_eq!(rows.lines().count(), 61, "header plus every event");
+    let summary: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(debug_dir.join("summary.json")).expect("summary should exist"),
+    )
+    .expect("summary should be JSON");
+    assert_eq!(summary["parameters"]["training_events"], 20);
+    assert_eq!(summary["parameters"]["xdim"], 3);
+    assert_eq!(summary["metrics"]["som_nodes"], 9);
+    assert_eq!(summary["metrics"]["metaclusters"], 4);
+}
+
+#[test]
+fn cli_rejects_more_metaclusters_than_nodes() {
+    let directory = create_temp_dir("cytiq-cli-flowsom-metaclusters");
+    let input = directory.join("sample.fcs");
+    write_flowsom_fixture_fcs(&input);
+
+    let output = run_flowsom(
+        &input,
+        &directory.join("out.csv"),
+        &["--xdim", "2", "--ydim", "2", "--metaclusters", "5"],
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--metaclusters"));
+}
+
 fn write_flowsom_fixture_fcs(path: &Path) {
     let mut columns = vec![Vec::new(); 6];
     for raw_index in 0_u16..60 {

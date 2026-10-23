@@ -47,6 +47,10 @@ pub enum TransformError {
         method: &'static str,
         message: String,
     },
+    #[error(
+        "FCS input `{path}` was already transformed ({method}) by `cytiq transform`; pass `--allow-retransform` to transform it again"
+    )]
+    AlreadyTransformed { path: PathBuf, method: String },
     #[error("failed to read FCS input `{path}`: {source}")]
     FcsRead {
         path: PathBuf,

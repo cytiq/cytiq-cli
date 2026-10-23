@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cytiq_fcs::{ColumnData, FcsReader, FcsWriteParameter};
+use cytiq_fcs::{ColumnData, FcsReader, FcsWriteOptions, FcsWriteParameter};
 
 #[test]
 fn cli_runs_transform_default_arcsinh_with_metadata() {
@@ -335,6 +335,125 @@ fn cli_rejects_unsupported_transform_format() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("not supported"));
+}
+
+#[test]
+fn cli_transform_carries_metadata_and_moves_spillover() {
+    let directory = create_temp_dir("cytiq-cli-transform-metadata");
+    let input = directory.join("sample.fcs");
+    let output_path = directory.join("sample.transformed.fcs");
+    let parameters = vec![
+        FcsWriteParameter::new("Time"),
+        FcsWriteParameter::new("FSC-A").with_range(262_144.0),
+        FcsWriteParameter::with_label("FL1-A", "CD3")
+            .with_range(262_144.0)
+            .with_keyword("V", "450"),
+    ];
+    let columns = vec![
+        vec![0.0, 1.0, 2.0],
+        vec![10.0, 11.0, 12.0],
+        vec![0.0, 150.0, 262_143.0],
+    ];
+    let spillover = "1,FL1-A,1";
+    let options = FcsWriteOptions::new()
+        .with_text_keyword("$CYT", "Aurora")
+        .with_text_keyword("$SPILLOVER", spillover);
+    cytiq_fcs::write_fcs3_1_f32_with_options(&input, &parameters, &columns, &options)
+        .expect("fixture FCS should write");
+
+    let output = run_transform(&[utf8(&input), "--output", utf8(&output_path)]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dataset = FcsReader::open(&output_path)
+        .and_then(FcsReader::read)
+        .expect("transformed FCS should be readable");
+    assert_eq!(dataset.text.get("$CYT"), Some("Aurora"));
+    assert_eq!(dataset.text.get("$SPILLOVER"), None);
+    assert_eq!(dataset.text.get("CYTIQ_SOURCE_SPILL"), Some(spillover));
+    assert_eq!(dataset.text.get("$P2R"), Some("262144"));
+    assert_eq!(dataset.text.get("$P3V"), Some("450"));
+    assert_ne!(dataset.text.get("$P3R"), Some("262144"));
+
+    let margins = cytiq_fcs::recorded_margin_bounds(&dataset.text)
+        .expect("margins should parse")
+        .expect("margins should be recorded");
+    let upper = margins["FL1-A"].upper.expect("FL1-A has a range");
+    // Bounds are rounded to f32 like the transformed values.
+    assert!((upper - (262_143.0_f64 / 150.0).asinh()).abs() <= 1.0e-6);
+    assert_eq!(margins["FSC-A"].upper, Some(262_143.0));
+}
+
+#[test]
+fn cli_rejects_already_transformed_input() {
+    let directory = create_temp_dir("cytiq-cli-transform-twice");
+    let input = directory.join("sample.fcs");
+    let once = directory.join("once.fcs");
+    let twice = directory.join("twice.fcs");
+    write_transform_fixture_fcs(&input, 0.0);
+
+    let first = run_transform(&[utf8(&input), "--output", utf8(&once)]);
+    assert!(first.status.success());
+
+    let second = run_transform(&[utf8(&once), "--output", utf8(&twice)]);
+    assert!(!second.status.success());
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(stderr.contains("already transformed"), "stderr: {stderr}");
+    assert!(!twice.exists());
+
+    let forced = run_transform(&[utf8(&once), "--output", utf8(&twice), "--allow-retransform"]);
+    assert!(
+        forced.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&forced.stderr)
+    );
+}
+
+#[test]
+fn cli_accepts_negative_logicle_a() {
+    let directory = create_temp_dir("cytiq-cli-transform-negative-a");
+    let input = directory.join("sample.fcs");
+    let output_path = directory.join("sample.transformed.fcs");
+    write_transform_fixture_fcs(&input, 0.0);
+
+    let output = run_transform(&[
+        utf8(&input),
+        "--output",
+        utf8(&output_path),
+        "--method",
+        "logicle",
+        "--logicle-a",
+        "-0.25",
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let out_of_range = run_transform(&[
+        utf8(&input),
+        "--output",
+        utf8(&directory.join("rejected.fcs")),
+        "--method",
+        "logicle",
+        "--logicle-a",
+        "-1",
+    ]);
+    assert!(!out_of_range.status.success());
+    let stderr = String::from_utf8_lossy(&out_of_range.stderr);
+    assert!(stderr.contains("A is out of range"), "stderr: {stderr}");
+}
+
+fn run_transform(args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args(["transform", "--input"])
+        .args(args)
+        .output()
+        .expect("command should run")
 }
 
 fn write_transform_fixture_fcs(path: &Path, offset: f32) {

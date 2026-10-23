@@ -19,14 +19,16 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, Parameter};
+use cytiq_fcs::{
+    ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, MARGINS_KEYWORD,
+    Parameter, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
+};
 pub use error::TransformError;
 use export::write_debug_artifacts;
 use log::{debug, info};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
-const TRANSFORM_METADATA_KEY: &str = "CYTIQ_TRANSFORM";
 const DEFAULT_SUFFIX: &str = ".transformed";
 const DEFAULT_LOGICLE_T: f64 = 262_144.0;
 const DEFAULT_LOGICLE_M: f64 = 4.5;
@@ -148,6 +150,8 @@ pub struct TransformConfig {
     pub metadata_json: Option<PathBuf>,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
+    /// Transform files that an earlier `cytiq transform` already transformed.
+    pub allow_retransform: bool,
 }
 
 impl TransformConfig {
@@ -168,6 +172,7 @@ impl TransformConfig {
             metadata_json: None,
             debug_dir: None,
             threads: None,
+            allow_retransform: false,
         }
     }
 }
@@ -327,7 +332,12 @@ fn validate_config(config: &TransformConfig) -> Result<(), TransformError> {
     validate_positive("logicle-t", config.logicle.t)?;
     validate_positive("logicle-m", config.logicle.m)?;
     validate_non_negative("logicle-w", config.logicle.w)?;
-    validate_non_negative("logicle-a", config.logicle.a)?;
+    // A may be negative down to -W; the scale constructors check its range.
+    if !config.logicle.a.is_finite() {
+        return Err(TransformError::InvalidFiniteParameter {
+            parameter: "logicle-a",
+        });
+    }
     validate_positive("biexponential-length", config.biexponential.length)?;
     validate_positive("biexponential-max-range", config.biexponential.max_range)?;
     validate_positive("biexponential-pos", config.biexponential.pos)?;
@@ -533,6 +543,7 @@ fn transform_one(
     config: &TransformConfig,
 ) -> Result<TransformFileResult, TransformError> {
     let dataset = load_dataset(&plan.input)?;
+    ensure_not_transformed(&plan.input, &dataset, config)?;
     let events = event_count(&dataset);
     let selection = resolve_channel_selection(&plan.input, &dataset, config)?;
     let mut result = TransformFileResult {
@@ -562,11 +573,87 @@ fn transform_one(
 
     let transformed = transformed_columns(&dataset, &selection.channels, config, &plan.input)?;
     result.metrics = transformed.metrics;
-    let parameters = write_parameters(&dataset);
+    let operator = TransformOperator::from_config(config)?;
+    let parameters = write_parameters(&dataset, &selection.channels);
     let metadata = fcs_metadata_json(config, &result)?;
-    let options = FcsWriteOptions::new().with_text_keyword(TRANSFORM_METADATA_KEY, metadata);
+    let options = FcsWriteOptions::new()
+        .with_text_keywords(carried_keywords(&dataset))
+        .with_text_keyword(
+            MARGINS_KEYWORD,
+            transformed_margin_bounds(&plan.input, &dataset, &selection.channels, &operator)?,
+        )
+        .with_text_keyword(TRANSFORM_KEYWORD, metadata);
     write_fcs_output(plan, &parameters, &transformed.columns, &options)?;
     Ok(result)
+}
+
+fn ensure_not_transformed(
+    path: &Path,
+    dataset: &FcsDataset,
+    config: &TransformConfig,
+) -> Result<(), TransformError> {
+    let state =
+        cytiq_fcs::transform_state(&dataset.text).map_err(|source| TransformError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    match state {
+        Some(state) if !config.allow_retransform => Err(TransformError::AlreadyTransformed {
+            path: path.to_path_buf(),
+            method: state.method,
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// Source keywords that still describe the transformed values. The spillover
+/// matrix does not: compensating transformed values is wrong, so it is kept
+/// only for provenance under `CYTIQ_SOURCE_SPILL`.
+fn carried_keywords(dataset: &FcsDataset) -> Vec<(String, String)> {
+    let mut keywords = Vec::new();
+    for (key, value) in cytiq_fcs::carried_keywords(&dataset.text) {
+        if cytiq_fcs::is_spillover_keyword(&key) {
+            keywords.push((SOURCE_SPILLOVER_KEYWORD.to_owned(), value));
+        } else if key != MARGINS_KEYWORD && key != TRANSFORM_KEYWORD {
+            keywords.push((key, value));
+        }
+    }
+    keywords
+}
+
+/// Margin bounds in the space of the written values. Every transform method is
+/// monotonically increasing, so a raw bound maps to the same cut on transformed
+/// values; bounds are rounded to f32 like the values themselves.
+fn transformed_margin_bounds(
+    path: &Path,
+    dataset: &FcsDataset,
+    channels: &[ResolvedChannel],
+    operator: &TransformOperator,
+) -> Result<String, TransformError> {
+    let bounds =
+        cytiq_fcs::dataset_margin_bounds(&dataset.text, &dataset.parameters).map_err(|source| {
+            TransformError::FcsRead {
+                path: path.to_path_buf(),
+                source,
+            }
+        })?;
+    let bounds = bounds
+        .into_iter()
+        .filter_map(|(name, bounds)| {
+            let selected = channels.iter().any(|channel| channel.name == name);
+            let mapped = bounds.map(|value| {
+                let value = if selected {
+                    operator.apply(value)
+                } else {
+                    value
+                };
+                f64::from(value as f32)
+            });
+            let finite = mapped.lower.is_finite() && mapped.upper.is_none_or(f64::is_finite);
+            finite.then_some((name, mapped))
+        })
+        .collect();
+    Ok(cytiq_fcs::encode_margin_bounds(&bounds))
 }
 
 fn load_dataset(path: &Path) -> Result<FcsDataset, TransformError> {
@@ -1028,13 +1115,19 @@ fn fcs_metadata_json(
     })
 }
 
-fn write_parameters(dataset: &FcsDataset) -> Vec<FcsWriteParameter> {
+/// Source parameters with their keywords. Transformed channels get a `$PnR`
+/// computed from the transformed values; the others keep the original range.
+fn write_parameters(dataset: &FcsDataset, channels: &[ResolvedChannel]) -> Vec<FcsWriteParameter> {
     dataset
         .parameters
         .iter()
-        .map(|parameter| match parameter.label.as_ref() {
-            Some(label) => FcsWriteParameter::with_label(parameter.name.clone(), label.clone()),
-            None => FcsWriteParameter::new(parameter.name.clone()),
+        .enumerate()
+        .map(|(index, parameter)| {
+            let mut parameter = FcsWriteParameter::from_source(parameter);
+            if channels.iter().any(|channel| channel.index == index) {
+                parameter.range = None;
+            }
+            parameter
         })
         .collect()
 }
@@ -1209,6 +1302,7 @@ mod tests {
                 metadata_json: None,
                 debug_dir: None,
                 threads: None,
+                allow_retransform: false,
             })
             .expect("valid parameters")
             .apply(value);

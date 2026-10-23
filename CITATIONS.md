@@ -15,6 +15,8 @@ algorithmic implementations are:
   exposed through `cytiq peacoqc`
 - FlowSOM-style clustering in `crates/cytiq-flowsom`, exposed through
   `cytiq flowsom`
+- Gating-ML 2.0 gate evaluation in `crates/cytiq-gating`, exposed through
+  `cytiq gate`
 
 ## AutoSpill
 
@@ -161,6 +163,38 @@ input/output model:
 Relevant code:
 - `crates/cytiq-flowsom/src/runner.rs`
 - `crates/cytiq-flowsom/src/export.rs`
+
+## Gating-ML 2.0 and FlowKit
+
+If you use `cytiq gate`, or reuse the implementation in `crates/cytiq-gating`,
+cite the Gating-ML 2.0 standard:
+
+Spidlen, J., Moore, W., Brinkman, R.R. ISAC's Gating-ML 2.0 data exchange
+standard for gating description. *Cytometry Part A* 87, 683-687 (2015).
+<https://doi.org/10.1002/cyto.a.22690>
+
+Gate semantics are checked against FlowKit, the reference implementation:
+
+White, S., Quinn, J., Enzor, J. et al. FlowKit: A Python Toolkit for
+Integrated Manual and Automated Cytometry Analysis Workflows. *Frontiers in
+Immunology* 12, 768541 (2021).
+<https://doi.org/10.3389/fimmu.2021.768541>
+
+Project links:
+- Specification: <http://flowcyt.sourceforge.net/gating/latest.pdf>
+- FlowKit: <https://github.com/whitews/FlowKit>
+
+The Rust implementation evaluates existing gates. It does not estimate gates:
+- Gating-ML 2.0 parsing of rectangle, polygon, ellipsoid and Boolean gates,
+  gate hierarchies, the `flin`/`flog`/`fasinh`/`logicle`/`hyperlog`
+  transformations, and `FCS`/spectrum-matrix compensation
+- per-event membership and per-gate counts that match FlowKit 1.3.0 exactly
+  on the checked-in fixture
+
+Relevant code:
+- `crates/cytiq-gating/src/parse.rs`
+- `crates/cytiq-gating/src/geometry.rs`
+- `crates/cytiq-gating/src/evaluate.rs`
 
 ## Notes
 

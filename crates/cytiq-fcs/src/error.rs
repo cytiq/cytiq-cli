@@ -56,6 +56,10 @@ pub enum FcsError {
         data_type: &'static str,
         value: String,
     },
+    #[error("invalid spillover: {0}")]
+    InvalidSpillover(String),
+    #[error("matrix is singular")]
+    SingularMatrix,
     #[error("invalid FCS writer input: {0}")]
     InvalidWriterInput(&'static str),
 }

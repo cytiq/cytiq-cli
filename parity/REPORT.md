@@ -16,6 +16,7 @@ Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
 | `peacoqc` | PeacoQC 1.20.0 | ❌ 82–85% mask agreement, IT precision 0.04; 1.5× slower than R | ✅ 100% mask agreement in every mode; 11× faster than R |
 | `cytoscan` | CytoScan 0.1.0 (`c97f403`) | ❌ binning off by up to 0.004, sample depends on path spelling, outlier scores 3× outside isotree noise, novelty model unlike mclust | ✅ features = R to 5e-13 on identical events; outlier flags = R; novelty reproduces mclust's model choice when it is full-covariance |
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
+| `gate` | FlowKit 1.3.0 `GatingStrategy.gate_sample` | — (new command) | ✅ identical per-event membership for all 11 gates; identical counts at 1M events, ~13× faster than FlowKit |
 
 **44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
 two performance defects (section 2.6). All key
@@ -371,6 +372,36 @@ before these fixes (`7b1e2f6`).
 **Time.** Rust takes 0.04–0.3 s per run. R CytoScan takes 0.8–7.3 s for the
 features alone.
 
+### 2.8 `gate`
+
+New command, so there is no baseline. The dataset is `parity/gen/gating.py`
+(seed `20261023`): 4,000 events with `$SPILLOVER` and `$TIMESTEP`, and 11
+events placed exactly on rectangle and polygon boundaries. The Gating-ML 2.0
+strategy covers:
+- polygon gates, one of them self-intersecting
+- range, rectangle, ellipsoid and Boolean (`and`/`or`/`not`, complement) gates
+- the `flin`, `flog`, `fasinh`, `logicle` and `hyperlog` transformations
+- `FCS` compensation and spectrum-matrix compensation where the dimension is
+  named by fluorochrome
+- a four-level hierarchy
+
+| Check | Result |
+|---|---|
+| Per-gate counts vs FlowKit (4,000 events) | 11 / 11 identical |
+| Per-event membership vs FlowKit | identical for every gate (`crates/cytiq-gating/tests/flowkit_parity.rs`) |
+| Per-gate counts vs FlowKit (same strategy, 1,000,000 events) | 11 / 11 identical |
+| Wall time at 1M events | cytiq 0.17 s (includes the FCS read) vs FlowKit 2.2 s (includes `Sample` load) |
+
+Semantics were taken from the FlowKit and flowutils sources, and the
+flowutils C polygon routine was checked directly:
+- rectangles use `min <= x < max`
+- ellipsoids include their boundary
+- polygons use Sunday's winding number with `wn % 2 != 0`. Points on
+  left/bottom edges are inside and points on right/top edges are outside,
+  despite the flowutils docstring, which says edges are inclusive
+- raw events get `$PnE`, `$PnG` and `$TIMESTEP` pre-processing, as in flowio
+- Boolean gates combine the parent-intersected membership of their references
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
@@ -388,6 +419,8 @@ features alone.
 | cytoscan | `linfa` fits full covariance only; mclust also searches 13 constrained structures (EEI, VII, …) | with fewer reference files than features, Rust uses a diagonal Gaussian where mclust picks a constrained model; flags agree 50–100% | add constrained covariance models, or require n_ref > d |
 | cytoscan | upstream errors without `SPILL`; Rust warns and keeps raw values | only files without spillover metadata | — |
 | autospill | on a perfectly regular lattice the KDE produces exact ties, broken in a different order than R | degenerate data only | — |
+| gate | compensation multiplies by an explicit inverse (Gauss-Jordan); FlowKit uses `np.linalg.solve` | round-off of about 1e-16 relative, so only events lying exactly on a boundary in compensated space could flip; none did at 1M events | — |
+| gate | quadrant gates, `fratio` and `new-dimension` are not supported | rejected with an explicit error | add when a real strategy needs them |
 
 ## 4. Changed files
 

@@ -11,7 +11,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
+use cytiq_fcs::{
+    ColumnData, Error as FcsError, FcsDataset, FcsReader, Parameter, Spillover, compensate,
+    find_parameter_index,
+};
 use log::{debug, info};
 use nalgebra::DMatrix;
 use rand::rngs::StdRng;
@@ -242,7 +245,8 @@ struct ResolvedChannel {
 #[derive(Clone, Debug)]
 struct SpilloverMatrix {
     channels: Vec<String>,
-    compensation: DMatrix<f64>,
+    /// Row-major inverse of the spillover matrix.
+    compensation: Vec<f64>,
 }
 
 #[derive(Clone, Debug)]
@@ -828,18 +832,7 @@ fn compensate_selected_columns(
         .collect::<Vec<_>>();
     truncate_columns(&spill_channels, &mut spill_columns);
 
-    let event_count = event_count(dataset);
-    let mut compensated_columns = vec![vec![0.0; event_count]; spillover.channels.len()];
-    for event_index in 0..event_count {
-        for (output_index, output_column) in compensated_columns.iter_mut().enumerate() {
-            output_column[event_index] = (0..spillover.channels.len())
-                .map(|input_index| {
-                    spill_columns[input_index][event_index]
-                        * spillover.compensation[(input_index, output_index)]
-                })
-                .sum();
-        }
-    }
+    let compensated_columns = compensate(&spill_columns, &spillover.compensation);
     let spill_lookup = spillover
         .channels
         .iter()
@@ -861,71 +854,13 @@ fn parse_spillover(
     path: &Path,
     dataset: &FcsDataset,
 ) -> Result<Option<SpilloverMatrix>, CytoScanError> {
-    let Some(raw) = dataset.text.iter().find_map(|(key, value)| {
-        (key.eq_ignore_ascii_case("$SPILL")
-            || key.eq_ignore_ascii_case("SPILL")
-            || key.eq_ignore_ascii_case("$SPILLOVER")
-            || key.eq_ignore_ascii_case("SPILLOVER"))
-        .then_some(value)
-    }) else {
+    let Some(spillover) =
+        Spillover::from_dataset(dataset).map_err(|error| invalid_spillover(path, &error))?
+    else {
         return Ok(None);
     };
-
-    let tokens = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-    let Some(first) = tokens.first() else {
-        return Err(CytoScanError::InvalidSpillover {
-            path: path.to_path_buf(),
-            reason: "spillover value is empty".to_owned(),
-        });
-    };
-    let size = first
-        .parse::<usize>()
-        .map_err(|error| CytoScanError::InvalidSpillover {
-            path: path.to_path_buf(),
-            reason: format!("invalid spillover channel count `{first}`: {error}"),
-        })?;
-    if size == 0 {
-        return Err(CytoScanError::InvalidSpillover {
-            path: path.to_path_buf(),
-            reason: "spillover channel count must be greater than zero".to_owned(),
-        });
-    }
-    let expected_len = 1 + size + size * size;
-    if tokens.len() != expected_len {
-        return Err(CytoScanError::InvalidSpillover {
-            path: path.to_path_buf(),
-            reason: format!(
-                "expected {expected_len} comma-separated values for {size} channels, found {}",
-                tokens.len()
-            ),
-        });
-    }
-    let channels = tokens[1..=size]
-        .iter()
-        .map(|channel| (*channel).to_owned())
-        .collect::<Vec<_>>();
-    let values = tokens[(1 + size)..]
-        .iter()
-        .map(|token| {
-            token
-                .parse::<f64>()
-                .map_err(|error| CytoScanError::InvalidSpillover {
-                    path: path.to_path_buf(),
-                    reason: format!("invalid spillover value `{token}`: {error}"),
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    if values.iter().any(|value| !value.is_finite()) {
-        return Err(CytoScanError::InvalidSpillover {
-            path: path.to_path_buf(),
-            reason: "spillover matrix contains non-finite values".to_owned(),
-        });
-    }
-    let matrix = DMatrix::from_row_slice(size, size, &values);
+    let size = spillover.size();
+    let matrix = DMatrix::from_row_slice(size, size, spillover.matrix());
     let compensation = matrix
         .try_inverse()
         .ok_or_else(|| CytoScanError::SingularSpillover {
@@ -933,48 +868,32 @@ fn parse_spillover(
         })?;
 
     Ok(Some(SpilloverMatrix {
-        channels,
-        compensation,
+        channels: spillover.channels().to_vec(),
+        compensation: compensation.transpose().as_slice().to_vec(),
     }))
 }
 
-fn event_count(dataset: &FcsDataset) -> usize {
-    dataset.data.columns.first().map_or(0, ColumnData::len)
-}
-
-fn column_to_f64(column: &ColumnData) -> Vec<f64> {
-    match column {
-        ColumnData::UInt(values) => values.iter().map(|value| *value as f64).collect(),
-        ColumnData::F32(values) => values.iter().map(|value| f64::from(*value)).collect(),
-        ColumnData::F64(values) => values.clone(),
+fn invalid_spillover(path: &Path, error: &FcsError) -> CytoScanError {
+    let reason = match error {
+        FcsError::InvalidSpillover(reason) => reason.clone(),
+        other => other.to_string(),
+    };
+    CytoScanError::InvalidSpillover {
+        path: path.to_path_buf(),
+        reason,
     }
 }
 
-fn find_parameter_index(parameters: &[Parameter], requested: &str) -> Option<usize> {
-    let requested = requested.trim();
-    parameters
-        .iter()
-        .position(|parameter| parameter.name == requested)
-        .or_else(|| {
-            parameters.iter().position(|parameter| {
-                parameter
-                    .label
-                    .as_deref()
-                    .is_some_and(|label| label == requested)
-            })
-        })
-        .or_else(|| {
-            parameters
-                .iter()
-                .position(|parameter| display_parameter_identifier(parameter) == requested)
-        })
+fn event_count(dataset: &FcsDataset) -> usize {
+    dataset.event_count()
+}
+
+fn column_to_f64(column: &ColumnData) -> Vec<f64> {
+    column.to_f64_vec()
 }
 
 fn display_parameter_identifier(parameter: &Parameter) -> String {
-    parameter.label.as_ref().map_or_else(
-        || parameter.name.clone(),
-        |label| format!("{} [{}]", parameter.name, label),
-    )
+    parameter.display_identifier()
 }
 
 fn parameter_max_range(parameter: &Parameter) -> Option<f64> {

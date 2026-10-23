@@ -22,6 +22,7 @@ use cytiq_cytoscan::{
 use cytiq_flowsom::{
     FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
+use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
 };
@@ -217,6 +218,23 @@ enum Commands {
         #[arg(long)]
         debug_dir: Option<PathBuf>,
     },
+    /// Apply a Gating-ML 2.0 gating strategy to an FCS file and report per-gate counts.
+    Gate {
+        /// Input FCS file.
+        #[arg(long)]
+        input: PathBuf,
+        /// Gating-ML 2.0 XML file with the gate definitions.
+        #[arg(long)]
+        gating_ml: PathBuf,
+        /// Output path for the per-gate counts report.
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = CliGateOutputFormat::Csv)]
+        format: CliGateOutputFormat,
+        /// Worker thread limit; defaults to all available logical CPUs.
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+    },
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
     Flowsom {
         #[arg(long)]
@@ -235,6 +253,21 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliGateOutputFormat {
+    Csv,
+    Json,
+}
+
+impl From<CliGateOutputFormat> for GateOutputFormat {
+    fn from(value: CliGateOutputFormat) -> Self {
+        match value {
+            CliGateOutputFormat::Csv => Self::Csv,
+            CliGateOutputFormat::Json => Self::Json,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -717,6 +750,41 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 info!("wrote transform debug artifacts to {}", debug_dir.display());
             }
             info!("transform completed for {} file(s)", result.files.len());
+            Ok(())
+        }
+        Commands::Gate {
+            input,
+            gating_ml,
+            output,
+            format,
+            threads,
+        } => {
+            info!(
+                "starting gate: input={}, gating_ml={}, output={}",
+                input.display(),
+                gating_ml.display(),
+                output.display()
+            );
+            let config = GatingConfig {
+                input,
+                gating_ml,
+                output,
+                format: format.into(),
+                threads,
+            };
+            let result = GatingRunner::run(&config)?;
+            for gate in &result.gates {
+                debug!(
+                    "gate `{}`: {} event(s), {:.2}% of parent",
+                    gate.gate_path, gate.count, gate.percent_of_parent
+                );
+            }
+            info!(
+                "gate evaluated {} gate(s) over {} event(s); wrote {}",
+                result.gates.len(),
+                result.event_count,
+                result.output.display()
+            );
             Ok(())
         }
         Commands::Flowsom {

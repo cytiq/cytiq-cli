@@ -266,6 +266,28 @@ fn writes_and_reads_custom_text_keywords() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn parameter_keywords_do_not_leak_across_indexes() -> Result<(), Box<dyn Error>> {
+    let parameters = (1..=12)
+        .map(|index| FcsWriteParameter::new(format!("CH{index}")))
+        .collect::<Vec<_>>();
+    let columns = vec![vec![1.0_f32, 2.0]; parameters.len()];
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f32_to_writer(&mut bytes, &parameters, &columns)?;
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    let first = &dataset.parameters[0].keywords;
+    assert!(first.iter().any(|(key, _)| key == "$P1N"));
+    assert!(
+        first
+            .iter()
+            .all(|(key, _)| !key.starts_with("$P10") && !key.starts_with("$P11")),
+        "unexpected keywords for $P1: {first:?}"
+    );
+
+    Ok(())
+}
+
 fn fixture_path(name: &str) -> PathBuf {
     fixture_dir().join(name)
 }

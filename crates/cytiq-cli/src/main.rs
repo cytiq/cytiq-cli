@@ -28,6 +28,7 @@ use cytiq_flowsom::{
     FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
+use cytiq_meta::{MetaConfig, MetaRunner};
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
 };
@@ -239,6 +240,18 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+    },
+    /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
+    Meta {
+        /// Input FCS file.
+        #[arg(long)]
+        input: PathBuf,
+        /// Output JSON path; omit or pass `-` to write to stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Replace an existing output file.
+        #[arg(long)]
+        overwrite: bool,
     },
     /// Remove debris, doublets and dead cells; writes per-event masks,
     /// metrics, Gating-ML gates and an HTML report.
@@ -901,6 +914,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.gates.len(),
                 result.event_count,
                 result.output.display()
+            );
+            Ok(())
+        }
+        Commands::Meta {
+            input,
+            output,
+            overwrite,
+        } => {
+            let output = output.filter(|path| path.as_os_str() != "-");
+            debug!("starting meta: input={}", input.display());
+            let config = MetaConfig {
+                input,
+                output,
+                overwrite,
+            };
+            let result = MetaRunner::run(&config)?;
+            debug!(
+                "meta read {} TEXT keyword(s) and {} parameter(s)",
+                result.metadata.text.len(),
+                result.metadata.parameter_count
             );
             Ok(())
         }

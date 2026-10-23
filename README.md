@@ -13,6 +13,7 @@ Current workspace crates:
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-transform`: FCS signal transformation workflow
+- `cytiq-meta`: FCS metadata export as JSON
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -577,6 +578,58 @@ flowsom-debug/
 
 The HTML report uses Plotly for SOM-node, metacluster, and assignment
 diagnostics.
+
+## Meta
+
+`cytiq meta` writes the metadata of an FCS file as one JSON document: file
+identity (path, size, SHA-256), FCS version, segment offsets, event count,
+parameters with their `$Pn*` keywords, and every TEXT keyword in file order.
+
+```bash
+# stdout (logs go to stderr, so piping is safe)
+cytiq meta --input raw.fcs | jq '.text | length'
+
+# file
+cytiq meta --input raw.fcs --output raw.meta.json
+```
+
+Rules:
+- omit `--output` or pass `--output -` to write to stdout
+- output files are not replaced unless `--overwrite` is passed; the file is
+  written through a temporary sibling and renamed, so it is never left
+  half-written
+- `text` and `supplemental_text` are `[key, value]` pairs exactly as stored,
+  including `$SPILLOVER` and vendor keywords
+
+Shape:
+
+```json
+{
+  "schema_version": 1,
+  "tool": "cytiq meta",
+  "version": "0.1.0",
+  "file": { "path": "raw.fcs", "name": "raw.fcs", "bytes": 96813, "sha256": "..." },
+  "fcs_version": "FCS3.1",
+  "segments": { "text": [256, 812], "data": [813, 96812], "analysis": null },
+  "event_count": 4000,
+  "parameter_count": 6,
+  "parameters": [
+    { "index": 1, "name": "FSC-A", "label": null, "data_type": "float",
+      "width": { "bits": 32 }, "keywords": { "$P1B": "32", "$P1N": "FSC-A", "...": "..." } }
+  ],
+  "text": [["$CYT", "..."], ["$DATE", "..."]],
+  "supplemental_text": null
+}
+```
+
+FCS files written by `transform`, `peacoqc` and `autospectral` keep only the
+keywords they generate (plus their own, such as `CYTIQ_TRANSFORM`); instrument,
+acquisition and spillover keywords of the source are not carried over. Run
+`cytiq meta` on raw files before processing to keep that record. The
+`Original_ID` column of a PeacoQC output is the 1-based event row of that run's
+input file, so per-event results computed on the cleaned file (for example
+FlowSOM `event_index`, which is 0-based over the cleaned rows) map back to the
+input through `Original_ID`, not through their own row number.
 
 ## Algorithm Notes
 

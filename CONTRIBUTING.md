@@ -7,6 +7,8 @@ This repository is a small Rust workspace named `cytiq`. Keep contributor guidan
 ## Project Structure
 
 - `crates/cytiq-cli/` contains the CLI binary entry point.
+- `crates/cytiq-*/` contain the library crates behind each command (`cytiq-fcs` is the shared FCS reader/writer, `cytiq-density` the shared density primitives).
+- `parity/` contains the scripts and report that compare results against the upstream R/Python tools.
 - `data/` contains checked-in sample and research assets such as `data/data.fcs` and `data/CD22/`.
 - `docker/Dockerfile` is the place for container build logic.
 
@@ -41,7 +43,7 @@ Keep `cytiq-cli` thin and move reusable logic into a focused library crate. Add 
 
 ## Testing
 
-The repository does not yet include tests, but new logic should include them. Put unit tests near the implementation with `#[cfg(test)]`, and place broader scenarios in `tests/`. Name tests by observable behavior, for example `loads_cd22_sample_data` or `fails_when_input_is_missing`.
+New logic should include tests. Put unit tests near the implementation with `#[cfg(test)]`, and place broader scenarios in `tests/`. Name tests by observable behavior, for example `loads_cd22_sample_data` or `fails_when_input_is_missing`.
 
 ## Commits and Pull Requests
 
@@ -53,6 +55,10 @@ Pull requests should include:
 - the reason for the change
 - the commands used for verification
 - notes about any updates to `data/`
+
+## Crate Guidance
+
+Every crate under `crates/` has its own `README.md` (purpose, public API, usage) and `CONTRIBUTING.md` (module layout, invariants, tests), plus `AGENTS.md` and `CLAUDE.md` pointers for coding agents. Read the crate's `CONTRIBUTING.md` before changing it, and keep its `README.md` in sync when the public API, output format or CLI flags change.
 
 ## Data Handling
 

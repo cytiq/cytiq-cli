@@ -7,7 +7,7 @@ workflow crates. It has no dependencies and no CLI command of its own.
 | --- | --- |
 | [`cytiq-autospill`](../cytiq-autospill) | `gate_events`, `GateComputation` for the FSC/SSC gate |
 | [`cytiq-peacoqc`](../cytiq-peacoqc) | `density` for per-channel peak detection |
-| [`cytiq-clean`](../cytiq-clean) | `density`, `find_valleys`, `gate_events`, `quantile_type7`, `median`, `mad` |
+| [`cytiq-clean`](../cytiq-clean) | `density`, `find_valleys`, `gate_events`, `quantile_type7`, `median`, `robust_spread` |
 
 ## What it provides
 
@@ -20,6 +20,10 @@ workflow crates. It has no dependencies and no CLI command of its own.
 - **`bandwidth_nrd0`**, **`quantile_type7`**, **`median`**, **`mad`** — R's
   `bw.nrd0`, default (type 7) `quantile`, `median` and `mad` (`1.4826 *
   median(|x - center|)`).
+- **`robust_spread`** — a spread that is never zero: the MAD, else
+  `IQR / 1.349`, else `1e-3·|center|`, so `center ± k·spread` gates do not
+  collapse on discretised data. Returns which estimate was used
+  (`SpreadSource`).
 - **`gate_events`** — the AutoSpill FSC/SSC auto-gate
   ([paper](https://www.nature.com/articles/s41467-021-23126-8), upstream R
   `autospill` `do.gate` / `get_autospill_param_minimal.r`): trims the outer 1%
@@ -55,6 +59,7 @@ println!("{} events in gate", gate.gated_indices.len());
 | `density`, `Density` | R `stats::density` on a 512-point grid (`x`, `y`) |
 | `bandwidth_nrd0`, `quantile_type7` | R `bw.nrd0` and type-7 quantile (input must be sorted) |
 | `median`, `mad` | Median and R-scaled MAD of unsorted values |
+| `robust_spread`, `SpreadSource` | Never-zero spread with MAD → IQR → relative fallback |
 | `gate_events`, `GateComputation` | AutoSpill FSC/SSC auto-gate; errors with a `&'static str` reason on degenerate input |
 | `convex_hull`, `point_in_polygon` | 2-D hull and inclusion test (points on the boundary count as inside) |
 | `find_valleys`, `Valley`, `DEFAULT_MIN_PEAK_FRACTION`, `DEFAULT_MAX_VALLEY_RATIO` | Valleys between populations of a 1-D density |

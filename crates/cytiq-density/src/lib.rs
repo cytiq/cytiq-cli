@@ -15,7 +15,8 @@ mod valley;
 
 pub use crate::kde::{Density, bandwidth_nrd0, density, quantile_type7};
 pub use crate::scatter_gate::{
-    GateComputation, convex_hull, gate_events, mad, median, point_in_polygon,
+    GateComputation, SpreadSource, convex_hull, gate_events, mad, median, point_in_polygon,
+    robust_spread,
 };
 pub use crate::valley::{
     DEFAULT_MAX_VALLEY_RATIO, DEFAULT_MIN_PEAK_FRACTION, Valley, find_valleys,

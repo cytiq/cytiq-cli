@@ -18,7 +18,8 @@ use cytiq_autospill::{
 use cytiq_clean::{
     ChannelOverrides, CleanConfig, CleanRunner, DEFAULT_FSC_A, DEFAULT_FSC_H, DEFAULT_FSC_W,
     DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, DEFAULT_VIABILITY_COFACTOR,
-    DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, DebrisMode, FilterStatus, ViabilityConfig,
+    DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, DebrisMode, FilterKind, FilterStatus,
+    ViabilityConfig,
 };
 use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
 use cytiq_cytoscan::{
@@ -315,6 +316,23 @@ enum Commands {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliFilterKind {
+    Debris,
+    Singlets,
+    Viability,
+}
+
+impl From<CliFilterKind> for FilterKind {
+    fn from(value: CliFilterKind) -> Self {
+        match value {
+            CliFilterKind::Debris => Self::Debris,
+            CliFilterKind::Singlets => Self::Singlets,
+            CliFilterKind::Viability => Self::Viability,
+        }
+    }
+}
+
 impl From<CliMatrixKind> for CompensateMatrixKind {
     fn from(value: CliMatrixKind) -> Self {
         match value {
@@ -354,6 +372,10 @@ struct CleanArgs {
     /// events only and `keep` is false outside it. Repeat to combine masks.
     #[arg(long = "mask")]
     masks: Vec<PathBuf>,
+    /// Comma-separated filters that must be applied (`debris`, `singlets`,
+    /// `viability`); otherwise the run fails without writing outputs.
+    #[arg(long, value_enum, value_delimiter = ',')]
+    require: Vec<CliFilterKind>,
     /// Re-apply these Gating-ML gates (e.g. an edited gates.gatingml.xml)
     /// instead of fitting new ones.
     #[arg(long)]
@@ -451,6 +473,7 @@ impl From<CleanArgs> for CleanConfig {
             max_fit_events: args.max_fit_events,
             threads: args.threads,
             masks: args.masks,
+            required: args.require.into_iter().map(FilterKind::from).collect(),
         }
     }
 }

@@ -202,53 +202,13 @@ impl GatingStrategy {
     /// matrix only as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference
     /// is wrong there even though `$SPILLOVER` is absent.
     fn ensure_single_processing(&self, dataset: &FcsDataset) -> Result<(), GatingError> {
-        let transform =
-            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?;
-        let compensation =
-            cytiq_fcs::compensation_state(&dataset.text).map_err(GatingError::SignalState)?;
-        if transform.is_none() && compensation.is_none() {
+        let states = SignalStates::of(dataset)?;
+        if states.is_raw() {
             return Ok(());
         }
-        let had_spillover = dataset
-            .text
-            .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
-            .is_some();
         for gate in &self.gates {
             for dimension in gate.dimensions() {
-                let channel = dataset
-                    .find_parameter(&dimension.name)
-                    .map_or(dimension.name.as_str(), |index| {
-                        dataset.parameters[index].name.as_str()
-                    });
-                // Files from older cytiq versions do not list their channels.
-                let transformed = transform
-                    .as_ref()
-                    .is_some_and(|state| state.channels.is_empty() || state.covers(channel));
-                let compensated = compensation
-                    .as_ref()
-                    .is_some_and(|state| state.covers(channel));
-                let applies_compensation = match &dimension.compensation {
-                    CompensationRef::Uncompensated => false,
-                    CompensationRef::Fcs => had_spillover,
-                    CompensationRef::Matrix(_) => true,
-                };
-                let conflict = if transformed && dimension.transform.is_some() {
-                    Some(("transform", "transformed by `cytiq transform`"))
-                } else if transformed && applies_compensation {
-                    Some(("compensate", "transformed by `cytiq transform`"))
-                } else if compensated && applies_compensation {
-                    Some(("compensate", "compensated by `cytiq compensate`"))
-                } else {
-                    None
-                };
-                if let Some((action, state)) = conflict {
-                    return Err(GatingError::AlreadyProcessed {
-                        gate: gate.id.clone(),
-                        channel: channel.to_owned(),
-                        action,
-                        state,
-                    });
-                }
+                states.check(dataset, &gate.id, dimension)?;
             }
         }
         Ok(())
@@ -283,8 +243,81 @@ impl GatingStrategy {
                 reference: reference.clone(),
             });
         }
+        SignalStates::of(dataset)?.check(dataset, &dimension.name, dimension)?;
         let column = Evaluator::new(self, dataset).column(dimension)?;
         Ok(Arc::try_unwrap(column).unwrap_or_else(|shared| shared.as_ref().clone()))
+    }
+}
+
+/// What `cytiq transform` and `cytiq compensate` recorded about a dataset.
+struct SignalStates {
+    transform: Option<cytiq_fcs::TransformState>,
+    compensation: Option<cytiq_fcs::CompensationState>,
+    had_spillover: bool,
+}
+
+impl SignalStates {
+    fn of(dataset: &FcsDataset) -> Result<Self, GatingError> {
+        Ok(Self {
+            transform: cytiq_fcs::transform_state(&dataset.text)
+                .map_err(GatingError::SignalState)?,
+            compensation: cytiq_fcs::compensation_state(&dataset.text)
+                .map_err(GatingError::SignalState)?,
+            had_spillover: dataset
+                .text
+                .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
+                .is_some(),
+        })
+    }
+
+    const fn is_raw(&self) -> bool {
+        self.transform.is_none() && self.compensation.is_none()
+    }
+
+    /// Fail when `dimension` would transform or compensate a channel again.
+    fn check(
+        &self,
+        dataset: &FcsDataset,
+        gate: &str,
+        dimension: &Dimension,
+    ) -> Result<(), GatingError> {
+        let channel = dataset
+            .find_parameter(&dimension.name)
+            .map_or(dimension.name.as_str(), |index| {
+                dataset.parameters[index].name.as_str()
+            });
+        // Files from older cytiq versions do not list their channels.
+        let transformed = self
+            .transform
+            .as_ref()
+            .is_some_and(|state| state.channels.is_empty() || state.covers(channel));
+        let compensated = self
+            .compensation
+            .as_ref()
+            .is_some_and(|state| state.covers(channel));
+        let applies_compensation = match &dimension.compensation {
+            CompensationRef::Uncompensated => false,
+            CompensationRef::Fcs => self.had_spillover,
+            CompensationRef::Matrix(_) => true,
+        };
+        let conflict = if transformed && dimension.transform.is_some() {
+            Some(("transform", "transformed by `cytiq transform`"))
+        } else if transformed && applies_compensation {
+            Some(("compensate", "transformed by `cytiq transform`"))
+        } else if compensated && applies_compensation {
+            Some(("compensate", "compensated by `cytiq compensate`"))
+        } else {
+            None
+        };
+        match conflict {
+            Some((action, state)) => Err(GatingError::AlreadyProcessed {
+                gate: gate.to_owned(),
+                channel: channel.to_owned(),
+                action,
+                state,
+            }),
+            None => Ok(()),
+        }
     }
 }
 

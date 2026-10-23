@@ -586,6 +586,17 @@ Rules:
 - `--debris-mode population` uses the AutoSpill FSC/SSC auto-gate around the
   single dominant population. That suits beads and cell lines, but it drops
   minor cell populations in mixed samples.
+- the singlet band is `median ± --singlet-mad · spread`, where spread is the
+  MAD. When more than half of the values are identical (discretised scatter,
+  beads) the MAD is zero, so `IQR / 1.349` is used, then `1e-3 · median`;
+  `metrics.json` reports which (`spread_source`: `mad`, `iqr`, `relative`).
+- `--require debris,singlets,viability` fails the run, before anything is
+  written, when a listed filter is not `applied`. Without it a
+  `not_assessed` filter simply does not contribute to `keep`.
+- the viability axis compensates and arcsinh-scales the dye itself, so an
+  input whose viability channel `cytiq transform` transformed is rejected at
+  once. Run clean on the raw file (or pass `--no-viability`) and combine the
+  masks.
 - singlets are fitted on non-debris events, and viability on non-debris
   singlets. Every gate is then evaluated on all events. Fitting uses at most
   `--max-fit-events` (default 50,000) evenly spaced events, so results are

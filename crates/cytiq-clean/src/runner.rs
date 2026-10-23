@@ -49,6 +49,29 @@ pub struct CleanConfig {
     /// Event masks (`masks.parquet`) from earlier stages. Filters are fitted
     /// on events every mask keeps, and `keep` is false for the others.
     pub masks: Vec<PathBuf>,
+    /// Filters that must be `applied`; any other status fails the run before
+    /// outputs are written.
+    pub required: Vec<FilterKind>,
+}
+
+/// One of the three clean filters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterKind {
+    Debris,
+    Singlets,
+    Viability,
+}
+
+impl FilterKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Debris => "debris",
+            Self::Singlets => "singlets",
+            Self::Viability => "viability",
+        }
+    }
 }
 
 impl CleanConfig {
@@ -72,6 +95,7 @@ impl CleanConfig {
             max_fit_events: DEFAULT_MAX_FIT_EVENTS,
             threads: None,
             masks: Vec::new(),
+            required: Vec::new(),
         }
     }
 }
@@ -90,6 +114,15 @@ impl FilterReports {
 
     fn each_mut(&mut self) -> [&mut FilterReport; 3] {
         [&mut self.debris, &mut self.singlets, &mut self.viability]
+    }
+
+    #[must_use]
+    pub const fn get(&self, kind: FilterKind) -> &FilterReport {
+        match kind {
+            FilterKind::Debris => &self.debris,
+            FilterKind::Singlets => &self.singlets,
+            FilterKind::Viability => &self.viability,
+        }
     }
 }
 
@@ -201,6 +234,9 @@ fn validate(config: &CleanConfig) -> Result<(), CleanError> {
     if config.channels.no_viability && config.channels.viability.is_some() {
         return invalid("--no-viability and --viability-channel are mutually exclusive");
     }
+    if config.channels.no_viability && config.required.contains(&FilterKind::Viability) {
+        return invalid("--require viability and --no-viability are mutually exclusive");
+    }
     if config.max_fit_events < crate::filter::MIN_FIT_EVENTS {
         return invalid("--max-fit-events is too small");
     }
@@ -218,6 +254,7 @@ struct Plan {
 fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
     let dataset = read_fcs(&config.input)?;
     let roles = ChannelRoles::resolve(&dataset, &config.channels, &config.input)?;
+    ensure_raw_viability(config, &dataset, &roles)?;
     info!(
         "clean: {} event(s); FSC-A={}, FSC-H={:?}, FSC-W={:?}, SSC-A={:?}, viability={:?} ({})",
         dataset.event_count(),
@@ -255,6 +292,7 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
             path: config.input.clone(),
             source,
         })?;
+    ensure_required(&config.required, &reports)?;
     let event_count = dataset.event_count();
     let removal_overlap = count_masks(&mut reports, &masks, event_count);
     let kept = masks.keep.iter().filter(|keep| **keep).count();
@@ -317,6 +355,45 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         metrics,
         output: config.output.clone(),
     })
+}
+
+/// The viability axis compensates and arcsinh-scales the dye itself, so a
+/// channel `cytiq transform` already transformed cannot be fitted.
+fn ensure_raw_viability(
+    config: &CleanConfig,
+    dataset: &FcsDataset,
+    roles: &ChannelRoles,
+) -> Result<(), CleanError> {
+    let Some(channel) = &roles.viability else {
+        return Ok(());
+    };
+    let transform =
+        cytiq_fcs::transform_state(&dataset.text).map_err(|source| CleanError::FcsRead {
+            path: config.input.clone(),
+            source,
+        })?;
+    if transform.is_some_and(|state| state.channels.is_empty() || state.covers(channel)) {
+        return Err(CleanError::TransformedViability {
+            channel: channel.clone(),
+        });
+    }
+    Ok(())
+}
+
+/// `--require`: fail before any output is written when a required filter
+/// could not be applied.
+fn ensure_required(required: &[FilterKind], reports: &FilterReports) -> Result<(), CleanError> {
+    for kind in required {
+        let report = reports.get(*kind);
+        if report.status != FilterStatus::Applied {
+            return Err(CleanError::RequiredFilterNotApplied {
+                filter: kind.as_str(),
+                status: report.status.as_str(),
+                reason: report.reason.clone().unwrap_or_default(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn read_fcs(path: &Path) -> Result<FcsDataset, CleanError> {

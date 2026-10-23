@@ -467,3 +467,129 @@ fn restricts_keep_and_fitting_to_the_input_mask() {
         mask_path.display().to_string()
     );
 }
+
+/// 55% of the events have FSC-A exactly equal to FSC-H, as with heavily
+/// discretised scatter, so the MAD of the area/height ratio is zero.
+fn write_zero_mad_fixture(path: &Path) -> Vec<f64> {
+    let mut ratios = Vec::new();
+    for event in 0..1_000_u16 {
+        let ratio = match event % 20 {
+            0..=10 => 1.0,
+            11..=17 => 0.9 + f64::from(event % 7) * 0.03,
+            _ => 1.9,
+        };
+        ratios.push(ratio);
+    }
+    let height = (0..1_000_u16)
+        .map(|event| 20_000.0 + f32::from(event % 50) * 400.0)
+        .collect::<Vec<f32>>();
+    #[allow(clippy::cast_possible_truncation)]
+    let area = height
+        .iter()
+        .zip(&ratios)
+        .map(|(height, ratio)| (f64::from(*height) * ratio) as f32)
+        .collect::<Vec<f32>>();
+    let ssc = (0..1_000_u16)
+        .map(|event| 10_000.0 + f32::from(event % 13) * 100.0)
+        .collect::<Vec<f32>>();
+    let parameters = ["FSC-A", "FSC-H", "SSC-A"].map(cytiq_fcs::FcsWriteParameter::new);
+    cytiq_fcs::write_fcs3_1_f32(path, &parameters, &[area, height, ssc])
+        .expect("fixture should write");
+    ratios
+}
+
+#[test]
+fn singlets_survive_a_zero_mad() {
+    let directory = create_temp_dir("cytiq-cli-clean-zero-mad");
+    let input = directory.join("discrete.fcs");
+    let output = directory.join("clean");
+    let ratios = write_zero_mad_fixture(&input);
+
+    run(&[
+        "clean",
+        "--input",
+        utf8(&input),
+        "--output",
+        utf8(&output),
+        "--no-viability",
+    ]);
+
+    let metrics = metrics(&output);
+    assert_eq!(metrics["filters"]["singlets"]["status"], "applied");
+    assert_eq!(
+        metrics["filters"]["singlets"]["parameters"]["spread_source"],
+        "iqr"
+    );
+    let masks = Masks::read(&output);
+    for (singlet, ratio) in masks.column("singlets").iter().zip(&ratios) {
+        if (*ratio - 1.0).abs() < f64::EPSILON {
+            assert_eq!(*singlet, Some(true), "ratio-1 events are singlets");
+        } else if *ratio > 1.5 {
+            assert_eq!(*singlet, Some(false), "doublets are removed");
+        }
+    }
+}
+
+#[test]
+fn require_fails_without_writing_outputs() {
+    let directory = create_temp_dir("cytiq-cli-clean-require");
+    let output = directory.join("clean");
+    let input = fixture("no_viability.fcs");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "clean",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&output),
+            "--require",
+            "singlets,viability",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("--require viability") && stderr.contains("not_assessed"),
+        "stderr: {stderr}"
+    );
+    assert!(!output.join("masks.parquet").exists());
+}
+
+#[test]
+fn rejects_a_transformed_viability_channel_early() {
+    let directory = create_temp_dir("cytiq-cli-clean-transformed");
+    let transformed = directory.join("sample.t.fcs");
+    run(&[
+        "transform",
+        "--input",
+        utf8(&fixture("sample.fcs")),
+        "--output",
+        utf8(&transformed),
+    ]);
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "clean",
+            "--input",
+            utf8(&transformed),
+            "--output",
+            utf8(&directory.join("clean")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("mask combine"), "stderr: {stderr}");
+    run(&[
+        "clean",
+        "--input",
+        utf8(&transformed),
+        "--output",
+        utf8(&directory.join("clean-no-viability")),
+        "--no-viability",
+    ]);
+}

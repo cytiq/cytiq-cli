@@ -25,6 +25,18 @@ pub enum FilterStatus {
     Disabled,
 }
 
+impl FilterStatus {
+    /// The status as written in `metrics.json`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Applied => "applied",
+            Self::NotAssessed => "not_assessed",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
 /// Per-filter section of `metrics.json`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct FilterReport {

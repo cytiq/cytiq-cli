@@ -458,6 +458,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "csv",
+ "cytiq-density",
  "cytiq-fcs",
  "cytiq-transform",
  "log",
@@ -472,13 +473,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-clean"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "cytiq-density",
+ "cytiq-fcs",
+ "cytiq-gating",
+ "log",
+ "parquet",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cytiq-cli"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
  "clap",
  "csv",
  "cytiq-autospectral",
  "cytiq-autospill",
+ "cytiq-clean",
  "cytiq-cytoscan",
  "cytiq-fcs",
  "cytiq-flowsom",
@@ -486,6 +507,8 @@ dependencies = [
  "cytiq-peacoqc",
  "cytiq-transform",
  "log",
+ "parquet",
+ "serde_json",
 ]
 
 [[package]]
@@ -508,6 +531,10 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
 ]
+
+[[package]]
+name = "cytiq-density"
+version = "0.1.0"
 
 [[package]]
 name = "cytiq-fcs"
@@ -551,6 +578,7 @@ name = "cytiq-peacoqc"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "cytiq-density",
  "cytiq-fcs",
  "log",
  "plotly",

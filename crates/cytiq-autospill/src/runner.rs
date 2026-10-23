@@ -15,7 +15,6 @@ use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
 use crate::error::AutospillError;
-use crate::gating::{GateComputation, gate_events};
 use crate::manifest::{ControlsManifestRow, DetectorSpec, TransformSpec};
 use crate::plotting::{write_autospill_debug_artifacts, write_autospread_debug_artifacts};
 use crate::regression::{
@@ -24,6 +23,7 @@ use crate::regression::{
     trim_joint_pairs,
 };
 use crate::transform::{BiExponentialTransform, resolve_transforms, transformed_slope_to_linear};
+use cytiq_density::{GateComputation, gate_events};
 
 const RLM_ITER_MAX: usize = 100;
 const RLM_TRIM_FACTOR: f64 = 0.01;

@@ -1,0 +1,382 @@
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use arrow_array::{Array, BooleanArray, UInt64Array};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use serde_json::Value;
+
+const LIVE_SINGLET: u8 = b'0';
+const DEBRIS: u8 = b'1';
+const DOUBLET: u8 = b'2';
+const DEAD: u8 = b'3';
+
+fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/fixtures/clean")
+        .join(name)
+}
+
+fn create_temp_dir(prefix: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&directory).expect("temp dir should be created");
+    directory
+}
+
+fn utf8(path: &Path) -> &str {
+    path.to_str().expect("path should be UTF-8")
+}
+
+fn run(args: &[&str]) -> std::process::Output {
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args(args)
+        .output()
+        .expect("command should run");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+fn run_clean(input: &str, output: &Path, extra: &[&str]) {
+    let input = fixture(input);
+    let mut args = vec![
+        "clean",
+        "--input",
+        utf8(&input),
+        "--output",
+        utf8(output),
+        "--threads",
+        "2",
+    ];
+    args.extend_from_slice(extra);
+    run(&args);
+}
+
+fn metrics(output: &Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(output.join("metrics.json")).unwrap()).unwrap()
+}
+
+struct Masks {
+    event_id: Vec<u64>,
+    columns: Vec<(String, Vec<Option<bool>>)>,
+}
+
+impl Masks {
+    fn read(output: &Path) -> Self {
+        let file = File::open(output.join("masks.parquet")).expect("masks should exist");
+        let reader = ParquetRecordBatchReaderBuilder::try_new(file)
+            .unwrap()
+            .build()
+            .unwrap();
+        let mut masks = Self {
+            event_id: Vec::new(),
+            columns: Vec::new(),
+        };
+        for batch in reader {
+            let batch = batch.unwrap();
+            let schema = batch.schema();
+            for (field, column) in schema.fields().iter().zip(batch.columns()) {
+                if field.name() == "event_id" {
+                    let ids = column.as_any().downcast_ref::<UInt64Array>().unwrap();
+                    masks.event_id.extend(ids.values().iter());
+                    continue;
+                }
+                let values = column.as_any().downcast_ref::<BooleanArray>().unwrap();
+                let position = masks
+                    .columns
+                    .iter()
+                    .position(|(name, _)| name == field.name())
+                    .unwrap_or_else(|| {
+                        masks.columns.push((field.name().clone(), Vec::new()));
+                        masks.columns.len() - 1
+                    });
+                masks.columns[position].1.extend(values.iter());
+            }
+        }
+        masks
+    }
+
+    fn column(&self, name: &str) -> &[Option<bool>] {
+        &self
+            .columns
+            .iter()
+            .find(|(column, _)| column == name)
+            .unwrap_or_else(|| panic!("missing column {name}"))
+            .1
+    }
+}
+
+fn truth_classes() -> Vec<u8> {
+    let truth: Value =
+        serde_json::from_str(&fs::read_to_string(fixture("truth.json")).unwrap()).unwrap();
+    truth["classes"].as_str().unwrap().as_bytes().to_vec()
+}
+
+/// Share of events of class `positive` (expected to fail the filter) and of
+/// live singlets (expected to pass) that the filter classified correctly.
+#[allow(clippy::cast_precision_loss)]
+fn accuracy(mask: &[Option<bool>], classes: &[u8], removed_class: u8) -> f64 {
+    let (correct, total) = mask
+        .iter()
+        .zip(classes)
+        .filter(|(_, class)| **class == LIVE_SINGLET || **class == removed_class)
+        .fold((0, 0), |(correct, total), (passed, class)| {
+            let expected = *class == LIVE_SINGLET;
+            (correct + usize::from(*passed == Some(expected)), total + 1)
+        });
+    correct as f64 / f64::from(total)
+}
+
+#[test]
+fn cli_writes_clean_outputs() {
+    let output = create_temp_dir("cytiq-cli-clean-outputs");
+
+    run_clean("sample.fcs", &output, &[]);
+
+    for file in [
+        "masks.parquet",
+        "metrics.json",
+        "gates.gatingml.xml",
+        "report.html",
+    ] {
+        assert!(output.join(file).is_file(), "{file} should be written");
+    }
+    let masks = Masks::read(&output);
+    assert_eq!(masks.event_id, (0..10_000).collect::<Vec<u64>>());
+    assert_eq!(
+        masks
+            .columns
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>(),
+        ["non_debris", "singlets", "live", "keep"]
+    );
+    let metrics = metrics(&output);
+    let kept = masks
+        .column("keep")
+        .iter()
+        .filter(|keep| **keep == Some(true))
+        .count();
+    assert_eq!(metrics["kept"].as_u64().unwrap(), kept as u64);
+    assert_eq!(metrics["channels"]["viability"], "FL3-A");
+    assert_eq!(metrics["channels"]["viability_source"], "detected");
+    for filter in ["debris", "singlets", "viability"] {
+        assert_eq!(metrics["filters"][filter]["status"], "applied", "{filter}");
+    }
+}
+
+#[test]
+fn recovers_known_debris_doublets_and_dead_cells() {
+    let output = create_temp_dir("cytiq-cli-clean-truth");
+
+    run_clean("sample.fcs", &output, &[]);
+
+    let classes = truth_classes();
+    let masks = Masks::read(&output);
+    for (column, class) in [
+        ("non_debris", DEBRIS),
+        ("singlets", DOUBLET),
+        ("live", DEAD),
+    ] {
+        let score = accuracy(masks.column(column), &classes, class);
+        assert!(score > 0.98, "{column} accuracy {score}");
+    }
+    let keep = masks.column("keep");
+    let kept_live = keep
+        .iter()
+        .zip(&classes)
+        .filter(|(keep, class)| **keep == Some(true) && **class == LIVE_SINGLET)
+        .count();
+    let kept = keep.iter().filter(|keep| **keep == Some(true)).count();
+    let live = classes
+        .iter()
+        .zip(keep)
+        .filter(|(class, _)| **class == LIVE_SINGLET)
+        .count();
+    assert!(kept_live * 100 > live * 98, "kept {kept_live} of {live}");
+    assert!(
+        kept_live * 100 > kept * 98,
+        "{kept_live} of {kept} kept are live"
+    );
+}
+
+#[test]
+fn marks_viability_not_assessed_without_dye() {
+    let output = create_temp_dir("cytiq-cli-clean-no-viability");
+
+    run_clean("no_viability.fcs", &output, &[]);
+
+    let masks = Masks::read(&output);
+    assert!(masks.column("live").iter().all(Option::is_none));
+    assert!(masks.column("non_debris").iter().all(Option::is_some));
+    let metrics = metrics(&output);
+    let viability = &metrics["filters"]["viability"];
+    assert_eq!(viability["status"], "not_assessed");
+    assert!(
+        viability["reason"]
+            .as_str()
+            .unwrap()
+            .contains("no viability channel")
+    );
+    assert!(viability["removed"].is_null());
+    assert_eq!(metrics["keep_rule"], "gate `clean`");
+    let gates = fs::read_to_string(output.join("gates.gatingml.xml")).unwrap();
+    assert!(!gates.contains("gating:id=\"live\""));
+}
+
+#[test]
+fn reports_viability_disabled_on_request() {
+    let output = create_temp_dir("cytiq-cli-clean-disabled");
+
+    run_clean("sample.fcs", &output, &["--no-viability"]);
+
+    assert_eq!(
+        metrics(&output)["filters"]["viability"]["status"],
+        "disabled"
+    );
+}
+
+#[test]
+fn exported_gates_reproduce_masks() {
+    let output = create_temp_dir("cytiq-cli-clean-gates");
+    run_clean("sample.fcs", &output, &[]);
+    let counts = output.join("counts.csv");
+    let sample = fixture("sample.fcs");
+    let gates = output.join("gates.gatingml.xml");
+
+    run(&[
+        "gate",
+        "--input",
+        utf8(&sample),
+        "--gating-ml",
+        utf8(&gates),
+        "--output",
+        utf8(&counts),
+    ]);
+
+    let metrics = metrics(&output);
+    let mut reader = csv::Reader::from_path(&counts).unwrap();
+    let rows = reader
+        .records()
+        .map(|record| {
+            let record = record.unwrap();
+            (record[0].to_owned(), record[4].parse::<u64>().unwrap())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        [
+            (
+                "non_debris".to_owned(),
+                metrics["filters"]["debris"]["passed"].as_u64().unwrap()
+            ),
+            (
+                "singlets".to_owned(),
+                metrics["filters"]["singlets"]["passed"].as_u64().unwrap()
+            ),
+            (
+                "live".to_owned(),
+                metrics["filters"]["viability"]["passed"].as_u64().unwrap()
+            ),
+            ("clean".to_owned(), metrics["kept"].as_u64().unwrap()),
+        ]
+    );
+}
+
+#[test]
+fn reapplies_edited_gates() {
+    let fitted = create_temp_dir("cytiq-cli-clean-fitted");
+    run_clean("sample.fcs", &fitted, &[]);
+    let fitted_metrics = metrics(&fitted);
+    // Hand-edit: move the live/dead threshold to the very top of the scale,
+    // so every event counts as live.
+    let threshold = fitted_metrics["filters"]["viability"]["parameters"]["threshold"]
+        .as_f64()
+        .unwrap();
+    let xml = fs::read_to_string(fitted.join("gates.gatingml.xml"))
+        .unwrap()
+        .replace(
+            &format!("gating:max=\"{threshold}\""),
+            "gating:max=\"1000\"",
+        );
+    let edited = fitted.join("edited.xml");
+    fs::write(&edited, xml).unwrap();
+    let reapplied = create_temp_dir("cytiq-cli-clean-reapplied");
+
+    run_clean("sample.fcs", &reapplied, &["--gates", utf8(&edited)]);
+
+    let metrics = metrics(&reapplied);
+    assert_eq!(metrics["gates_source"], utf8(&edited));
+    assert_eq!(metrics["filters"]["viability"]["removed"], 0);
+    assert_eq!(
+        metrics["filters"]["debris"]["passed"],
+        fitted_metrics["filters"]["debris"]["passed"]
+    );
+    assert!(metrics["kept"].as_u64() > fitted_metrics["kept"].as_u64());
+    assert_eq!(
+        fs::read_to_string(reapplied.join("gates.gatingml.xml")).unwrap(),
+        fs::read_to_string(&edited).unwrap()
+    );
+}
+
+#[test]
+fn uses_viability_control_threshold() {
+    let output = create_temp_dir("cytiq-cli-clean-control");
+    let control = fixture("control.fcs");
+
+    run_clean(
+        "sample.fcs",
+        &output,
+        &["--viability-control", utf8(&control)],
+    );
+
+    let viability = &metrics(&output)["filters"]["viability"];
+    assert_eq!(viability["method"], "control_quantile");
+    // Unstained events are ~N(300, 250): p99.5 lands near 950.
+    let threshold = viability["parameters"]["threshold_raw"].as_f64().unwrap();
+    assert!((700.0..1_300.0).contains(&threshold), "{threshold}");
+    let classes = truth_classes();
+    let score = accuracy(Masks::read(&output).column("live"), &classes, DEAD);
+    assert!(score > 0.98, "live accuracy {score}");
+}
+
+#[test]
+fn falls_back_to_fsc_width_without_fsc_height() {
+    let output = create_temp_dir("cytiq-cli-clean-width");
+
+    run_clean("sample.fcs", &output, &["--fsc-h", "missing"]);
+
+    let singlets = &metrics(&output)["filters"]["singlets"];
+    assert_eq!(singlets["method"], "fsc_width");
+    assert_eq!(singlets["channels"][0], "FSC-W");
+}
+
+#[test]
+fn fails_when_fixed_debris_has_no_thresholds() {
+    let output = create_temp_dir("cytiq-cli-clean-fixed");
+    let input = fixture("sample.fcs");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "clean",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&output),
+            "--debris-mode",
+            "fixed",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("--debris-fsc-min"));
+}

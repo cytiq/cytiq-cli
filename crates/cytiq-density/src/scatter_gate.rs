@@ -54,16 +54,25 @@ const FINAL_GRID: usize = 100;
 // default used by the reference implementation.
 const DENSITY_THRESHOLD: f64 = 0.33;
 
+/// Result of [`gate_events`]: the events inside the final convex-hull gate.
 #[derive(Clone, Debug)]
-pub(crate) struct GateComputation {
+pub struct GateComputation {
     pub gated_indices: Vec<usize>,
+    /// Convex hull vertices of the dense core, in input coordinates.
+    pub hull: Vec<[f64; 2]>,
     pub bound_maxima: usize,
     pub region_maxima: usize,
     pub strict_points: usize,
 }
 
+/// `AutoSpill` FSC/SSC auto-gate: two-pass KDE peak search that ignores
+/// lower-left debris, followed by a convex hull around the dense core.
+///
+/// # Errors
+///
+/// Returns a static reason when the scatter cloud is too small or degenerate.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn gate_events(
+pub fn gate_events(
     points: &[[f64; 2]],
     data_max: Option<f64>,
 ) -> Result<GateComputation, &'static str> {
@@ -260,6 +269,7 @@ pub(crate) fn gate_events(
 
     Ok(GateComputation {
         gated_indices,
+        hull,
         bound_maxima: bound_maxima.len(),
         region_maxima: region_maxima.len(),
         strict_points: strict_points.len(),
@@ -453,7 +463,9 @@ fn distance_squared(point: [f64; 2], peak: &Peak) -> f64 {
     dx * dx + dy * dy
 }
 
-fn convex_hull(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
+/// Andrew's monotone chain convex hull (counter-clockwise, no repeated end).
+#[must_use]
+pub fn convex_hull(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     let mut sorted = points.to_vec();
     sorted.sort_by(|left, right| {
         left[0]
@@ -493,7 +505,9 @@ fn convex_hull(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     lower
 }
 
-fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
+/// Even-odd point-in-polygon test; points on an edge count as inside.
+#[must_use]
+pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
     if polygon.len() < 3 {
         return false;
     }
@@ -612,7 +626,9 @@ fn locate_segment(axis: &[f64], value: f64) -> usize {
     }
 }
 
-fn median(values: &[f64]) -> f64 {
+/// Median of unsorted values.
+#[must_use]
+pub fn median(values: &[f64]) -> f64 {
     let mut sorted = values.to_vec();
     sorted.sort_by(f64::total_cmp);
     let middle = sorted.len() / 2;
@@ -623,7 +639,9 @@ fn median(values: &[f64]) -> f64 {
     }
 }
 
-fn mad(values: &[f64], center: f64) -> f64 {
+/// R's `mad`: `1.4826 * median(|x - center|)`.
+#[must_use]
+pub fn mad(values: &[f64], center: f64) -> f64 {
     let deviations = values
         .iter()
         .map(|value| (value - center).abs())

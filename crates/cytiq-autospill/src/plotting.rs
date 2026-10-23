@@ -8,7 +8,6 @@ use plotly::{HeatMap, Layout, Plot, Scatter};
 use serde::Serialize;
 
 use crate::error::AutospillError;
-use crate::gating::GateComputation;
 use crate::regression::{
     ordinary_linear_regression, ordinary_linear_regression_without_intercept,
     robust_standard_deviation,
@@ -17,6 +16,7 @@ use crate::runner::{
     AutospillResult, AutospreadResult, ControlData, LoadedControls, quantile_bin_count,
     quantile_bins, sqrt_like_transform,
 };
+use cytiq_density::GateComputation;
 
 const REPORT_FILE_NAME: &str = "report.html";
 const GATE_PLOT_HEIGHT: usize = 760;

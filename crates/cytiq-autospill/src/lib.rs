@@ -15,7 +15,6 @@
 
 mod error;
 mod export;
-mod gating;
 mod manifest;
 mod plotting;
 mod regression;

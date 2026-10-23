@@ -154,6 +154,39 @@ impl GatingStrategy {
             index,
         })
     }
+
+    /// Event values of `dimension` exactly as gate evaluation sees them:
+    /// raw pre-processing, then the dimension's compensation and
+    /// transformation (min/max are ignored).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the channel is missing, the transformation or
+    /// matrix reference is unknown to this strategy, or compensation fails.
+    pub fn dimension_values(
+        &self,
+        dataset: &FcsDataset,
+        dimension: &Dimension,
+    ) -> Result<Vec<f64>, GatingError> {
+        if let Some(reference) = &dimension.transform
+            && self.transform(reference).is_none()
+        {
+            return Err(GatingError::UnknownTransform {
+                gate: dimension.name.clone(),
+                reference: reference.clone(),
+            });
+        }
+        if let CompensationRef::Matrix(reference) = &dimension.compensation
+            && self.matrix(reference).is_none()
+        {
+            return Err(GatingError::UnknownCompensation {
+                gate: dimension.name.clone(),
+                reference: reference.clone(),
+            });
+        }
+        let column = Evaluator::new(self, dataset).column(dimension)?;
+        Ok(Arc::try_unwrap(column).unwrap_or_else(|shared| shared.as_ref().clone()))
+    }
 }
 
 type ColumnKey = (usize, CompensationRef, Option<String>);

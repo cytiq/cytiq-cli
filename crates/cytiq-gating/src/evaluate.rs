@@ -123,6 +123,7 @@ impl GatingStrategy {
     /// compensation matrix is invalid or singular, or an ellipsoid covariance
     /// matrix cannot be inverted.
     pub fn gate_sample(&self, dataset: &FcsDataset) -> Result<GatingResults, GatingError> {
+        self.ensure_single_processing(dataset)?;
         let mut evaluator = Evaluator::new(self, dataset);
         let mut gates: Vec<GateResult> = Vec::with_capacity(self.gates.len());
         let mut index: HashMap<String, usize> = HashMap::with_capacity(self.gates.len());
@@ -153,6 +154,52 @@ impl GatingStrategy {
             gates,
             index,
         })
+    }
+
+    /// Refuse to transform or compensate channels that `cytiq transform`
+    /// already transformed. Its output keeps the source spillover matrix only
+    /// as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference is wrong
+    /// there even though `$SPILLOVER` is absent.
+    fn ensure_single_processing(&self, dataset: &FcsDataset) -> Result<(), GatingError> {
+        let Some(state) =
+            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?
+        else {
+            return Ok(());
+        };
+        let had_spillover = dataset
+            .text
+            .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
+            .is_some();
+        for gate in &self.gates {
+            for dimension in gate.dimensions() {
+                let channel = dataset
+                    .find_parameter(&dimension.name)
+                    .map_or(dimension.name.as_str(), |index| {
+                        dataset.parameters[index].name.as_str()
+                    });
+                // Files from older cytiq versions do not list their channels.
+                if !(state.channels.is_empty() || state.covers(channel)) {
+                    continue;
+                }
+                let action = if dimension.transform.is_some() {
+                    Some("transform")
+                } else {
+                    match &dimension.compensation {
+                        CompensationRef::Uncompensated => None,
+                        CompensationRef::Fcs => had_spillover.then_some("compensate"),
+                        CompensationRef::Matrix(_) => Some("compensate"),
+                    }
+                };
+                if let Some(action) = action {
+                    return Err(GatingError::AlreadyTransformed {
+                        gate: gate.id.clone(),
+                        channel: channel.to_owned(),
+                        action,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Event values of `dimension` exactly as gate evaluation sees them:

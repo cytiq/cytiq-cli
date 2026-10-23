@@ -130,6 +130,7 @@ pub struct UnmixedSample {
     pub output_path: PathBuf,
     pub parameters: Vec<FcsWriteParameter>,
     pub columns: Vec<Vec<f32>>,
+    pub text_keywords: Vec<(String, String)>,
 }
 
 pub struct AutoSpectralRunner;
@@ -245,6 +246,7 @@ impl AutoSpectralRunner {
                     output_path: sample.summary.output_path,
                     parameters: sample.parameters,
                     columns: sample.columns,
+                    text_keywords: sample.text_keywords,
                 })
                 .collect(),
             summary,
@@ -259,6 +261,7 @@ impl AutoSpectralRunner {
 struct WorkingUnmixedSample {
     parameters: Vec<FcsWriteParameter>,
     columns: Vec<Vec<f32>>,
+    text_keywords: Vec<(String, String)>,
     summary: SampleQc,
 }
 
@@ -687,6 +690,7 @@ fn unmix_sample(
     Ok(WorkingUnmixedSample {
         parameters,
         columns,
+        text_keywords: acquisition_keywords(&sample.dataset),
         summary: SampleQc {
             filename: sample.row.filename.clone(),
             events_processed: event_total,
@@ -795,10 +799,7 @@ fn preserved_columns(
         if detector_set.contains(&parameter.name) {
             continue;
         }
-        parameters.push(match parameter.label.as_ref() {
-            Some(label) => FcsWriteParameter::with_label(parameter.name.clone(), label.clone()),
-            None => FcsWriteParameter::new(parameter.name.clone()),
-        });
+        parameters.push(FcsWriteParameter::from_source(parameter));
         columns.push(column_to_f32(
             dataset
                 .data
@@ -808,6 +809,15 @@ fn preserved_columns(
     }
 
     (parameters, columns)
+}
+
+/// Source keywords that still describe the unmixed file. The spillover matrix
+/// and cytiq stage keywords refer to detector channels that were replaced.
+fn acquisition_keywords(dataset: &FcsDataset) -> Vec<(String, String)> {
+    cytiq_fcs::carried_keywords(&dataset.text)
+        .into_iter()
+        .filter(|(key, _)| !cytiq_fcs::is_spillover_keyword(key) && !key.starts_with("CYTIQ_"))
+        .collect()
 }
 
 fn reference_matrix(detector_count: usize, components: &[SpectralComponent]) -> DMatrix<f64> {

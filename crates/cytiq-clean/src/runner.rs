@@ -97,6 +97,9 @@ pub struct CleanMetrics {
     pub gates_source: String,
     pub event_count: usize,
     pub event_id: &'static str,
+    /// Present when the input carries `Original_ID` (e.g. `PeacoQC` output).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_event_id: Option<&'static str>,
     pub kept: usize,
     pub kept_fraction: f64,
     /// Which gates define the `keep` column.
@@ -114,6 +117,8 @@ pub struct CleanMasks {
     pub singlets: Option<Vec<bool>>,
     pub live: Option<Vec<bool>>,
     pub keep: Vec<bool>,
+    /// 0-based raw-file row of each event, from the input's `Original_ID`.
+    pub source_event_ids: Option<Vec<u64>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -219,7 +224,12 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         None => fitted_plan(&dataset, &roles, config)?,
     };
     let results = strategy.gate_sample(&dataset)?;
-    let masks = collect_masks(&results, &reports);
+    let mut masks = collect_masks(&results, &reports);
+    masks.source_event_ids =
+        cytiq_fcs::source_event_ids(&dataset).map_err(|source| CleanError::FcsRead {
+            path: config.input.clone(),
+            source,
+        })?;
     let event_count = dataset.event_count();
     let removal_overlap = count_masks(&mut reports, &masks, event_count);
     let kept = masks.keep.iter().filter(|keep| **keep).count();
@@ -246,6 +256,10 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         gates_source: source,
         event_count,
         event_id: "0-based row index of the event in the input FCS",
+        source_event_id: masks
+            .source_event_ids
+            .as_ref()
+            .map(|_| "0-based row index of the event in the raw FCS, from the input's Original_ID"),
         kept,
         kept_fraction: fraction(kept, event_count),
         keep_rule,
@@ -443,6 +457,7 @@ fn collect_masks(results: &GatingResults, reports: &FilterReports) -> CleanMasks
         singlets,
         live,
         keep,
+        source_event_ids: None,
     }
 }
 

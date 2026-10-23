@@ -1,0 +1,61 @@
+# Contributing to cytiq-cytoscan
+
+Workspace-wide rules (commands, style, commits, PRs) live in the root
+[CONTRIBUTING.md](../../CONTRIBUTING.md). This file covers what is specific to
+this crate.
+
+## Layout
+
+- `src/lib.rs` — crate docs (paper and upstream links) and re-exports only.
+- `src/runner.rs` — config and result types, input resolution (files,
+  directories, globs), FCS preprocessing, subsampling, all five feature
+  methods, isolation-forest outlier scoring, summary rows; most unit tests.
+- `src/novelty.rs` — Gaussian-mixture novelty model with mclust-style BIC
+  selection and the diagonal fallback; its own unit tests.
+- `src/export.rs` — CSV / JSON outputs, debug artifacts, PCA, Ward-ordered
+  heatmap and the Plotly HTML report.
+- `src/error.rs` — `CytoScanError` (`thiserror`).
+
+## Invariants
+
+- Upstream CytoScan 0.1.0 is the reference. Every behavioural change must keep
+  or improve parity; check it with the `parity/` harness (`parity/run_all.sh`) and update
+  `parity/REPORT.md` §2.7 when numbers move. Comments explain which upstream
+  call a piece of code mirrors (`readInput`, `cut()`, `flowFP`, `isotree`,
+  `mclust`); keep them accurate.
+- Determinism: all randomness is seeded from `DEFAULT_RANDOM_SEED` (42).
+  Per-file subsamples reseed for every file and must not depend on the path or
+  on processing order (`subsample_does_not_depend_on_path`). Isolation trees
+  seed per tree index, so results are stable under `rayon` parallelism.
+- Algorithm settings are fixed `DEFAULT_*` constants, not CLI flags. Exposing
+  one is a deliberate API change: document it in the root README.
+- Preprocessing order is truncate at `$PnR`, compensate, then
+  `asinh(x / 150)`. Missing spillover is a warning, not an error.
+- The aggregate takes `ceil(10000 / n_files)` events from every file without
+  truncating the total, and comes from the reference cohort when novelty is on.
+- Output file names are constants in `src/export.rs` and are consumed by
+  scripts and the CLI tests; do not rename them casually.
+
+## Where changes belong
+
+- FCS parsing, spillover parsing and matrix inversion belong in `cytiq-fcs`.
+- CLI flags belong in `crates/cytiq-cli/src/main.rs`; this crate takes a
+  `CytoScanConfig` and has no `clap` dependency.
+
+## Testing
+
+```bash
+cargo test -p cytiq-cytoscan
+cargo test -p cytiq-cli --test cytoscan_cli
+```
+
+- `src/runner.rs` `#[cfg(test)]` — EMD vs `transport::wasserstein1d`, binning
+  vs `cut()`, fingerprint vs flowFP, isotree expected depth and score noise,
+  path-independent subsampling, aggregate shares.
+- `src/novelty.rs` `#[cfg(test)]` — mixture fits vs mclust `VVV` / `XXX`,
+  diagonal fallback, determinism.
+- `crates/cytiq-cli/tests/cytoscan_cli.rs` — end-to-end runs for every
+  feature method, novelty with reference, debug artifacts, error cases.
+
+The crate's `tests/` directory is currently empty. Reference values in unit
+tests come from the R packages; note the R call used to produce new ones.

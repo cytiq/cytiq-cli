@@ -179,6 +179,7 @@ Rules:
 - reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
 - positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
 - solver, autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
+- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
 
 Outputs are always written under `--output`:
 
@@ -264,6 +265,17 @@ Rules:
 - output files are not replaced unless `--overwrite` is passed
 - transform metadata is stored in the output FCS `CYTIQ_TRANSFORM` keyword and
   can also be written as a sidecar JSON file
+- an input that already has `CYTIQ_TRANSFORM` is rejected, so values are never
+  transformed twice by accident; `--allow-retransform` transforms it anyway
+- the output keeps the source keywords (`$CYT`, `$DATE`, `$PnV`, `$PnG`, ...)
+  and the original `$PnR` of untransformed channels; transformed channels get
+  a `$PnR` from their new values
+- the spillover matrix (`$SPILLOVER`/`$SPILL`) no longer applies to transformed
+  values, so it is moved to `CYTIQ_SOURCE_SPILL`
+- detector margin bounds (flowCore `$PnR - 1` and the low bound) are mapped
+  through the transform and stored per channel in `CYTIQ_MARGINS`, so
+  `cytiq peacoqc --remove-margins` on the output removes the same events as on
+  the raw file
 - when `--debug-dir` is provided, `cytiq` writes `summary.json`,
   `metrics.csv`, and a Plotly `report.html` with per-channel transformation
   diagnostics
@@ -332,6 +344,8 @@ Rules:
   internal constants for the first public CLI; random draws use `rand` with a
   fixed seed, so outputs are reproducible but not bit-identical to R (see
   `parity/REPORT.md`)
+- inputs must be raw FCS: CytoScan compensates with the file's spillover and
+  arcsinh-transforms itself, so files from `cytiq transform` are rejected
 
 Outputs are always written under `--output`:
 
@@ -378,6 +392,10 @@ Rules:
 - events are pre-processed as FlowKit "raw" events: `$PnE` log scaling,
   `$PnG` gain and `$TIMESTEP` on the `Time` channel are applied before
   compensation
+- on files from `cytiq transform`, a dimension that would transform or
+  compensate an already-transformed channel is an error, since Gating-ML
+  applies its own compensation and transformation. Gate the raw file instead,
+  or use `uncompensated` dimensions without `transformation-ref`
 - membership semantics follow FlowKit/flowutils exactly:
   - rectangles use `min <= x < max`
   - polygons use the winding number with odd-winding interiors, so points on
@@ -422,7 +440,7 @@ cytiq clean --input sample.fcs --output clean/
 
 ```
 clean/
-  masks.parquet       event_id, non_debris, singlets, live, keep
+  masks.parquet       event_id, source_event_id, non_debris, singlets, live, keep
   metrics.json        per-filter status, method, fitted parameters, counts, overlaps
   gates.gatingml.xml  the fitted gates plus `clean` (Boolean AND of the applied ones)
   report.html         each gate drawn on its own dimensions
@@ -431,6 +449,9 @@ clean/
 Rules:
 - events are never copied. `event_id` is the 0-based row index in the input
   FCS, so the masks can be joined back to the original events.
+  `source_event_id` is the 0-based row in the raw file: `Original_ID - 1` when
+  the input carries `Original_ID` (for example PeacoQC output), otherwise
+  equal to `event_id`.
 - each filter reports `applied`, `not_assessed` or `disabled` in
   `metrics.json`, with a `reason`. The mask column of a filter that is not
   `applied` is null rather than all-true. `keep` is the AND of the applied
@@ -510,12 +531,26 @@ Rules:
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display
   identifiers like `$PnN [$PnS]`
 - `--method` can be `all`, `mad`, `it`, or `peaks-only`
-- `--remove-margins` removes detector-boundary events before PeacoQC
+- `--remove-margins` removes detector-boundary events before PeacoQC, using
+  flowCore's raw-detector bounds (`$PnR - 1` and the low bound). On files from
+  `cytiq transform` the bounds come from `CYTIQ_MARGINS`, already mapped
+  through the transform, so the same events are removed as on the raw file.
+  A transformed file without `CYTIQ_MARGINS` (written by an older cytiq) is
+  rejected rather than cut at its regenerated `$PnR`
 - `--remove-zeros` ignores zero values during peak detection, which is useful
   for mass cytometry data
 - PeacoQC tuning values such as MAD, IT limit, binning, peak removal, and
   consecutive-bin cleanup are fixed internal constants aligned with the
   reference defaults
+- the cleaned FCS keeps every source keyword, including the spillover matrix
+  and the original `$PnR`, since event values are unchanged. It adds an
+  `Original_ID` column (1-based raw row) unless the input already has one.
+  The file is written as 64-bit floats when 32-bit floats would change a
+  value, for example `Original_ID` above 2^24
+- `<output>.masks.parquet` (for example `sample.peacoqc.masks.parquet`) holds
+  one row per input event: `event_id` (0-based input row),
+  `source_event_id` (0-based raw row), `margin_pass`, `peacoqc_pass` and
+  `keep`. A null filter value means the event was not assessed by it
 
 When `--debug-dir` is provided, `cytiq` writes:
 
@@ -622,10 +657,12 @@ Shape:
 }
 ```
 
-FCS files written by `transform`, `peacoqc` and `autospectral` keep only the
-keywords they generate (plus their own, such as `CYTIQ_TRANSFORM`); instrument,
-acquisition and spillover keywords of the source are not carried over. Run
-`cytiq meta` on raw files before processing to keep that record. The
+FCS files written by `transform`, `peacoqc` and `autospectral` carry over the
+source's instrument and acquisition keywords and the `$Pn*` keywords of each
+channel, plus their own (`CYTIQ_TRANSFORM`, `CYTIQ_MARGINS`). Keywords that no
+longer describe the written values are dropped or renamed. For example
+`transform` moves the spillover matrix to `CYTIQ_SOURCE_SPILL`. `$PnB`, `$PnE`
+and `$DATATYPE` always describe the written float data. The
 `Original_ID` column of a PeacoQC output is the 1-based event row of that run's
 input file, so per-event results computed on the cleaned file (for example
 FlowSOM `event_index`, which is 0-based over the cleaned rows) map back to the

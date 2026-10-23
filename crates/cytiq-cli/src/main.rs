@@ -121,6 +121,10 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Clean controls before building spectra: drop raw detector-margin
+        /// events and gate FSC/SSC with the same KDE gate as `autospill`.
+        #[arg(long)]
+        clean_controls: bool,
     },
     /// Remove unstable acquisition regions using PeacoQC-style peak-based QC.
     Peacoqc {
@@ -791,6 +795,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             fsc,
             ssc,
             threads,
+            clean_controls,
         } => {
             info!(
                 "starting autospectral: controls={}, samples={}, input_dir={}, output={}",
@@ -823,6 +828,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output_dir: output.clone(),
                 debug_dir,
                 threads,
+                clean_controls,
             };
             let summary =
                 AutoSpectralRunner::run(&control_manifest, &sample_manifest, &input_dir, &config)?;

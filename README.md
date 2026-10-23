@@ -180,8 +180,11 @@ Rules:
 - independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
 - reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
 - positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
-- solver, autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
-- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
+- the OLS solution is computed with a Householder QR solve (`R⁻¹Qᵀ`), not the normal equations `(MᵀM)⁻¹Mᵀ`, which square the condition number; `run.json` records `solver_method`
+- autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
+- `--clean-controls` drops control events on a raw detector margin and gates FSC/SSC with the same KDE gate as `autospill` instead of the 1–99% quantile box; `run.json` records `control_gate`. It needs enough events for the KDE gate (a few hundred per control)
+- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
+- unmixed files record `CYTIQ_UNMIXING` (components and detectors) and the margin bounds of passed-through channels in `CYTIQ_MARGINS`. Components have no detector margins: `cytiq peacoqc --remove-margins` refuses them, and `cytiq gate` refuses to compensate them. Raw detector margins are written instead as `margin_pass` in `unmixed/<sample>.unmixed.masks.parquet`
 
 Outputs are always written under `--output`:
 
@@ -192,6 +195,7 @@ autospectral-out/
     autospectral-references.json
   unmixed/
     sample_01.unmixed.fcs
+    sample_01.unmixed.masks.parquet
   diagnostics/
     run.json
 ```
@@ -497,10 +501,11 @@ Rules:
 - events are pre-processed as FlowKit "raw" events: `$PnE` log scaling,
   `$PnG` gain and `$TIMESTEP` on the `Time` channel are applied before
   compensation
-- on files from `cytiq transform` or `cytiq compensate`, a dimension that would
-  transform or compensate an already processed channel is an error, since
-  Gating-ML applies its own compensation and transformation. Gate the raw file
-  instead, or use `uncompensated` dimensions without `transformation-ref`
+- on files from `cytiq transform`, `cytiq compensate` or `cytiq autospectral`,
+  a dimension that would transform or compensate an already processed channel
+  is an error, since Gating-ML applies its own compensation and
+  transformation. Gate the raw file instead, or use `uncompensated` dimensions
+  without `transformation-ref`
 - `--mask` (repeatable, see [Masks](#masks)) restricts gating to events every
   mask keeps; events outside belong to no gate, and `percent_of_total` uses
   the masked event count

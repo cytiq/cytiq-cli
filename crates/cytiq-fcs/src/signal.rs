@@ -8,6 +8,8 @@ use crate::types::FcsText;
 
 /// Written by `cytiq transform`; its JSON value describes the transform.
 pub const TRANSFORM_KEYWORD: &str = "CYTIQ_TRANSFORM";
+/// Written by `cytiq autospectral`; its JSON value is an [`UnmixingState`].
+pub const UNMIXING_KEYWORD: &str = "CYTIQ_UNMIXING";
 /// Written by `cytiq compensate`; its JSON value is a [`CompensationState`].
 pub const COMPENSATION_KEYWORD: &str = "CYTIQ_COMPENSATION";
 /// The source spillover matrix of a transformed or compensated file. It no
@@ -103,6 +105,48 @@ pub fn compensation_state(text: &FcsText) -> Result<Option<CompensationState>, F
         .map(|value| {
             serde_json::from_str(value).map_err(|_| FcsError::InvalidKeywordValue {
                 key: COMPENSATION_KEYWORD.to_owned(),
+                value: value.to_owned(),
+            })
+        })
+        .transpose()
+}
+
+/// Spectral unmixing recorded in `CYTIQ_UNMIXING`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnmixingState {
+    /// Unmixed abundance parameters (`$PnN`) written in place of detectors.
+    pub components: Vec<String>,
+    /// Detector channels the components were unmixed from.
+    pub detectors: Vec<String>,
+}
+
+impl UnmixingState {
+    #[must_use]
+    pub fn covers(&self, channel: &str) -> bool {
+        self.components.iter().any(|name| name == channel)
+    }
+
+    /// The `CYTIQ_UNMIXING` keyword value.
+    ///
+    /// # Panics
+    ///
+    /// Never: the state holds only strings.
+    #[must_use]
+    pub fn to_keyword_value(&self) -> String {
+        serde_json::to_string(self).expect("unmixing state serializes to JSON")
+    }
+}
+
+/// The spectral unmixing a dataset went through, if any.
+///
+/// # Errors
+///
+/// Returns an error when `CYTIQ_UNMIXING` is present but cannot be parsed.
+pub fn unmixing_state(text: &FcsText) -> Result<Option<UnmixingState>, FcsError> {
+    text.get(UNMIXING_KEYWORD)
+        .map(|value| {
+            serde_json::from_str(value).map_err(|_| FcsError::InvalidKeywordValue {
+                key: UNMIXING_KEYWORD.to_owned(),
                 value: value.to_owned(),
             })
         })

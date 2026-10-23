@@ -11,9 +11,10 @@ this crate.
   `is_autofluorescence_dye` and `normalize_identifier` used by the runner.
 - `src/runner.rs` — `AutoSpectralRunner`, algorithm constants, detector and
   primary-channel inference, scatter gate, positive selection, spectra,
-  condition number, OLS unmixing, thread pool and `parallel_try_map`.
-- `src/export.rs` — `write_outputs`: reference CSV/JSON, unmixed FCS,
-  `diagnostics/run.json`, debug summary.
+  condition number, QR least-squares unmixing, optional control cleaning,
+  thread pool and `parallel_try_map`.
+- `src/export.rs` — `write_outputs`: reference CSV/JSON, unmixed FCS and its
+  margin mask, `diagnostics/run.json`, debug summary.
 - `src/error.rs` — `AutoSpectralError` (`thiserror`).
 - `tests/autospectral.rs`, `tests/support.rs` — runner tests on the fixture set.
 
@@ -33,8 +34,15 @@ this crate.
 - Parallel stages go through `parallel_try_map`, which keeps results and errors
   in input order. Keep outputs deterministic regardless of `threads`.
 - `threads: Some(n)` runs in a local rayon pool; `None` uses the global pool.
-- Unmixed FCS files contain only the generated parameters. Do not try to copy
-  source TEXT keywords here; `cytiq-meta` is the place for that.
+- Unmixed FCS files carry the sample's acquisition keywords, but never its
+  spillover matrix or earlier `CYTIQ_*` state, which describe the replaced
+  detectors. They must record `CYTIQ_UNMIXING`, so later stages know the
+  components have no detector margins and must not be compensated.
+- The least-squares solve is a Householder QR (`unmixing_matrix`). nalgebra's
+  SVD and the normal equations were measured less accurate for similar
+  spectra (`qr_solver_keeps_precision_for_similar_spectra`).
+- `clean_controls` is opt-in: it changes the retained control events and so
+  the spectra.
 - Diagnostics use `log`; never print to stdout.
 
 ## Where changes belong

@@ -253,6 +253,7 @@ impl GatingStrategy {
 struct SignalStates {
     transform: Option<cytiq_fcs::TransformState>,
     compensation: Option<cytiq_fcs::CompensationState>,
+    unmixing: Option<cytiq_fcs::UnmixingState>,
     had_spillover: bool,
 }
 
@@ -263,6 +264,7 @@ impl SignalStates {
                 .map_err(GatingError::SignalState)?,
             compensation: cytiq_fcs::compensation_state(&dataset.text)
                 .map_err(GatingError::SignalState)?,
+            unmixing: cytiq_fcs::unmixing_state(&dataset.text).map_err(GatingError::SignalState)?,
             had_spillover: dataset
                 .text
                 .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
@@ -271,7 +273,7 @@ impl SignalStates {
     }
 
     const fn is_raw(&self) -> bool {
-        self.transform.is_none() && self.compensation.is_none()
+        self.transform.is_none() && self.compensation.is_none() && self.unmixing.is_none()
     }
 
     /// Fail when `dimension` would transform or compensate a channel again.
@@ -295,6 +297,10 @@ impl SignalStates {
             .compensation
             .as_ref()
             .is_some_and(|state| state.covers(channel));
+        let unmixed = self
+            .unmixing
+            .as_ref()
+            .is_some_and(|state| state.covers(channel));
         let applies_compensation = match &dimension.compensation {
             CompensationRef::Uncompensated => false,
             CompensationRef::Fcs => self.had_spillover,
@@ -306,6 +312,8 @@ impl SignalStates {
             Some(("compensate", "transformed by `cytiq transform`"))
         } else if compensated && applies_compensation {
             Some(("compensate", "compensated by `cytiq compensate`"))
+        } else if unmixed && applies_compensation {
+            Some(("compensate", "unmixed by `cytiq autospectral`"))
         } else {
             None
         };

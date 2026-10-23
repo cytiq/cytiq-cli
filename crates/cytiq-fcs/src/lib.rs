@@ -31,12 +31,13 @@ pub use crate::error::FcsError as Error;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
 pub use crate::linear::linear_values;
 pub use crate::margins::{
-    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds,
+    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds, raw_margin_pass,
     recorded_margin_bounds,
 };
 pub use crate::signal::{
     COMPENSATION_KEYWORD, CompensationState, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
-    TransformState, compensation_state, transform_state,
+    TransformState, UNMIXING_KEYWORD, UnmixingState, compensation_state, transform_state,
+    unmixing_state,
 };
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,

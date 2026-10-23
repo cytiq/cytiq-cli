@@ -470,7 +470,9 @@ name = "cytiq-autospectral"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "cytiq-density",
  "cytiq-fcs",
+ "cytiq-mask",
  "log",
  "nalgebra 0.35.0",
  "rayon",

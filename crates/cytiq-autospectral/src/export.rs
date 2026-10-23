@@ -6,6 +6,12 @@ use log::debug;
 use crate::error::AutoSpectralError;
 use crate::runner::{AutoSpectralResult, ComponentKind};
 
+/// `unmixed/sample_01.unmixed.fcs` -> `unmixed/sample_01.unmixed.masks.parquet`.
+#[must_use]
+pub fn masks_path(output: &Path) -> std::path::PathBuf {
+    output.with_extension("masks.parquet")
+}
+
 /// Write references, unmixed FCS files, diagnostics, and optional debug output.
 ///
 /// # Errors
@@ -42,6 +48,9 @@ pub fn write_outputs(
             path: sample.output_path.clone(),
             source,
         })?;
+        sample
+            .mask
+            .write_parquet(&masks_path(&sample.output_path))?;
     }
     write_json(&diagnostics_dir.join("run.json"), &result.summary)?;
 

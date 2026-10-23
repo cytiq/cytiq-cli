@@ -1,0 +1,20 @@
+{
+  "events": 15000,
+  "flags": {
+    "debris": 1243,
+    "doublet": 825,
+    "dead": 1324,
+    "unstable": 900,
+    "margin": 117
+  },
+  "good": 10819,
+  "good_population_counts": {
+    "b": 1658,
+    "cd4_t": 3429,
+    "cd8_t": 2127,
+    "dn_t": 560,
+    "mono": 1926,
+    "nk": 1089,
+    "rare": 30
+  }
+}

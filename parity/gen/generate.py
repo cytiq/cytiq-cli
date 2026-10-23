@@ -18,6 +18,7 @@ import pandas as pd
 from cytoscan import gen_cytoscan, gen_cytoscan_exact, gen_cytoscan_ref100
 from fcsio import PNR, write_fcs
 from gating import gen_gating
+import pipeline
 
 SEED = 20261022
 
@@ -215,13 +216,25 @@ def gen_flowsom(out: Path, n_events: int = 100_000, n_dim: int = 10, n_pop: int 
     (out / "channels.txt").write_text(",".join(channels))
 
 
+def gen_pipeline(out: Path, profile: str) -> None:
+    """Golden end-to-end dataset (see pipeline.py)."""
+    rng = np.random.default_rng(pipeline.SEED)
+    if profile == "beads":
+        data, truth = pipeline.beads(rng)
+    else:
+        data, truth = pipeline.generate(pipeline.PROFILES[profile], rng)
+    pipeline.write(out, data, truth)
+
+
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "parity/.data")
     for name, fn in [("transform", gen_transform), ("autospill", gen_autospill), ("autospectral", gen_autospectral),
                      ("peacoqc", gen_peacoqc), ("flowsom", gen_flowsom),
                      ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True)),
                      ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
-                     ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating)]:
+                     ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating),
+                     ("pipeline", lambda target: gen_pipeline(target, "full")),
+                     ("pipeline_beads", lambda target: gen_pipeline(target, "beads"))]:
         target = out / name
         target.mkdir(parents=True, exist_ok=True)
         fn(target)

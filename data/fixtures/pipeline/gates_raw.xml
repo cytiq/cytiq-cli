@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gating:Gating-ML
+    xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating"
+    xmlns:transforms="http://www.isac-net.org/std/Gating-ML/v2.0/transformations"
+    xmlns:data-type="http://www.isac-net.org/std/Gating-ML/v2.0/datatypes">
+  <transforms:transformation transforms:id="asinh">
+    <transforms:fasinh transforms:T="2371708.243" transforms:M="4.5" transforms:A="0"/>
+  </transforms:transformation>
+  <gating:RectangleGate gating:id="Lymphocytes">
+    <gating:dimension gating:min="40000" gating:max="95000" gating:compensation-ref="uncompensated">
+      <data-type:fcs-dimension data-type:name="FSC-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="40000" gating:compensation-ref="uncompensated">
+      <data-type:fcs-dimension data-type:name="SSC-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="T" gating:parent_id="Lymphocytes">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL1-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="CD4T" gating:parent_id="T">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL2-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL3-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="CD8T" gating:parent_id="T">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL3-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL2-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="DNT" gating:parent_id="T">
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL2-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL3-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="NonT" gating:parent_id="Lymphocytes">
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL1-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="B" gating:parent_id="NonT">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL4-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL5-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="NK" gating:parent_id="NonT">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL5-A"/>
+    </gating:dimension>
+    <gating:dimension gating:max="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL4-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+  <gating:RectangleGate gating:id="Rare" gating:parent_id="NonT">
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL4-A"/>
+    </gating:dimension>
+    <gating:dimension gating:min="0.2895296546" gating:compensation-ref="FCS" gating:transformation-ref="asinh">
+      <data-type:fcs-dimension data-type:name="FL5-A"/>
+    </gating:dimension>
+  </gating:RectangleGate>
+</gating:Gating-ML>

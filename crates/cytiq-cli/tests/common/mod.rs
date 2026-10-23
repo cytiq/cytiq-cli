@@ -25,13 +25,7 @@ pub fn assert_provenance(record: &Path, tool: &str, inputs: &[&Path], outputs: &
     for (key, paths) in [("inputs", inputs), ("outputs", outputs)] {
         let listed = record[key].as_array().expect("file list");
         for path in paths {
-            let bytes = fs::read(path).expect("listed file should exist");
-            let sha256 = Sha256::digest(&bytes)
-                .iter()
-                .fold(String::new(), |mut hex, byte| {
-                    let _ = write!(hex, "{byte:02x}");
-                    hex
-                });
+            let sha256 = sha256_hex(path);
             let entry = listed
                 .iter()
                 .find(|entry| entry["path"] == path.display().to_string())
@@ -39,6 +33,63 @@ pub fn assert_provenance(record: &Path, tool: &str, inputs: &[&Path], outputs: &
             assert_eq!(entry["sha256"], sha256, "{}", path.display());
         }
     }
+}
+
+/// Lowercase hex SHA-256 of a file.
+pub fn sha256_hex(path: &Path) -> String {
+    let bytes = fs::read(path)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    Sha256::digest(&bytes)
+        .iter()
+        .fold(String::new(), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
+
+/// The raw acquisition an FCS file belongs to, as stages record it in masks.
+pub fn acquisition_of(path: &Path) -> String {
+    let dataset = cytiq_fcs::FcsReader::open(path)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    cytiq_fcs::acquisition_id(path, &dataset.text).expect("acquisition should resolve")
+}
+
+/// Copy `source` to `target` with an `Original_ID` column beyond f32
+/// precision (from 2^24 + 1), as `PeacoQC` writes for large acquisitions.
+/// Returns the identifiers.
+#[allow(clippy::cast_precision_loss)]
+pub fn write_with_large_original_ids(source: &Path, target: &Path) -> Vec<f64> {
+    let dataset = cytiq_fcs::FcsReader::open(source)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", source.display()));
+    let ids = (0..dataset.event_count())
+        .map(|row| 16_777_217.0 + (2 * row) as f64)
+        .collect::<Vec<_>>();
+    let mut parameters = dataset
+        .parameters
+        .iter()
+        .map(cytiq_fcs::FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    parameters.push(cytiq_fcs::FcsWriteParameter::new(
+        cytiq_fcs::ORIGINAL_ID_PARAMETER,
+    ));
+    let mut columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(cytiq_fcs::ColumnData::to_f64_vec)
+        .collect::<Vec<_>>();
+    columns.push(ids.clone());
+    cytiq_fcs::write_fcs3_1_f64_with_options(
+        target,
+        &parameters,
+        &columns,
+        &cytiq_fcs::FcsWriteOptions::new()
+            .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text)),
+    )
+    .expect("copy with Original_ID should write");
+    ids
 }
 
 /// Adjusted Rand index between two labelings of the same events.

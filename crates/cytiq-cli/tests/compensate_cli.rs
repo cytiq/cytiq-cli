@@ -351,3 +351,36 @@ fn gating_compensated_output_matches_gating_raw_with_fcs_compensation() {
         "stderr: {stderr}"
     );
 }
+
+#[test]
+fn preserves_large_original_ids_exactly() {
+    let directory = create_temp_dir("cytiq-cli-compensate-original-id");
+    let source = fixture("gating", "sample.fcs");
+    let input = directory.join("sample.peacoqc.fcs");
+    let ids = common::write_with_large_original_ids(&source, &input);
+    let output = directory.join("sample.comp.fcs");
+    let plain = directory.join("plain.comp.fcs");
+
+    compensate(&input, &output, &[]);
+    compensate(&source, &plain, &[]);
+
+    let compensated = read(&output);
+    let index = compensated.find_parameter("Original_ID").expect("lineage");
+    let Some(ColumnData::F64(written)) = compensated.data.column(index) else {
+        panic!("identifiers beyond 2^24 need a double column");
+    };
+    assert_eq!(written, &ids);
+    // Compensated values do not depend on how the file had to be encoded.
+    let plain = read(&plain);
+    for name in ["FL1-A", "FL2-A", "FL3-A"] {
+        let column = |dataset: &FcsDataset| {
+            let index = dataset.find_parameter(name).expect("channel");
+            dataset.data.column(index).expect("column").to_f64_vec()
+        };
+        assert_eq!(column(&compensated), column(&plain), "{name}");
+    }
+    let mask = EventMask::read_parquet(&directory.join("sample.comp.masks.parquet"))
+        .expect("mask should be written");
+    assert_eq!(mask.source_event_ids[0], 16_777_216);
+    assert_eq!(mask.acquisition, common::sha256_hex(&input));
+}

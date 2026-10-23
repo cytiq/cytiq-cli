@@ -86,8 +86,19 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
             path: config.input.clone(),
             source,
         })?;
+    let read_error = |source| GatingError::FcsRead {
+        path: config.input.clone(),
+        source,
+    };
+    // Hashing a raw file is only worth it when an event mask is involved.
+    let acquisition = if config.masks.is_empty() && config.membership.is_none() {
+        None
+    } else {
+        Some(cytiq_fcs::acquisition_id(&config.input, &dataset.text).map_err(read_error)?)
+    };
     let mask = cytiq_mask::read_combined(&config.masks)?
-        .map(|mask| mask.keep_for(&dataset))
+        .zip(acquisition.as_deref())
+        .map(|(mask, acquisition)| mask.keep_for(&dataset, acquisition))
         .transpose()?;
     if let Some(mask) = &mask {
         info!(
@@ -113,13 +124,15 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
         OutputFormat::Csv => write_csv(&config.output, &report)?,
         OutputFormat::Json => write_json(&config.output, &report)?,
     }
-    if let Some(path) = &config.membership {
-        let source_event_ids =
-            cytiq_fcs::source_event_ids(&dataset).map_err(|source| GatingError::FcsRead {
-                path: config.input.clone(),
-                source,
-            })?;
-        write_membership(path, &results, dataset.event_count(), source_event_ids)?;
+    if let Some((path, acquisition)) = config.membership.as_ref().zip(acquisition) {
+        let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
+        write_membership(
+            path,
+            &results,
+            dataset.event_count(),
+            acquisition,
+            source_event_ids,
+        )?;
     }
 
     Ok(GatingRunResult {
@@ -136,12 +149,13 @@ fn write_membership(
     path: &Path,
     results: &GatingResults,
     rows: usize,
+    acquisition: String,
     source_event_ids: Option<Vec<u64>>,
 ) -> Result<(), GatingError> {
     let in_mask = results
         .event_mask()
         .map_or_else(|| vec![true; rows], <[bool]>::to_vec);
-    let mut mask = EventMask::new(in_mask.clone(), source_event_ids);
+    let mut mask = EventMask::new(acquisition, in_mask.clone(), source_event_ids);
     for id in results.gate_ids() {
         if [EVENT_ID_COLUMN, SOURCE_EVENT_ID_COLUMN, KEEP_COLUMN].contains(&id) {
             return Err(GatingError::ReservedGateId { id: id.to_owned() });

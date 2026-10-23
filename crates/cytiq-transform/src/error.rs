@@ -79,6 +79,8 @@ pub enum TransformError {
     },
     #[error("no transformable channels were selected for `{path}`")]
     NoTransformableChannels { path: PathBuf },
+    #[error("`{channel}` is the event lineage column and must not be transformed")]
+    ReservedChannel { channel: String },
     #[error("channel `{channel}` in `{path}` contains non-finite values")]
     NonFiniteChannel { path: PathBuf, channel: String },
     #[error("output FCS values for `{path}` contain non-finite values")]

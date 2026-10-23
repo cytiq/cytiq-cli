@@ -50,15 +50,19 @@ fn write_masks_parquet(path: &Path, masks: &CleanMasks) -> Result<(), CleanError
         Some(mask) => mask.iter().copied().map(Some).collect(),
         None => vec![None; event_count],
     };
-    EventMask::new(masks.keep.clone(), masks.source_event_ids.clone())
-        .with_filter(NON_DEBRIS_GATE, optional(&masks.non_debris))
-        .with_filter(SINGLETS_GATE, optional(&masks.singlets))
-        .with_filter(LIVE_GATE, optional(&masks.live))
-        .write_parquet(path)
-        .map_err(|error| CleanError::ParquetWrite {
-            path: path.to_path_buf(),
-            message: error.to_string(),
-        })
+    EventMask::new(
+        masks.acquisition.clone(),
+        masks.keep.clone(),
+        masks.source_event_ids.clone(),
+    )
+    .with_filter(NON_DEBRIS_GATE, optional(&masks.non_debris))
+    .with_filter(SINGLETS_GATE, optional(&masks.singlets))
+    .with_filter(LIVE_GATE, optional(&masks.live))
+    .write_parquet(path)
+    .map_err(|error| CleanError::ParquetWrite {
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    })
 }
 
 fn write_metrics_json(path: &Path, metrics: &CleanMetrics) -> Result<(), CleanError> {

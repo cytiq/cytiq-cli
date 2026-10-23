@@ -239,9 +239,13 @@ fn cli_clusters_only_events_kept_by_the_mask() {
     let mask_path = directory.join("mask.parquet");
     let output_path = directory.join("sample.flowsom.csv");
     write_flowsom_fixture_fcs(&input);
-    cytiq_mask::EventMask::new((0..60).map(|row| row % 2 == 0).collect(), None)
-        .write_parquet(&mask_path)
-        .expect("mask should write");
+    cytiq_mask::EventMask::new(
+        common::acquisition_of(&input),
+        (0..60).map(|row| row % 2 == 0).collect(),
+        None,
+    )
+    .write_parquet(&mask_path)
+    .expect("mask should write");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -398,4 +402,36 @@ fn create_temp_dir(label: &str) -> PathBuf {
 
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
+}
+
+#[test]
+fn fails_when_mask_belongs_to_another_file() {
+    let directory = create_temp_dir("cytiq-cli-flowsom-foreign-mask");
+    let input = directory.join("sample.fcs");
+    let mask_path = directory.join("mask.parquet");
+    let output_path = directory.join("sample.flowsom.csv");
+    write_flowsom_fixture_fcs(&input);
+    cytiq_mask::EventMask::new("0".repeat(64), vec![true; 60], None)
+        .write_parquet(&mask_path)
+        .expect("mask should write");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "flowsom",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&output_path),
+            "--channels",
+            "FL1-A,FL2-A,FL3-A",
+            "--mask",
+            utf8(&mask_path),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("was computed on acquisition"), "{stderr}");
+    assert!(!output_path.exists());
 }

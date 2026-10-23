@@ -544,9 +544,84 @@ fn golden_chain_recovers_the_known_truth() {
         "rare population metacluster purity (20 metaclusters)",
     );
 
+    // Every derived file and mask names the raw file as its acquisition.
+    let acquisition = common::sha256_hex(&fixture("sample.fcs"));
+    for name in ["s.comp.fcs", "s.t.fcs", "s.peacoqc.fcs"] {
+        assert_eq!(
+            common::acquisition_of(&directory.join(name)),
+            acquisition,
+            "{name}"
+        );
+    }
+    for name in [
+        "s.comp.masks.parquet",
+        "s.peacoqc.masks.parquet",
+        "clean/masks.parquet",
+        "analysis.parquet",
+        "membership.parquet",
+    ] {
+        assert_eq!(
+            read_mask(&directory, name).acquisition,
+            acquisition,
+            "{name}"
+        );
+    }
+
     // Provenance: each stage's inputs are byte-identical to the outputs the
     // earlier stage recorded.
     common::assert_provenance_chain(&directory);
+}
+
+/// The order the audit flagged: transform after `PeacoQC` must leave
+/// `Original_ID` alone, so the `PeacoQC` mask still applies to the transformed
+/// file.
+#[test]
+fn peacoqc_mask_applies_after_transform() {
+    let directory = create_temp_dir("cytiq-cli-pipeline-peacoqc-first");
+    let sample = fixture("sample.fcs");
+    for step in [
+        &[
+            "peacoqc",
+            "--input",
+            utf8(&sample),
+            "--output",
+            "s.peacoqc.fcs",
+            "--channels",
+            FLUORESCENCE,
+        ][..],
+        &[
+            "transform",
+            "--input",
+            "s.peacoqc.fcs",
+            "--output",
+            "s.t.fcs",
+        ],
+        &[
+            "gate",
+            "--input",
+            "s.t.fcs",
+            "--gating-ml",
+            utf8(&fixture("gates.xml")),
+            "--output",
+            "counts.json",
+            "--mask",
+            "s.peacoqc.masks.parquet",
+        ],
+    ] {
+        cytiq(&directory, step);
+    }
+
+    let cleaned = read_fcs(&directory.join("s.peacoqc.fcs"));
+    let transformed = read_fcs(&directory.join("s.t.fcs"));
+    assert_eq!(
+        column(&transformed, "Original_ID"),
+        column(&cleaned, "Original_ID")
+    );
+    let state = cytiq_fcs::transform_state(&transformed.text)
+        .expect("state should parse")
+        .expect("transform state");
+    assert!(!state.covers("Original_ID"));
+    assert!(state.covers("FL1-A"));
 }
 
 #[test]

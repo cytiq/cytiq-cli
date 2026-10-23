@@ -34,6 +34,7 @@ pub fn write_debug_artifacts(
 /// filter did not assess the event, never that it passed.
 pub(crate) fn write_masks_parquet(
     path: &Path,
+    acquisition: &str,
     mask: &[EventMaskRecord],
     source_event_ids: Option<&[u64]>,
     margins_assessed: bool,
@@ -53,6 +54,7 @@ pub(crate) fn write_masks_parquet(
         })
         .collect();
     EventMask::new(
+        acquisition,
         mask.iter().map(|record| record.is_good).collect(),
         source_event_ids.map(<[u64]>::to_vec),
     )

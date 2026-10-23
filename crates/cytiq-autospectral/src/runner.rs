@@ -43,7 +43,8 @@ pub const MIN_RETAINED_EVENTS: usize = 20;
 /// `asp$min.cell.stop.n`.
 pub const MIN_POSITIVE_EVENTS: usize = 20;
 pub const CONDITION_NUMBER_LIMIT: f64 = 1.0e8;
-pub const AUTO_EXCLUDED_CHANNELS: &[&str] = &["Time"];
+/// Never inferred as detectors: acquisition time and the event lineage.
+pub const AUTO_EXCLUDED_CHANNELS: &[&str] = &["Time", cytiq_fcs::ORIGINAL_ID_PARAMETER];
 
 const SPECTRUM_EPSILON: f64 = 1e-12;
 const UNMIX_EVENT_CHUNK_SIZE: usize = 8_192;
@@ -148,7 +149,9 @@ pub struct AutoSpectralResult {
 pub struct UnmixedSample {
     pub output_path: PathBuf,
     pub parameters: Vec<FcsWriteParameter>,
-    pub columns: Vec<Vec<f32>>,
+    /// Passed-through columns hold their exact source values; unmixed
+    /// components are rounded to f32.
+    pub columns: Vec<Vec<f64>>,
     pub text_keywords: Vec<(String, String)>,
     /// Raw detector-margin flags per event (`margin_pass`), written next to
     /// the unmixed FCS.
@@ -290,7 +293,7 @@ impl AutoSpectralRunner {
 #[derive(Clone, Debug)]
 struct WorkingUnmixedSample {
     parameters: Vec<FcsWriteParameter>,
-    columns: Vec<Vec<f32>>,
+    columns: Vec<Vec<f64>>,
     text_keywords: Vec<(String, String)>,
     mask: EventMask,
     summary: SampleQc,
@@ -370,8 +373,16 @@ fn resolve_detectors(
             .detectors
             .iter()
             .map(|detector| detector.channel.clone())
-            .collect()
+            .collect::<Vec<_>>()
     };
+    if let Some(channel) = detectors
+        .iter()
+        .find(|channel| channel.as_str() == cytiq_fcs::ORIGINAL_ID_PARAMETER)
+    {
+        return Err(AutoSpectralError::ReservedDetectorChannel {
+            value: channel.clone(),
+        });
+    }
 
     if detectors.is_empty() {
         return Err(AutoSpectralError::DetectorInferenceFailed);
@@ -772,18 +783,22 @@ fn unmix_sample(
         .collect::<Vec<_>>();
     let margin_pass =
         cytiq_fcs::raw_margin_pass(&sample.dataset, &detector_indices).map_err(read_error)?;
+    let acquisition =
+        cytiq_fcs::acquisition_id(&sample.path, &sample.dataset.text).map_err(read_error)?;
     let mask = EventMask::new(
+        acquisition.clone(),
         margin_pass.clone(),
         cytiq_fcs::source_event_ids(&sample.dataset).map_err(read_error)?,
     )
     .with_filter("margin_pass", margin_pass.into_iter().map(Some).collect());
-    let text_keywords =
+    let mut text_keywords =
         output_keywords(&sample.dataset, detectors, components).map_err(read_error)?;
+    cytiq_fcs::set_acquisition(&mut text_keywords, &acquisition);
 
     let (mut parameters, mut columns) = preserved_columns(&sample.dataset, detectors);
     for (component, column) in components.iter().zip(component_columns) {
         parameters.push(FcsWriteParameter::new(component.name.clone()));
-        columns.push(column);
+        columns.push(column.into_iter().map(f64::from).collect());
     }
     let negative_fraction = if event_total == 0 || components.is_empty() {
         0.0
@@ -895,7 +910,7 @@ fn sample_output_paths(samples: &[SampleManifestRow], output_dir: &Path) -> Vec<
 fn preserved_columns(
     dataset: &FcsDataset,
     detectors: &[String],
-) -> (Vec<FcsWriteParameter>, Vec<Vec<f32>>) {
+) -> (Vec<FcsWriteParameter>, Vec<Vec<f64>>) {
     let detector_set = detectors.iter().collect::<HashSet<_>>();
     let mut parameters = Vec::new();
     let mut columns = Vec::new();
@@ -904,7 +919,7 @@ fn preserved_columns(
             continue;
         }
         parameters.push(FcsWriteParameter::from_source(parameter));
-        columns.push(column_to_f32(
+        columns.push(column_to_f64(
             dataset
                 .data
                 .column(index)
@@ -1207,14 +1222,6 @@ fn column_to_f64(column: &ColumnData) -> Vec<f64> {
         ColumnData::UInt(values) => values.iter().map(|value| *value as f64).collect(),
         ColumnData::F32(values) => values.iter().map(|value| f64::from(*value)).collect(),
         ColumnData::F64(values) => values.clone(),
-    }
-}
-
-fn column_to_f32(column: &ColumnData) -> Vec<f32> {
-    match column {
-        ColumnData::UInt(values) => values.iter().map(|value| *value as f32).collect(),
-        ColumnData::F32(values) => values.clone(),
-        ColumnData::F64(values) => values.iter().map(|value| *value as f32).collect(),
     }
 }
 

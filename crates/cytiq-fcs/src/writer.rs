@@ -236,6 +236,43 @@ pub fn write_fcs3_1_f64_with_options(
     write_to_file(path.as_ref(), parameters, columns, options)
 }
 
+/// Whether storing any of `values` as f32 would change it.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn needs_f64(values: &[f64]) -> bool {
+    values
+        .iter()
+        .any(|value| f64::from(*value as f32).to_bits() != value.to_bits())
+}
+
+/// Write an FCS 3.1 file that stores every value exactly: 32-bit floats when
+/// all values fit f32, doubles otherwise (event identifiers above 2^24, 32-bit
+/// integer data, f64 data). Computed values that should not force doubles
+/// must be rounded through f32 by the caller.
+///
+/// # Errors
+///
+/// Returns an error when parameters/columns/options are inconsistent, offsets
+/// cannot be represented in the fixed header, values are non-finite, or the
+/// underlying writer fails.
+#[allow(clippy::cast_possible_truncation)]
+pub fn write_fcs3_1_exact_with_options(
+    path: impl AsRef<Path>,
+    parameters: &[FcsWriteParameter],
+    columns: &[Vec<f64>],
+    options: &FcsWriteOptions,
+) -> Result<(), FcsError> {
+    if columns.iter().any(|column| needs_f64(column)) {
+        write_fcs3_1_f64_with_options(path, parameters, columns, options)
+    } else {
+        let columns = columns
+            .iter()
+            .map(|column| column.iter().map(|value| *value as f32).collect())
+            .collect::<Vec<Vec<f32>>>();
+        write_fcs3_1_f32_with_options(path, parameters, &columns, options)
+    }
+}
+
 /// Buffered file output: the data segment is written value by value, which
 /// would otherwise cost one `write` syscall per event and channel.
 fn write_to_file<T: DataValue>(

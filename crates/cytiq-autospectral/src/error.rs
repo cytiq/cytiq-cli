@@ -50,6 +50,8 @@ pub enum AutoSpectralError {
     DuplicateDye { value: String },
     #[error("duplicate detector channel `{value}` in detectors manifest")]
     DuplicateDetectorChannel { value: String },
+    #[error("`{value}` is the event lineage column, not a detector")]
+    ReservedDetectorChannel { value: String },
     #[error("controls manifest must contain exactly one `dye=Autofluorescence` row")]
     MissingAutofluorescenceControl,
     #[error("controls manifest contains multiple `dye=Autofluorescence` rows")]

@@ -334,8 +334,6 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
-        /// Event mask Parquet (`masks.parquet`); only kept events are
-        /// clustered. Repeat to combine several masks with AND.
         /// SOM grid width.
         #[arg(long, default_value_t = FLOWSOM_XDIM, value_parser = parse_positive_usize)]
         xdim: usize,
@@ -355,6 +353,8 @@ enum Commands {
         /// assign every event; default trains on all events.
         #[arg(long, value_parser = parse_positive_usize)]
         training_events: Option<usize>,
+        /// Event mask Parquet (`masks.parquet`); only kept events are
+        /// clustered. Repeat to combine several masks with AND.
         #[arg(long = "mask")]
         masks: Vec<PathBuf>,
     },
@@ -696,7 +696,7 @@ fn main() -> ExitCode {
 #[allow(clippy::too_many_lines)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let recorder = RunRecorder::start(
+    let mut recorder = RunRecorder::start(
         format!("cytiq {}", command_name(&cli.command)),
         env!("CARGO_PKG_VERSION"),
         env::args().skip(1).collect(),
@@ -732,6 +732,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             inputs.extend(detectors.clone());
             inputs.extend(transform_file.clone());
             inputs.extend(manifest.iter().map(|row| input_dir.join(&row.filename)));
+            recorder.snapshot_inputs(&inputs)?;
             let detectors = detectors
                 .map(read_detectors_manifest)
                 .transpose()?
@@ -777,7 +778,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("autospill completed successfully");
             record_provenance(
                 recorder,
-                &inputs,
                 std::slice::from_ref(&output),
                 &record_path_for_file(&output),
             )
@@ -808,6 +808,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let mut inputs = vec![controls.clone()];
             inputs.extend(detectors.clone());
             inputs.extend(manifest.iter().map(|row| input_dir.join(&row.filename)));
+            recorder.snapshot_inputs(&inputs)?;
             let detectors = detectors
                 .map(read_detectors_manifest)
                 .transpose()?
@@ -838,7 +839,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("autospread completed successfully");
             record_provenance(
                 recorder,
-                &inputs,
                 std::slice::from_ref(&output),
                 &record_path_for_file(&output),
             )
@@ -877,6 +877,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .map(|row| input_dir.join(&row.filename)),
                     ),
             );
+            recorder.snapshot_inputs(&inputs)?;
             info!(
                 "loaded {} control rows and {} sample rows",
                 control_manifest.len(),
@@ -912,7 +913,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("autospectral completed successfully");
             record_provenance(
                 recorder,
-                &inputs,
                 &files_under(&output),
                 &record_path_for_dir(&output),
             )
@@ -944,6 +944,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 debug_dir,
                 threads,
             };
+            recorder.snapshot_inputs(std::slice::from_ref(&input))?;
             let result = PeacoQcRunner::run(&input, &output, &config)?;
             let outputs = [output.clone(), peacoqc_masks_path(&output)];
             info!(
@@ -954,7 +955,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 info!("wrote peacoqc debug artifacts to {}", debug_dir.display());
             }
             info!("peacoqc completed successfully");
-            record_provenance(recorder, &[input], &outputs, &record_path_for_file(&output))
+            record_provenance(recorder, &outputs, &record_path_for_file(&output))
         }
         Commands::Cytoscan {
             input,
@@ -989,6 +990,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 threads,
                 strict,
             };
+            recorder.snapshot_inputs(&CytoScanRunner::input_files(&config)?)?;
             let result = CytoScanRunner::run(&config)?;
             for warning in &result.diagnostics.warnings {
                 warn!("cytoscan: {warning}");
@@ -1002,16 +1004,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 info!("wrote cytoscan debug artifacts to {}", debug_dir.display());
             }
             info!("cytoscan completed successfully");
-            let parameters = &result.parameters;
-            let inputs = parameters
-                .resolved_test_inputs
-                .iter()
-                .chain(&parameters.resolved_reference_inputs)
-                .cloned()
-                .collect::<Vec<_>>();
             record_provenance(
                 recorder,
-                &inputs,
                 &files_under(&config.output_dir),
                 &record_path_for_dir(&config.output_dir),
             )
@@ -1070,6 +1064,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 threads,
                 allow_retransform,
             };
+            if !config.dry_run {
+                recorder.snapshot_inputs(&TransformRunner::input_files(&config)?)?;
+            }
             let result = TransformRunner::run(&config)?;
             if result.dry_run {
                 print_transform_dry_run(&result);
@@ -1081,11 +1078,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if result.dry_run {
                 return Ok(());
             }
-            let inputs = result
-                .files
-                .iter()
-                .map(|file| file.input_path.clone())
-                .collect::<Vec<_>>();
             let mut outputs = result
                 .files
                 .iter()
@@ -1097,7 +1089,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 record_path_for_file(&config.output)
             };
-            record_provenance(recorder, &inputs, &outputs, &record_path)
+            record_provenance(recorder, &outputs, &record_path)
         }
         Commands::Gate {
             input,
@@ -1123,9 +1115,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 masks,
                 membership,
             };
-            let result = GatingRunner::run(&config)?;
             let mut inputs = vec![config.input.clone(), config.gating_ml.clone()];
             inputs.extend(config.masks.iter().cloned());
+            recorder.snapshot_inputs(&inputs)?;
+            let result = GatingRunner::run(&config)?;
             let mut outputs = vec![config.output.clone()];
             outputs.extend(config.membership.clone());
             for gate in &result.gates {
@@ -1140,12 +1133,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.event_count,
                 result.output.display()
             );
-            record_provenance(
-                recorder,
-                &inputs,
-                &outputs,
-                &record_path_for_file(&config.output),
-            )
+            record_provenance(recorder, &outputs, &record_path_for_file(&config.output))
         }
         Commands::Compensate {
             input,
@@ -1165,9 +1153,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 matrix: matrix.zip(matrix_kind.map(CompensateMatrixKind::from)),
                 overwrite,
             };
-            let result = CompensateRunner::run(&config)?;
             let mut inputs = vec![config.input.clone()];
             inputs.extend(config.matrix.as_ref().map(|(path, _)| path.clone()));
+            recorder.snapshot_inputs(&inputs)?;
+            let result = CompensateRunner::run(&config)?;
             info!(
                 "compensated {} channel(s) over {} event(s); {} on a raw detector margin; wrote {} and {}",
                 result.channels.len(),
@@ -1178,7 +1167,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             record_provenance(
                 recorder,
-                &inputs,
                 &[result.output.clone(), result.masks.clone()],
                 &record_path_for_file(&result.output),
             )
@@ -1194,6 +1182,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 overwrite,
             };
+            recorder.snapshot_inputs(&config.masks)?;
             let combined = MaskCombineRunner::run(&config)?;
             info!(
                 "mask combine kept {} of {} event(s); wrote {}",
@@ -1203,7 +1192,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             record_provenance(
                 recorder,
-                &config.masks,
                 std::slice::from_ref(&config.output),
                 &record_path_for_file(&config.output),
             )
@@ -1223,6 +1211,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 overwrite,
             };
+            // An invalid manifest fails the run below with the same error.
+            let inputs = PreflightRunner::input_files(&config)
+                .unwrap_or_else(|_| vec![config.manifest.clone()]);
+            recorder.snapshot_inputs(&inputs)?;
             let report = PreflightRunner::run(&config)?;
             for check in &report.checks {
                 match check.status {
@@ -1244,11 +1236,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 report.failures,
                 config.output.display()
             );
-            let mut inputs = vec![config.manifest.clone()];
-            inputs.extend(report.files.iter().map(PathBuf::from));
             record_provenance(
                 recorder,
-                &inputs,
                 std::slice::from_ref(&config.output),
                 &record_path_for_file(&config.output),
             )?;
@@ -1287,6 +1276,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             inputs.extend(args.masks.iter().cloned());
             inputs.extend(args.gates.clone());
             inputs.extend(args.viability_control.clone());
+            recorder.snapshot_inputs(&inputs)?;
             let result = CleanRunner::run(&args.into())?;
             let metrics = &result.metrics;
             for (name, report) in [
@@ -1314,7 +1304,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             record_provenance(
                 recorder,
-                &inputs,
                 &files_under(&result.output),
                 &record_path_for_dir(&result.output),
             )
@@ -1353,9 +1342,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 training_events,
                 masks,
             };
-            let result = FlowSomRunner::run(&input, &output, &config)?;
             let mut inputs = vec![input.clone()];
             inputs.extend(config.masks.iter().cloned());
+            recorder.snapshot_inputs(&inputs)?;
+            let result = FlowSomRunner::run(&input, &output, &config)?;
             info!(
                 "flowsom assigned {} events across {} SOM nodes and {} metaclusters",
                 result.summary.metrics.events,
@@ -1368,7 +1358,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!("flowsom completed successfully");
             record_provenance(
                 recorder,
-                &inputs,
                 std::slice::from_ref(&output),
                 &record_path_for_file(&output),
             )
@@ -1394,15 +1383,14 @@ const fn command_name(command: &Commands) -> &'static str {
     }
 }
 
-/// Write the run's `provenance.json`: tool, arguments, and the hashes of the
-/// files it read and wrote.
+/// Write the run's `provenance.json`: tool, arguments, the hashes of the
+/// inputs as snapshotted before the run, and of the files it wrote.
 fn record_provenance(
     recorder: RunRecorder,
-    inputs: &[PathBuf],
     outputs: &[PathBuf],
     record_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    recorder.finish(inputs, outputs, record_path)?;
+    recorder.finish(outputs, record_path)?;
     debug!("wrote provenance record {}", record_path.display());
     Ok(())
 }

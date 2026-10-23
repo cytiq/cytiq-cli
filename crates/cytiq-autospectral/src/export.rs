@@ -38,7 +38,7 @@ pub fn write_outputs(
         debug!("writing unmixed FCS to {}", sample.output_path.display());
         let options =
             cytiq_fcs::FcsWriteOptions::new().with_text_keywords(sample.text_keywords.clone());
-        cytiq_fcs::write_fcs3_1_f32_with_options(
+        cytiq_fcs::write_fcs3_1_exact_with_options(
             &sample.output_path,
             &sample.parameters,
             &sample.columns,

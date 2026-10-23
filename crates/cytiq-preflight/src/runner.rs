@@ -40,6 +40,19 @@ pub struct PreflightReport {
 pub struct PreflightRunner;
 
 impl PreflightRunner {
+    /// The files a run with `config` reads: the manifest, then the sample and
+    /// control FCS files it lists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the manifest is invalid.
+    pub fn input_files(config: &PreflightConfig) -> Result<Vec<PathBuf>, PreflightError> {
+        let manifest = RunManifest::load(&config.manifest)?;
+        let mut files = vec![config.manifest.clone()];
+        files.extend(manifest_files(&manifest));
+        Ok(files)
+    }
+
     /// Check the manifest and its files and write the report, whatever the
     /// checks found; [`PreflightReport::ensure_passed`] turns failed checks
     /// into an error.
@@ -55,6 +68,7 @@ impl PreflightRunner {
             });
         }
         let manifest = RunManifest::load(&config.manifest)?;
+        let files = manifest_files(&manifest);
         info!(
             "preflight: {} sample(s), {} control(s), {} marker(s)",
             manifest.samples.len(),
@@ -67,16 +81,9 @@ impl PreflightRunner {
             tool: "cytiq preflight".to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
             manifest: config.manifest.display().to_string(),
-            files: manifest
-                .samples
+            files: files
                 .iter()
-                .map(|sample| sample.file.display().to_string())
-                .chain(
-                    manifest
-                        .controls
-                        .iter()
-                        .map(|control| control.file.display().to_string()),
-                )
+                .map(|file| file.display().to_string())
                 .collect(),
             status: checks
                 .iter()
@@ -182,4 +189,14 @@ fn write_report(path: &Path, report: &PreflightReport) -> Result<(), PreflightEr
         .map_err(|error| write_error(std::io::Error::other(error)))?;
     bytes.push(b'\n');
     fs::write(path, bytes).map_err(write_error)
+}
+
+/// Sample then control FCS files of a manifest, resolved.
+fn manifest_files(manifest: &RunManifest) -> Vec<PathBuf> {
+    manifest
+        .samples
+        .iter()
+        .map(|sample| sample.file.clone())
+        .chain(manifest.controls.iter().map(|control| control.file.clone()))
+        .collect()
 }

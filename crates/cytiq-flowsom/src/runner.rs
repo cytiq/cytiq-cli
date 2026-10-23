@@ -425,8 +425,13 @@ fn selected_rows(
     let Some(mask) = cytiq_mask::read_combined(masks)? else {
         return Ok((0..event_count(dataset)).collect());
     };
+    let acquisition =
+        cytiq_fcs::acquisition_id(path, &dataset.text).map_err(|source| FlowSomError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
     let rows = mask
-        .keep_for(dataset)?
+        .keep_for(dataset, &acquisition)?
         .iter()
         .enumerate()
         .filter_map(|(row, keep)| keep.then_some(row))

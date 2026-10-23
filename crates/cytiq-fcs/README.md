@@ -1,6 +1,6 @@
 # cytiq-fcs
 
-Strict FCS 3.0 / 3.1 / 3.2 reader, a compact FCS 3.1 float32 writer, and
+Strict FCS 3.0 / 3.1 / 3.2 reader, a compact FCS 3.1 float writer, and
 spillover / compensation helpers. It has no command of its own: every other
 `cytiq` crate that touches FCS files goes through it.
 
@@ -29,9 +29,17 @@ error rather than a best-effort guess (duplicate keywords, HEADER/TEXT offset
 mismatch, non-UTF-8 TEXT, unsupported `$MODE`/`$BYTEORD`/widths, DATA length
 mismatch).
 
-Writing (`write_fcs3_1_f32*`): FCS 3.1, little-endian 32-bit float, one column
-per parameter, optional `$PnS` labels and extra TEXT keywords. This is the
-layout used for every FCS file `cytiq` generates; it is not a general writer.
+Writing (`write_fcs3_1_f32*`, `write_fcs3_1_f64*`): FCS 3.1, little-endian
+32-bit or 64-bit float, one column per parameter, optional `$PnS` labels and
+extra TEXT keywords. `write_fcs3_1_exact_with_options` takes f64 columns and
+writes f32 unless a value would change (event identifiers above 2^24, 32-bit
+integer data). This is the layout used for every FCS file `cytiq` generates;
+it is not a general writer.
+
+Acquisition identity: `acquisition_id` returns the `CYTIQ_ACQUISITION` keyword
+of a derived file, or the SHA-256 of a raw file. Stages that write FCS record
+it with `set_acquisition`, and event masks carry it, so masks only apply to
+files of their own acquisition.
 
 Compensation: `Spillover` parses `$SPILLOVER` / `$SPILL` / `SPILLOVER` /
 `SPILL` (case-insensitive), `invert_matrix` inverts it with Gauss-Jordan
@@ -80,6 +88,8 @@ write_fcs3_1_f32_with_options(
 | `find_parameter_index` | Match `$PnN`, then `$PnS`, then `"$PnN [$PnS]"` |
 | `write_fcs3_1_f32`, `..._with_options`, `..._to_writer`, `..._to_writer_with_options` | FCS 3.1 float32 writer |
 | `write_fcs3_1_f64_with_options`, `write_fcs3_1_f64_to_writer_with_options` | FCS 3.1 float64 writer, for values f32 cannot hold exactly |
+| `write_fcs3_1_exact_with_options`, `needs_f64` | Writer that picks f32 or f64 so every value is stored exactly |
+| `acquisition_id`, `set_acquisition`, `is_sha256`, `ACQUISITION_KEYWORD` | Raw acquisition a file belongs to (`CYTIQ_ACQUISITION`) |
 | `FcsWriteParameter` (`from_source`, `with_range`, `with_keyword`), `FcsWriteOptions`, `carried_keywords` | Writer parameters, extra TEXT keywords, and source keywords a derived file can keep |
 | `Spillover`, `invert_matrix`, `compensate`, `is_spillover_keyword` | Spillover parsing and compensation |
 | `condition_number_1` | 1-norm condition number of a spillover matrix |
@@ -108,7 +118,8 @@ write_fcs3_1_f32_with_options(
 
 ## Dependencies
 
-`log`, `thiserror`, and `serde` / `serde_json` for the `CYTIQ_*` JSON keywords.
+`log`, `thiserror`, `serde` / `serde_json` for the `CYTIQ_*` JSON keywords,
+and `sha2` for acquisition identity.
 
 ## Tests
 

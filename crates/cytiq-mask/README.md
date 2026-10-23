@@ -16,8 +16,17 @@ to any file derived from it, whatever rows that file kept.
 | filter columns | nullable `Boolean` | pass/fail; null means "not assessed" |
 | `keep` | `Boolean` | whether later stages should use the event |
 
-Written by `cytiq compensate`, `cytiq peacoqc`, `cytiq clean` and
-`cytiq gate --membership`; read by `--mask` on `gate`, `flowsom` and `clean`.
+Parquet key-value metadata ties the mask to its acquisition:
+
+| Key | Value |
+| --- | --- |
+| `cytiq.mask.schema_version` | `2` (`SCHEMA_VERSION`) |
+| `cytiq.acquisition_sha256` | SHA-256 of the raw FCS (`cytiq_fcs::acquisition_id`) |
+| `cytiq.event_id_base` | `0` |
+
+Written by `cytiq compensate`, `cytiq peacoqc`, `cytiq clean`,
+`cytiq autospectral` and `cytiq gate --membership`; read by `--mask` on
+`gate`, `flowsom` and `clean`.
 
 ## Usage
 
@@ -34,8 +43,10 @@ let raw = EventMask::read_parquet("sample.comp.masks.parquet".as_ref())?;
 let qc = EventMask::read_parquet("sample.peacoqc.masks.parquet".as_ref())?;
 let analysis = EventMask::combine(&[raw, qc])?;
 
-let dataset = cytiq_fcs::FcsReader::open("sample.peacoqc.fcs")?.read()?;
-let keep: Vec<bool> = analysis.keep_for(&dataset)?; // one entry per dataset row
+let path = std::path::Path::new("sample.peacoqc.fcs");
+let dataset = cytiq_fcs::FcsReader::open(path)?.read()?;
+let acquisition = cytiq_fcs::acquisition_id(path, &dataset.text)?;
+let keep: Vec<bool> = analysis.keep_for(&dataset, &acquisition)?; // one entry per dataset row
 ```
 
 ## Public API
@@ -46,23 +57,30 @@ let keep: Vec<bool> = analysis.keep_for(&dataset)?; // one entry per dataset row
 | `read_combined` | Read and combine the masks passed with `--mask` (`None` for none) |
 | `MaskCombineRunner::run` / `MaskCombineConfig` | The `cytiq mask combine` command |
 | `EVENT_ID_COLUMN`, `SOURCE_EVENT_ID_COLUMN`, `KEEP_COLUMN` | Reserved column names |
+| `SCHEMA_VERSION`, `SCHEMA_VERSION_KEY`, `ACQUISITION_KEY`, `EVENT_ID_BASE_KEY` | Parquet metadata |
 | `MaskError` | Error type for every failure mode |
 
 ## Rules
 
+- Every mask belongs to one acquisition. `combine` rejects masks of different
+  acquisitions, and `keep_for` rejects a dataset of another acquisition.
+- Reading rejects a mask without acquisition metadata (written before schema
+  version 2): regenerate it with the current cytiq.
+- `write_parquet` writes through a `.tmp` sibling and renames.
 - `combine` keys rows by `source_event_id` and follows the first mask's rows.
   An event is kept only when every mask has it and keeps it. Filter columns
   are concatenated; a repeated name is prefixed with the 1-based index of its
   mask (`2.margin_pass`).
 - `keep_for` matches dataset rows to mask rows through the dataset's
   `Original_ID` (or row number when it has none). A dataset row missing from
-  the mask is an error: the mask belongs to another acquisition.
+  the mask is an error.
 - Reading rejects masks without `keep`/`source_event_id`, with nulls in them,
   with non-Boolean filter columns, or with a repeated `source_event_id`.
 
 ## Dependencies
 
-- [`cytiq-fcs`](../cytiq-fcs) for event lineage (`source_event_ids`)
+- [`cytiq-fcs`](../cytiq-fcs) for event lineage (`source_event_ids`,
+  `acquisition_id`)
 - `arrow` / `parquet`
 
 ## Tests

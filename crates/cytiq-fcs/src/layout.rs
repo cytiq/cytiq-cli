@@ -307,8 +307,13 @@ fn optional_parameter_value<'a>(text: &'a FcsText, index: usize, suffix: &str) -
 
 fn collect_parameter_keywords(text: &FcsText, index: u16) -> Vec<(String, String)> {
     let prefix = format!("$P{index}");
+    // `$P1` must not pick up `$P10*`, `$P11*`, ...
     text.iter()
-        .filter(|(key, _)| key.starts_with(&prefix))
+        .filter(|(key, _)| {
+            key.strip_prefix(&prefix)
+                .and_then(|suffix| suffix.chars().next())
+                .is_some_and(|next| !next.is_ascii_digit())
+        })
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
         .collect()
 }

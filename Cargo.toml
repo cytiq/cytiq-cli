@@ -5,6 +5,7 @@ members = [
     "crates/cytiq-cli",
     "crates/cytiq-cytoscan",
     "crates/cytiq-fcs",
+    "crates/cytiq-gating",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",
     "crates/cytiq-transform",

@@ -7,6 +7,7 @@ Current workspace crates:
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
 - `cytiq-cytoscan`: CytoScan-style file-level anomaly detection
+- `cytiq-gating`: Gating-ML 2.0 gate evaluation
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-transform`: FCS signal transformation workflow
@@ -343,6 +344,59 @@ aggregate sampling details, model diagnostics, PCA coordinates/loadings,
 `feature_heatmap.csv`, `boxplot_samples.csv`, and a Plotly `report.html` with
 PCA, top-loading, feature heatmap, and per-channel boxplot sections.
 
+## Gating
+
+`cytiq gate` applies an existing Gating-ML 2.0 gating strategy to one FCS file
+and writes per-gate event counts. It evaluates gate boundaries that are already
+defined; it does not estimate gates from the data. Automatic gate estimation
+(flowDensity, openCyto) stays in the R/Python tools.
+
+```bash
+cytiq gate \
+  --input sample.fcs \
+  --gating-ml gates.xml \
+  --output counts.csv \
+  --format csv
+```
+
+Rules:
+- supported gates: `RectangleGate` (range, rectangle, hyper-rectangle),
+  `PolygonGate`, `EllipsoidGate` and `BooleanGate` (`and`, `or`, `not`,
+  `use-as-complement`), nested through `parent_id`
+- supported transformations: `flin`, `flog`, `fasinh`, `logicle` and
+  `hyperlog`. Quadrant gates, `fratio` and `new-dimension` are rejected with
+  an error
+- `compensation-ref` can be `uncompensated`, `FCS` (the file's
+  `$SPILLOVER`/`$SPILL`; treated as uncompensated when the file has neither),
+  or the id of a square `transforms:spectrumMatrix`
+- dimension names match `$PnN`, then `$PnS`, then the FlowJo spelling of
+  `$PnN` (`/` replaced with `_`), then a fluorochrome of the referenced
+  spectrum matrix
+- events are pre-processed as FlowKit "raw" events: `$PnE` log scaling,
+  `$PnG` gain and `$TIMESTEP` on the `Time` channel are applied before
+  compensation
+- membership semantics follow FlowKit/flowutils exactly:
+  - rectangles use `min <= x < max`
+  - polygons use the winding number with odd-winding interiors, so points on
+    left/bottom edges are inside and points on right/top edges are outside
+  - ellipsoids include their boundary
+  - every gate is intersected with its parent
+- gate ids must be valid XML `ID`s, so `CD3+` is invalid and something like
+  `CD3pos` is needed
+- `--format` is `csv` (default) or `json`. Each row holds `gate_id`,
+  `gate_path`, `parent_id`, `gate_type`, `count`, `parent_count`,
+  `percent_of_parent` and `percent_of_total`
+
+The library API mirrors FlowKit:
+
+```rust
+let strategy = cytiq_gating::parse_gatingml(&std::fs::read_to_string("gates.xml")?)?;
+let dataset = cytiq_fcs::FcsReader::open("sample.fcs")?.read()?;
+let results = strategy.gate_sample(&dataset)?;
+let mask: &[bool] = results.membership("CD3pos").unwrap();
+let count = results.count("CD3pos").unwrap();
+```
+
 ## PeacoQC
 
 `cytiq peacoqc` removes unstable acquisition regions from compensated and
@@ -517,6 +571,7 @@ real acquisitions are stored in the repository.
 | [`data/fixtures/autospill/`](data/fixtures/autospill/) | `cytiq autospill` | two single-colour controls, [`controls.csv`](data/fixtures/autospill/controls.csv), expected [spillover](data/fixtures/autospill/expected_spillover.csv) and [compensation](data/fixtures/autospill/expected_compensation.csv) matrices ([README](data/fixtures/autospill/README.md)) |
 | [`data/fixtures/autospread/`](data/fixtures/autospread/) | `cytiq autospread` | two controls, [`controls.csv`](data/fixtures/autospread/controls.csv), [`detectors.csv`](data/fixtures/autospread/detectors.csv), expected [spread matrix](data/fixtures/autospread/expected_spread.csv) ([README](data/fixtures/autospread/README.md)) |
 | [`data/fixtures/autospectral/`](data/fixtures/autospectral/) | `cytiq autospectral` | unstained + FITC + PE controls, fully stained `sample.fcs`, [`controls.csv`](data/fixtures/autospectral/controls.csv), [`samples.csv`](data/fixtures/autospectral/samples.csv) ([README](data/fixtures/autospectral/README.md)) |
+| [`data/fixtures/gating/`](data/fixtures/gating/) | `cytiq-gating` / `cytiq gate` tests | synthetic `sample.fcs`, a Gating-ML 2.0 [`gates.xml`](data/fixtures/gating/gates.xml) covering every supported gate and transform, and FlowKit [reference membership](data/fixtures/gating/flowkit_reference.json) ([README](data/fixtures/gating/README.md)) |
 | [`data/fixtures/peacoqc/`](data/fixtures/peacoqc/) | `cytiq peacoqc` tests | [`sample_events.csv`](data/fixtures/peacoqc/sample_events.csv) (turned into FCS by the CLI tests), R reference values for the [`density`](data/fixtures/peacoqc/density_reference.rs) and [`smooth.spline`](data/fixtures/peacoqc/smooth_spline_reference.rs) ports ([README](data/fixtures/peacoqc/README.md)) |
 | [`data/fixtures/transform/`](data/fixtures/transform/) | `cytiq-transform` tests | [flowCore / flowWorkspace reference values](data/fixtures/transform/flowcore_reference.rs) for logicle, hyperlog, and `flowjo_biexp` |
 
@@ -540,6 +595,9 @@ cytiq autospectral --controls data/fixtures/autospectral/controls.csv \
   --input-dir data/fixtures/autospectral --output ./autospectral-out
 
 cytiq transform -i data/fixtures/fcs/fcs3_2_mixed.fcs -o mixed.transformed.fcs
+
+cytiq gate --input data/fixtures/gating/sample.fcs \
+  --gating-ml data/fixtures/gating/gates.xml --output gate_counts.csv
 
 cytiq flowsom --input data/fixtures/autospectral/sample.fcs \
   --output sample.flowsom.csv --channels FITC,PE,AF

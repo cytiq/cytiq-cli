@@ -62,4 +62,7 @@ for dataset in cytoscan_exact cytoscan cytoscan_ref100; do
   done
 done
 
+timed gating "$BIN" gate --input "$DATA/gating/sample.fcs" \
+  --gating-ml "$DATA/gating/gates.xml" --output "$OUT/gating.json" --format json
+
 echo "rust outputs in $OUT"

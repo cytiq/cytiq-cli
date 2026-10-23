@@ -345,6 +345,19 @@ def compare_cytoscan(data: Path, rust: Path, upstream: Path) -> dict:
             if (data / dataset).exists() and (rust / dataset).exists()}
 
 
+def compare_gating(data: Path, rust: Path) -> dict:
+    # FlowKit results are recorded by parity/gen/gating.py next to the inputs.
+    reference = json.loads((data / "gating" / "flowkit_reference.json").read_text())["gates"]
+    rows = {row["gate_id"]: row for row in json.loads((rust / "gating.json").read_text())}
+    gates = {
+        gate_id: {"flowkit": expected["count"], "rust": rows.get(gate_id, {}).get("count")}
+        for gate_id, expected in reference.items()
+    }
+    matching = sum(1 for gate in gates.values() if gate["flowkit"] == gate["rust"])
+    return {"gates": len(gates), "matching_counts": matching,
+            "extra_rust_gates": sorted(set(rows) - set(reference)), "counts": gates}
+
+
 def main() -> None:
     data, rust, upstream, target = (Path(p) for p in sys.argv[1:5])
     up_t = upstream_times(upstream)
@@ -357,12 +370,14 @@ def main() -> None:
         "flowsom": compare_flowsom(data, rust, upstream),
         "flowsom_hard": compare_flowsom(data, rust, upstream, "flowsom_hard"),
         "cytoscan": compare_cytoscan(data, rust, upstream),
+        "gating": compare_gating(data, rust),
         "timing": {
             "autospill": {"rust": rust_time(rust, "autospill"), "upstream_seconds": up_t.get("autospill")},
             "peacoqc_all": {"rust": rust_time(rust, "peacoqc_all"), "upstream_seconds": up_t.get("peacoqc_all")},
             "flowsom": {"rust": rust_time(rust, "flowsom"), "upstream_seconds": up_t.get("flowsom_scaleF_seed1")},
             "flowsom_hard": {"rust": rust_time(rust, "flowsom_hard"), "upstream_seconds": up_t.get("flowsom_hard_scaleF_seed1")},
             "autospectral": {"rust": rust_time(rust, "autospectral")},
+            "gating": {"rust": rust_time(rust, "gating")},
         },
     }
     target.parent.mkdir(parents=True, exist_ok=True)

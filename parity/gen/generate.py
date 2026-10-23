@@ -17,6 +17,7 @@ import pandas as pd
 
 from cytoscan import gen_cytoscan, gen_cytoscan_exact, gen_cytoscan_ref100
 from fcsio import PNR, write_fcs
+from gating import gen_gating
 
 SEED = 20261022
 
@@ -220,7 +221,7 @@ def main() -> None:
                      ("peacoqc", gen_peacoqc), ("flowsom", gen_flowsom),
                      ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True)),
                      ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
-                     ("cytoscan_ref100", gen_cytoscan_ref100)]:
+                     ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating)]:
         target = out / name
         target.mkdir(parents=True, exist_ok=True)
         fn(target)

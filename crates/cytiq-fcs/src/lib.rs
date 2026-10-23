@@ -1,3 +1,4 @@
+mod compensation;
 mod data;
 mod error;
 mod header;
@@ -19,6 +20,7 @@ use crate::layout::resolve_layout;
 use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
 
+pub use crate::compensation::{Spillover, compensate, find_parameter_index, invert_matrix};
 pub use crate::error::FcsError as Error;
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,

@@ -1,0 +1,29 @@
+//! `cytiq-gating` evaluates `GatingML` 2.0 gating strategies on FCS events.
+//!
+//! This crate applies existing gate boundaries; it does not estimate them.
+//! Supported: rectangle (range/hyper-rectangle), polygon, ellipsoid and
+//! Boolean gates, gate hierarchies, `FCS`/spectrum-matrix compensation and
+//! the `flin`, `flog`, `fasinh`, `logicle` and `hyperlog` transformations.
+//! Quadrant gates, `fratio` and new dimensions are rejected.
+//!
+//! Specification: <http://flowcyt.sourceforge.net/gating/latest.pdf>
+//!
+//! Reference implementation (results are checked against it):
+//! <https://github.com/whitews/FlowKit>
+
+mod error;
+mod evaluate;
+mod geometry;
+mod model;
+mod parse;
+mod runner;
+mod transforms;
+
+pub use crate::error::GatingError;
+pub use crate::evaluate::{GateCount, GatingResults};
+pub use crate::model::{
+    BooleanOp, CompensationRef, Dimension, Gate, GateKind, GateRef, GatingStrategy, SpectrumMatrix,
+};
+pub use crate::parse::parse_gatingml;
+pub use crate::runner::{GatingConfig, GatingRunResult, GatingRunner, OutputFormat};
+pub use crate::transforms::Transform;

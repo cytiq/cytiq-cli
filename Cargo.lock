@@ -621,10 +621,13 @@ dependencies = [
 name = "cytiq-peacoqc"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "csv",
  "cytiq-density",
  "cytiq-fcs",
  "log",
+ "parquet",
  "plotly",
  "rayon",
  "serde",

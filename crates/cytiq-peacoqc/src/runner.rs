@@ -17,7 +17,7 @@ use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
 use crate::error::PeacoQcError;
-use crate::export::write_debug_artifacts;
+use crate::export::{write_debug_artifacts, write_masks_parquet};
 use crate::smooth_spline::smooth_spline_fitted;
 use cytiq_density::density;
 
@@ -36,9 +36,6 @@ pub const DEFAULT_TIME_CHANNEL: &str = "Time";
 
 const MEDIAN_ABSOLUTE_DEVIATION_SCALE: f64 = 1.4826;
 const EQUALITY_EPSILON: f64 = 1.0e-12;
-/// 1-based row of each retained event in the original file, as in upstream
-/// `PeacoQC`.
-const ORIGINAL_ID_CHANNEL: &str = "Original_ID";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -332,7 +329,18 @@ impl PeacoQcRunner {
             &removed_by_it_working,
             &removed_by_consecutive_working,
         );
+        let source_event_ids =
+            cytiq_fcs::source_event_ids(&dataset).map_err(|source| PeacoQcError::FcsRead {
+                path: input.to_path_buf(),
+                source,
+            })?;
         write_cleaned_fcs(input, output, &dataset, &mask)?;
+        write_masks_parquet(
+            &masks_path(output),
+            &mask,
+            source_event_ids.as_deref(),
+            config.remove_margins,
+        )?;
 
         let summary = build_summary(
             input,
@@ -1177,6 +1185,12 @@ fn primary_bin_ids(bins: &[Vec<usize>], event_count: usize) -> Vec<Option<usize>
     ids
 }
 
+/// `sample.peacoqc.fcs` -> `sample.peacoqc.masks.parquet`.
+#[must_use]
+pub fn masks_path(output: &Path) -> PathBuf {
+    output.with_extension("masks.parquet")
+}
+
 fn write_cleaned_fcs(
     input: &Path,
     output: &Path,
@@ -1216,9 +1230,9 @@ fn write_cleaned_fcs(
     if !dataset
         .parameters
         .iter()
-        .any(|parameter| parameter.name == ORIGINAL_ID_CHANNEL)
+        .any(|parameter| parameter.name == cytiq_fcs::ORIGINAL_ID_PARAMETER)
     {
-        parameters.push(FcsWriteParameter::new(ORIGINAL_ID_CHANNEL));
+        parameters.push(FcsWriteParameter::new(cytiq_fcs::ORIGINAL_ID_PARAMETER));
         columns.push(
             retained
                 .iter()
@@ -1237,7 +1251,7 @@ fn write_cleaned_fcs(
     }
 
     let mut margin_bounds = known_margin_bounds(input, dataset)?;
-    margin_bounds.remove(ORIGINAL_ID_CHANNEL);
+    margin_bounds.remove(cytiq_fcs::ORIGINAL_ID_PARAMETER);
     let options = FcsWriteOptions::new()
         .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text))
         .with_text_keyword(

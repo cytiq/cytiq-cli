@@ -1,9 +1,11 @@
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use arrow_array::{Array, BooleanArray, UInt64Array};
 use cytiq_fcs::{ColumnData, FcsReader, FcsWriteOptions, FcsWriteParameter};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 const PEACOQC_FIXTURE_EVENTS: &str = "sample_events.csv";
 
@@ -246,6 +248,44 @@ fn cli_writes_exact_original_ids_above_f32_precision() {
     };
     assert!(ids.iter().all(|id| *id >= first_id && id.fract() == 0.0));
     assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+
+    let masks = File::open(directory.join("sample.peacoqc.masks.parquet"))
+        .expect("masks should be written next to the FCS output");
+    let reader = ParquetRecordBatchReaderBuilder::try_new(masks)
+        .and_then(ParquetRecordBatchReaderBuilder::build)
+        .expect("masks should be Parquet");
+    let mut source_ids = Vec::new();
+    let mut kept = Vec::new();
+    for batch in reader {
+        let batch = batch.expect("batch should decode");
+        let column = |name: &str| batch.column_by_name(name).expect("column should exist");
+        source_ids.extend(
+            column("source_event_id")
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .expect("source_event_id is UInt64")
+                .values()
+                .iter(),
+        );
+        kept.extend(
+            column("keep")
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .expect("keep is Boolean")
+                .iter()
+                .map(Option::unwrap_or_default),
+        );
+    }
+    // The input already carried Original_ID, so source ids continue it.
+    assert_eq!(source_ids.first().copied(), Some(16_777_216));
+    let kept_ids = source_ids
+        .iter()
+        .zip(&kept)
+        .filter_map(|(id, keep)| keep.then_some(*id))
+        .collect::<Vec<_>>();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let written_ids = ids.iter().map(|id| *id as u64 - 1).collect::<Vec<_>>();
+    assert_eq!(kept_ids, written_ids);
 }
 
 fn run_peacoqc(input: &Path, output: &Path, debug_dir: Option<&Path>) -> std::process::Output {

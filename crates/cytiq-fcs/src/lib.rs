@@ -3,6 +3,7 @@ mod data;
 mod error;
 mod header;
 mod layout;
+mod lineage;
 mod margins;
 mod signal;
 mod text;
@@ -26,6 +27,7 @@ pub use crate::compensation::{
     Spillover, compensate, find_parameter_index, invert_matrix, is_spillover_keyword,
 };
 pub use crate::error::FcsError as Error;
+pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
 pub use crate::margins::{
     MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds,
     recorded_margin_bounds,

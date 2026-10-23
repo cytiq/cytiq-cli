@@ -11,8 +11,9 @@ const HEADER_LEN: u64 = 58;
 const TEXT_DELIMITER: u8 = b'|';
 const OFFSET_FIELD_LIMIT: u64 = 99_999_999;
 /// `$BEGINDATA`/`$ENDDATA` are zero-padded to the widest u64 so the TEXT length
-/// does not depend on the offsets it describes. Offsets above 99,999,999 only
-/// fit in TEXT, so the HEADER DATA fields are always written as zero.
+/// does not depend on the offsets it describes. The HEADER repeats the DATA
+/// offsets when they fit its 8-digit fields, as FCS 3.1 requires (strict
+/// readers such as flowio reject a mismatch), and holds zeros otherwise.
 const TEXT_OFFSET_WIDTH: usize = 20;
 /// Per-parameter keywords the writer derives from the data itself.
 const GENERATED_PARAMETER_SUFFIXES: [&str; 6] = ["N", "S", "B", "E", "R", "DATATYPE"];
@@ -383,7 +384,10 @@ fn encode_header_and_text<T: DataValue>(
     let text = encode_text(&pairs);
     debug_assert_eq!(text.len() as u64, text_len, "fixed-width offsets");
 
-    Ok((format_header(text_start, text_end), text))
+    Ok((
+        format_header(text_start, text_end, data_start, data_end),
+        text,
+    ))
 }
 
 fn validate_input<T: DataValue>(
@@ -552,11 +556,14 @@ fn data_length<T: DataValue>(parameter_count: usize, row_count: usize) -> Result
         ))
 }
 
-fn format_header(text_start: u64, text_end: u64) -> String {
+fn format_header(text_start: u64, text_end: u64, data_start: u64, data_end: u64) -> String {
+    let (data_start, data_end) = if data_end <= OFFSET_FIELD_LIMIT {
+        (data_start, data_end)
+    } else {
+        (0, 0)
+    };
     format!(
         "FCS3.1    {text_start:>8}{text_end:>8}{data_start:>8}{data_end:>8}{analysis_start:>8}{analysis_end:>8}",
-        data_start = 0,
-        data_end = 0,
         analysis_start = 0,
         analysis_end = 0
     )
@@ -635,6 +642,28 @@ mod tests {
         assert_eq!(begin.parse::<u64>().unwrap(), text_end + 1);
         assert_eq!(end.parse::<u64>().unwrap(), text_end + 200_000_000);
         assert_eq!(&header[26..58], &format!("{:>8}", 0).repeat(4));
+    }
+
+    #[test]
+    fn header_repeats_data_offsets_that_fit() {
+        let (header, text) = encode_header_and_text::<f32>(
+            &[FcsWriteParameter::new("FL1-A")],
+            &[1.0],
+            3,
+            &FcsWriteOptions::new(),
+        )
+        .expect("small offsets should encode");
+        let begin = text_value(&text, "$BEGINDATA")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let end = text_value(&text, "$ENDDATA")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(header[26..34].trim().parse::<u64>().unwrap(), begin);
+        assert_eq!(header[34..42].trim().parse::<u64>().unwrap(), end);
+        assert_eq!(end - begin + 1, 12);
     }
 
     #[test]

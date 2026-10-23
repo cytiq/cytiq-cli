@@ -28,6 +28,7 @@ use cytiq_flowsom::{
     FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
+use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
 use cytiq_meta::{MetaConfig, MetaRunner};
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
@@ -244,6 +245,9 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+    /// Work with per-event masks (`masks.parquet`) written by cytiq stages.
+    #[command(subcommand)]
+    Mask(MaskCommand),
     /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
     Meta {
         /// Input FCS file.
@@ -276,6 +280,23 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum MaskCommand {
+    /// Combine masks of one acquisition by `source_event_id`; an event is kept
+    /// only when every mask keeps it.
+    Combine {
+        /// Event mask Parquet file; repeat for each mask to combine.
+        #[arg(long = "mask", required = true)]
+        masks: Vec<PathBuf>,
+        /// Output Parquet path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Replace an existing output file.
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 
@@ -919,6 +940,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.gates.len(),
                 result.event_count,
                 result.output.display()
+            );
+            Ok(())
+        }
+        Commands::Mask(MaskCommand::Combine {
+            masks,
+            output,
+            overwrite,
+        }) => {
+            info!("starting mask combine: masks={}", masks.len());
+            let config = MaskCombineConfig {
+                masks,
+                output,
+                overwrite,
+            };
+            let combined = MaskCombineRunner::run(&config)?;
+            info!(
+                "mask combine kept {} of {} event(s); wrote {}",
+                combined.kept(),
+                combined.len(),
+                config.output.display()
             );
             Ok(())
         }

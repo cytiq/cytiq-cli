@@ -530,6 +530,7 @@ dependencies = [
  "cytiq-fcs",
  "cytiq-flowsom",
  "cytiq-gating",
+ "cytiq-mask",
  "cytiq-meta",
  "cytiq-peacoqc",
  "cytiq-transform",

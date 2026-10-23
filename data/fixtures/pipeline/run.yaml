@@ -1,0 +1,12 @@
+cytometry: conventional
+panel:
+  name: golden-6c
+  markers:
+    - { marker: CD3 }
+    - { marker: CD4 }
+    - { marker: CD8 }
+    - { marker: CD19 }
+    - { marker: CD56 }
+    - { marker: Live/Dead }
+samples:
+  - { id: GOLDEN, file: sample.fcs }

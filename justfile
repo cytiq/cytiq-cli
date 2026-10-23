@@ -10,6 +10,21 @@ CLI_PACKAGE := env("CLI_PACKAGE", "cytiq-cli")
 DOCKER_IMAGE := env("DOCKER_IMAGE", "cytiq:dev")
 DOCKERFILE := env("DOCKERFILE", "docker/Dockerfile")
 
+# ---- Validation against upstream tools (needs parity/setup_env.sh once)
+[group('validation')]
+parity:
+    parity/run_all.sh
+
+# ---- Validate on real acquisitions shipped with the R packages (and CYTIQ_REAL_DATA)
+[group('validation')]
+parity-real:
+    parity/real/run_real.sh
+
+# ---- Regenerate the golden end-to-end CI fixture
+[group('validation')]
+parity-ci-fixture:
+    parity/.env/py/bin/python parity/gen/pipeline.py data/fixtures/pipeline ci
+
 # ---- Run the application
 [group('build')]
 run *args:

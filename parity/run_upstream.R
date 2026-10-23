@@ -13,7 +13,7 @@ out_dir <- if (length(args) >= 2) args[[2]] else "parity/.out/upstream"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_dir <- normalizePath(out_dir)
 tools <- if (length(args) >= 3) args[3:length(args)] else
-  c("transform", "autospill", "peacoqc", "flowsom", "autospectral", "cytoscan")
+  c("transform", "autospill", "peacoqc", "flowsom", "autospectral", "cytoscan", "pipeline")
 
 timed <- function(name, expr) {
   started <- proc.time()[["elapsed"]]
@@ -219,6 +219,9 @@ run_cytoscan <- function() {
     }
   }
 }
+
+source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))),
+                 "pipeline.R"))
 
 for (tool in tools) {
   message("== ", tool)

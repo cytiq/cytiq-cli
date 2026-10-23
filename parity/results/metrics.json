@@ -1428,39 +1428,267 @@
       }
     }
   },
+  "gating": {
+    "gates": 11,
+    "matching_counts": 11,
+    "all_counts_match": true,
+    "extra_rust_gates": [],
+    "counts": {
+      "Cells": {
+        "flowkit": 2940,
+        "rust": 2940
+      },
+      "Singlets": {
+        "flowkit": 2762,
+        "rust": 2762
+      },
+      "CD3pos": {
+        "flowkit": 1637,
+        "rust": 1637
+      },
+      "CD4pos_CD8neg": {
+        "flowkit": 543,
+        "rust": 543
+      },
+      "CD4_CD8_ellipse": {
+        "flowkit": 496,
+        "rust": 496
+      },
+      "CD4_not_ellipse": {
+        "flowkit": 48,
+        "rust": 48
+      },
+      "Bowtie": {
+        "flowkit": 1163,
+        "rust": 1163
+      },
+      "CD3neg": {
+        "flowkit": 1125,
+        "rust": 1125
+      },
+      "Early": {
+        "flowkit": 1500,
+        "rust": 1500
+      },
+      "FL3_log": {
+        "flowkit": 1078,
+        "rust": 1078
+      },
+      "Ellipse_or_log": {
+        "flowkit": 1439,
+        "rust": 1439
+      }
+    }
+  },
+  "pipeline": {
+    "pipeline": {
+      "events": 200000,
+      "compensated_max_rel_delta": 5.95455e-08,
+      "transformed_max_rel_delta": 9.07303e-08,
+      "outputs_strictly_readable": true,
+      "margins": {
+        "agreement_with_detector_limits": 1.0,
+        "agreement_with_RemoveMargins": 1.0,
+        "RemoveMargins_extra_removed": 0,
+        "recall": 1.0,
+        "good_loss": 0.00765
+      },
+      "peacoqc": {
+        "agreement": 1.0,
+        "recall": 1.0,
+        "good_loss": 0.05583
+      },
+      "clean": {
+        "non_debris": {
+          "agreement_with_flowkit": 1.0,
+          "recall": 0.9988,
+          "good_loss": 0.0
+        },
+        "singlets": {
+          "agreement_with_flowkit": 1.0,
+          "recall": 1.0,
+          "good_loss": 0.001224
+        },
+        "live": {
+          "agreement_with_flowkit": 1.0,
+          "recall": 0.9953,
+          "good_loss": 0.0
+        }
+      },
+      "final": {
+        "bad_kept_fraction": 0.0002935,
+        "f1": 0.9668
+      },
+      "gates": {
+        "CD4T": {
+          "count": 43689,
+          "truth": 43742,
+          "flowkit_disagreement": 0,
+          "precision": 1.0,
+          "recall": 0.9988
+        },
+        "CD8T": {
+          "count": 27316,
+          "truth": 27366,
+          "flowkit_disagreement": 0,
+          "precision": 1.0,
+          "recall": 0.9982
+        },
+        "DNT": {
+          "count": 6773,
+          "truth": 6778,
+          "flowkit_disagreement": 0,
+          "precision": 0.9993,
+          "recall": 0.9985
+        },
+        "B": {
+          "count": 20435,
+          "truth": 20458,
+          "flowkit_disagreement": 0,
+          "precision": 1.0,
+          "recall": 0.9989
+        },
+        "NK": {
+          "count": 13632,
+          "truth": 13648,
+          "flowkit_disagreement": 0,
+          "precision": 1.0,
+          "recall": 0.9988
+        },
+        "Rare": {
+          "count": 423,
+          "truth": 425,
+          "flowkit_disagreement": 0,
+          "precision": 1.0,
+          "recall": 0.9953
+        }
+      },
+      "flowsom": {
+        "rust_ari_vs_truth": 0.9988,
+        "upstream_ari_vs_truth": 0.9987,
+        "rust_vs_upstream_ari": 0.9978,
+        "events_compared": 136151
+      }
+    },
+    "pipeline_beads": {
+      "events": 3000,
+      "compensated_max_rel_delta": 4.04095e-08,
+      "transformed_max_rel_delta": 3.58635e-08,
+      "outputs_strictly_readable": true,
+      "margins": {
+        "agreement_with_detector_limits": 1.0,
+        "agreement_with_RemoveMargins": 0.0,
+        "RemoveMargins_extra_removed": 3000,
+        "recall": 0.0,
+        "good_loss": 0.0
+      },
+      "peacoqc": {
+        "agreement": 1.0,
+        "recall": 0.0,
+        "good_loss": 0.1667
+      },
+      "clean": {
+        "non_debris": {
+          "status": "not_assessed"
+        },
+        "singlets": {
+          "agreement_with_flowkit": 1.0,
+          "recall": 0.0,
+          "good_loss": 0.0
+        },
+        "live": {
+          "status": "not_assessed"
+        }
+      },
+      "final": {
+        "bad_kept_fraction": 0.0,
+        "f1": 0.9091
+      },
+      "gates": {
+        "CD4T": {
+          "count": 0,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "CD8T": {
+          "count": 0,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "DNT": {
+          "count": 2500,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "B": {
+          "count": 0,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "NK": {
+          "count": 0,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "Rare": {
+          "count": 0,
+          "truth": 0,
+          "flowkit_disagreement": 0,
+          "precision": 0.0,
+          "recall": 0.0
+        }
+      }
+    }
+  },
   "timing": {
     "autospill": {
       "rust": {
-        "seconds": 2.04,
-        "max_rss_mb": 57.12
+        "seconds": 2.13,
+        "max_rss_mb": 59.17
       },
-      "upstream_seconds": 8.558
+      "upstream_seconds": 9.229
     },
     "peacoqc_all": {
       "rust": {
-        "seconds": 0.12,
-        "max_rss_mb": 93.61
+        "seconds": 0.22,
+        "max_rss_mb": 101.0
       },
-      "upstream_seconds": 1.338
+      "upstream_seconds": 1.511
     },
     "flowsom": {
       "rust": {
-        "seconds": 0.52,
-        "max_rss_mb": 39.38
+        "seconds": 0.51,
+        "max_rss_mb": 45.47
       },
-      "upstream_seconds": 4.09
+      "upstream_seconds": 4.178
     },
     "flowsom_hard": {
       "rust": {
-        "seconds": 0.66,
-        "max_rss_mb": 38.92
+        "seconds": 0.49,
+        "max_rss_mb": 48.56
       },
-      "upstream_seconds": 4.105
+      "upstream_seconds": 3.97
     },
     "autospectral": {
       "rust": {
-        "seconds": 0.03,
-        "max_rss_mb": 56.03
+        "seconds": 0.07,
+        "max_rss_mb": 61.39
+      }
+    },
+    "gating": {
+      "rust": {
+        "seconds": 0.01,
+        "max_rss_mb": 9.344
       }
     }
   }

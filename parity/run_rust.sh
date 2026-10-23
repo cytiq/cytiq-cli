@@ -65,4 +65,27 @@ done
 timed gating "$BIN" gate --input "$DATA/gating/sample.fcs" \
   --gating-ml "$DATA/gating/gates.xml" --output "$OUT/gating.json" --format json
 
+# End-to-end golden pipeline (parity/gen/pipeline.py): the documented chain.
+FLUOR=FL1-A,FL2-A,FL3-A,FL4-A,FL5-A
+for dataset in pipeline pipeline_beads; do
+  [[ -d "$DATA/$dataset" ]] || continue
+  P="$OUT/$dataset"
+  rm -rf "$P" && mkdir -p "$P"
+  timed "${dataset}_preflight" "$BIN" preflight --manifest "$DATA/$dataset/run.yaml" \
+    --output "$P/preflight.json"
+  timed "${dataset}_compensate" "$BIN" compensate --input "$DATA/$dataset/sample.fcs" \
+    --output "$P/s.comp.fcs"
+  timed "${dataset}_transform" "$BIN" transform --input "$P/s.comp.fcs" --output "$P/s.t.fcs"
+  timed "${dataset}_peacoqc" "$BIN" peacoqc --input "$P/s.t.fcs" --output "$P/s.peacoqc.fcs" \
+    --channels "$FLUOR"
+  timed "${dataset}_clean" "$BIN" clean --input "$DATA/$dataset/sample.fcs" --output "$P/clean"
+  timed "${dataset}_mask" "$BIN" mask combine --mask "$P/s.comp.masks.parquet" \
+    --mask "$P/s.peacoqc.masks.parquet" --mask "$P/clean/masks.parquet" --output "$P/analysis.parquet"
+  timed "${dataset}_gate" "$BIN" gate --input "$P/s.t.fcs" --gating-ml "$DATA/$dataset/gates.xml" \
+    --output "$P/counts.json" --format json --mask "$P/analysis.parquet" \
+    --membership "$P/membership.parquet"
+  timed "${dataset}_flowsom" "$BIN" flowsom --input "$P/s.t.fcs" --output "$P/flowsom.csv" \
+    --channels "$FLUOR" --mask "$P/analysis.parquet" --metaclusters 7
+done
+
 echo "rust outputs in $OUT"

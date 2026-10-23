@@ -32,7 +32,8 @@ if [[ -n "$BASELINE_REF" ]]; then
   # the AutoSpectral cross-check applies upstream OLS to the baseline's spectra
   cp -R "$OUT/upstream" "$OUT/upstream_baseline"
   PARITY_RUST_OUT="$OUT/rust_baseline" Rscript "$PARITY/run_upstream.R" "$DATA" "$OUT/upstream_baseline" autospectral
-  "$PY" "$PARITY/compare.py" "$DATA" "$OUT/rust_baseline" "$OUT/upstream_baseline" \
+  # The baseline is measured, not judged: it may predate checked metrics.
+  PARITY_SKIP_TOLERANCES=1 "$PY" "$PARITY/compare.py" "$DATA" "$OUT/rust_baseline" "$OUT/upstream_baseline" \
     "$PARITY/results/metrics_baseline.json" >/dev/null
 fi
 

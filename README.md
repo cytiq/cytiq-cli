@@ -330,9 +330,13 @@ Rules:
   not compensate again. An input that `cytiq compensate` already compensated,
   or whose matrix channels `cytiq transform` transformed, is rejected
 - compensation mixes channels, so raw detector margins cannot be identified
-  afterwards. `margin_pass` in the mask is computed on the raw values with the
-  same bounds as `cytiq peacoqc --remove-margins`, and compensated channels
-  are dropped from `CYTIQ_MARGINS`. Pass the mask on with `--mask` (or combine
+  afterwards. `margin_pass` in the mask flags events at or beyond a detector
+  limit (`$PnR - 1`, or flowCore's low bound, −111 by default) on the raw
+  values, and compensated channels are dropped from `CYTIQ_MARGINS`. Unlike
+  `cytiq peacoqc --remove-margins`, which follows `PeacoQC::RemoveMargins` and
+  also removes every event equal to a channel's observed minimum or maximum,
+  only detector limits count, so discrete data (beads) keeps its extreme
+  levels. Pass the mask on with `--mask` (or combine
   it with `cytiq mask combine`) instead of removing margins after compensation
 - existing outputs are not replaced unless `--overwrite` is passed
 
@@ -944,6 +948,7 @@ real acquisitions are stored in the repository.
 | [`data/fixtures/autospread/`](data/fixtures/autospread/) | `cytiq autospread` | two controls, [`controls.csv`](data/fixtures/autospread/controls.csv), [`detectors.csv`](data/fixtures/autospread/detectors.csv), expected [spread matrix](data/fixtures/autospread/expected_spread.csv) ([README](data/fixtures/autospread/README.md)) |
 | [`data/fixtures/autospectral/`](data/fixtures/autospectral/) | `cytiq autospectral` | unstained + FITC + PE controls, fully stained `sample.fcs`, [`controls.csv`](data/fixtures/autospectral/controls.csv), [`samples.csv`](data/fixtures/autospectral/samples.csv) ([README](data/fixtures/autospectral/README.md)) |
 | [`data/fixtures/clean/`](data/fixtures/clean/) | `cytiq clean` tests | synthetic `sample.fcs` with known debris, doublets and dead cells, `no_viability.fcs`, an unstained `control.fcs`, and per-event [`truth.json`](data/fixtures/clean/truth.json) ([README](data/fixtures/clean/README.md)) |
+| [`data/fixtures/pipeline/`](data/fixtures/pipeline/) | end-to-end chain test (`crates/cytiq-cli/tests/pipeline_cli.rs`) | golden raw `sample.fcs` (15,000 events, 6×6 spillover, seven populations incl. a rare one, debris, doublets, dead cells, an unstable interval, saturation), per-event truth, population gates, a run manifest and acceptance [`thresholds.json`](data/fixtures/pipeline/thresholds.json) ([README](data/fixtures/pipeline/README.md)) |
 | [`data/fixtures/gating/`](data/fixtures/gating/) | `cytiq-gating` / `cytiq gate` tests | synthetic `sample.fcs`, a Gating-ML 2.0 [`gates.xml`](data/fixtures/gating/gates.xml) covering every supported gate and transform, and FlowKit [reference membership](data/fixtures/gating/flowkit_reference.json) ([README](data/fixtures/gating/README.md)) |
 | [`data/fixtures/peacoqc/`](data/fixtures/peacoqc/) | `cytiq peacoqc` tests | [`sample_events.csv`](data/fixtures/peacoqc/sample_events.csv) (turned into FCS by the CLI tests), R reference values for the [`density`](data/fixtures/peacoqc/density_reference.rs) and [`smooth.spline`](data/fixtures/peacoqc/smooth_spline_reference.rs) ports ([README](data/fixtures/peacoqc/README.md)) |
 | [`data/fixtures/transform/`](data/fixtures/transform/) | `cytiq-transform` tests | [flowCore / flowWorkspace reference values](data/fixtures/transform/flowcore_reference.rs) for logicle, hyperlog, and `flowjo_biexp` |
@@ -996,15 +1001,24 @@ original sources:
 ### Parity datasets
 
 [`parity/`](parity/) generates larger synthetic datasets with ground truth
-(spillover matrices, spectra, QC artefact masks, cluster labels) and compares
-`cytiq` against the upstream R tools. Results are in
+(spillover matrices, spectra, QC artefact masks, cluster labels, and a golden
+end-to-end sample) and compares `cytiq` against the upstream R tools and
+FlowKit, tool by tool and along the whole chain. It also runs on real
+acquisitions that ship with the R packages, with FlowJo labels as a reference
+([`parity/real/`](parity/real/README.md)). Results are in
 [`parity/REPORT.md`](parity/REPORT.md); metrics are in
-[`parity/results/`](parity/results/).
+[`parity/results/`](parity/results/). Every reported number is checked
+against [`parity/tolerances.json`](parity/tolerances.json); a violation fails
+the run.
 
 ```bash
 parity/setup_env.sh      # once: isolated R library and Python venv under parity/.env
-parity/run_all.sh main   # data -> cytiq (current tree + main) -> R -> parity/results/*.json
+just parity              # synthetic data -> cytiq -> R/FlowKit -> parity/results/metrics.json
+just parity-real         # real acquisitions -> parity/results/metrics_real.json
 ```
+
+The same end-to-end chain runs in CI on the committed golden fixture
+(`data/fixtures/pipeline`).
 
 ## Docker
 

@@ -71,7 +71,9 @@ the SHA-256 of the command's input and output files; see
 ## Tests
 
 Integration tests run the built `cytiq` binary (`CARGO_BIN_EXE_cytiq`), one
-file per command under `tests/`:
+file per command under `tests/`, plus `pipeline_cli.rs`, which runs the whole
+documented chain on the golden fixture `data/fixtures/pipeline` and checks
+every stage against per-event truth, lineage, provenance and reproducibility:
 
 ```bash
 cargo test -p cytiq-cli

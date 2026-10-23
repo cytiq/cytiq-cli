@@ -1,0 +1,125 @@
+{
+  "real": {
+    "flowsom_68983": {
+      "compensated_max_rel_delta": 5.95e-08,
+      "transformed_max_rel_delta": 7.79649e-08,
+      "gates": {
+        "ID1152036930": {
+          "count": 19225,
+          "flowkit_disagreement": 0
+        },
+        "ID1073341880": {
+          "count": 18702,
+          "flowkit_disagreement": 0
+        },
+        "ID325928510": {
+          "count": 18585,
+          "flowkit_disagreement": 0
+        },
+        "ID2057965263": {
+          "count": 15934,
+          "flowkit_disagreement": 0
+        },
+        "ID1229333490": {
+          "count": 311,
+          "flowkit_disagreement": 0
+        },
+        "ID275096433": {
+          "count": 487,
+          "flowkit_disagreement": 0
+        },
+        "ID2056235295": {
+          "count": 17470,
+          "flowkit_disagreement": 0
+        },
+        "ID52300206": {
+          "count": 2452,
+          "flowkit_disagreement": 0
+        },
+        "ID1758852169": {
+          "count": 10777,
+          "flowkit_disagreement": 0
+        },
+        "ID785879196": {
+          "count": 9207,
+          "flowkit_disagreement": 0
+        },
+        "ID1570643440": {
+          "count": 7505,
+          "flowkit_disagreement": 0
+        },
+        "ID935307156": {
+          "count": 9,
+          "flowkit_disagreement": 0
+        },
+        "ID127074852": {
+          "count": 285,
+          "flowkit_disagreement": 0
+        },
+        "ID1148292446": {
+          "count": 1408,
+          "flowkit_disagreement": 0
+        },
+        "ID188379411": {
+          "count": 1463,
+          "flowkit_disagreement": 0
+        }
+      },
+      "flowjo_populations": {
+        "B cells": {
+          "gate": "ID52300206",
+          "jaccard": 0.9959,
+          "flowjo_events": 2460
+        },
+        "CD4 T cells": {
+          "gate": "ID1570643440",
+          "jaccard": 0.9949,
+          "flowjo_events": 7487
+        },
+        "CD8 T cells": {
+          "gate": "ID1148292446",
+          "jaccard": 0.9908,
+          "flowjo_events": 1407
+        },
+        "NK T cells": {
+          "gate": "ID275096433",
+          "jaccard": 0.8616,
+          "flowjo_events": 535
+        },
+        "NK cells": {
+          "gate": "ID1229333490",
+          "jaccard": 0.9778,
+          "flowjo_events": 312
+        },
+        "gd T cells": {
+          "gate": "ID188379411",
+          "jaccard": 0.9804,
+          "flowjo_events": 1470
+        }
+      },
+      "flowsom": {
+        "rust_vs_upstream_ari": 0.9395,
+        "upstream_seed_to_seed_ari": 0.9051,
+        "rust_ari_vs_flowjo": 0.9869,
+        "upstream_ari_vs_flowjo": 0.9718,
+        "rust_vs_upstream_minus_seed_band": 0.0344
+      }
+    },
+    "peacoqc_111": {
+      "events": 10000,
+      "channels": 13,
+      "compensated_max_rel_delta": 5.94303e-08,
+      "transformed_max_rel_delta": 7.91701e-08,
+      "margins": {
+        "agreement_with_detector_limits": 1.0,
+        "removed": 328,
+        "RemoveMargins_removed": 334,
+        "agreement_with_RemoveMargins": 0.9994
+      },
+      "peacoqc": {
+        "agreement": 1.0,
+        "removed_fraction": 0.125
+      }
+    }
+  }
+}

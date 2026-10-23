@@ -28,7 +28,7 @@ for repo in carlosproca/autospill DrCytometer/AutoSpectral AUMC-HEMA/CytoScan; d
 done
 
 uv venv -q --allow-existing "$ENV_DIR/py" --python 3.12
-VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q numpy pandas scipy scikit-learn flowkit flowio
+VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q numpy pandas pyarrow scipy scikit-learn flowkit flowio
 
 {
   Rscript -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()));
@@ -36,6 +36,10 @@ VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q numpy pandas scipy scikit-learn flow
                 'CytoScan','flowFP','isotree','mclust','transport'))
       cat(p, as.character(packageVersion(p)), '\n')"
   R --version | head -1
-  VIRTUAL_ENV="$ENV_DIR/py" uv pip freeze | grep -Ei '^(flowkit|flowio|numpy|scikit-learn|scipy|pandas)=='
+  VIRTUAL_ENV="$ENV_DIR/py" uv pip freeze | grep -Ei '^(flowkit|flowio|numpy|pandas|pyarrow|scikit-learn|scipy)=='
+  for name in autospill AutoSpectral CytoScan; do
+    echo "$name git $(git -C "$ENV_DIR/$name-src" rev-parse --short HEAD)"
+  done
+  rustc --version
 } > "$ROOT/parity/versions.txt"
 cat "$ROOT/parity/versions.txt"

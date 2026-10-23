@@ -1,6 +1,8 @@
 # Parity report: cytiq (Rust) vs the original tools
 
 Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
+Updated 2026-10-24 (Stage 3): end-to-end chain (§2.9), real acquisitions (§2.10)
+and pass/fail tolerances (§1, step 5).
 
 ## TL;DR
 
@@ -17,9 +19,14 @@ Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
 | `cytoscan` | CytoScan 0.1.0 (`c97f403`) | ❌ binning off by up to 0.004, sample depends on path spelling, outlier scores 3× outside isotree noise, novelty model unlike mclust | ✅ features = R to 5e-13 on identical events; outlier flags = R; novelty reproduces mclust's model choice when it is full-covariance |
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 | `gate` | FlowKit 1.3.0 `GatingStrategy.gate_sample` | — (new command) | ✅ identical per-event membership for all 11 gates; identical counts at 1M events, ~13× faster than FlowKit |
+| whole chain (§2.9) | flowCore + PeacoQC + FlowKit + FlowSOM, same steps | — (new) | ✅ every stage equals upstream per event on 200,000 golden events (values Δ ≤ 1e-7, masks and gates identical, FlowSOM ARI vs R 0.998); against the truth: final mask F1 0.967, every population incl. a 0.2% rare one found with precision ≥ 0.999 |
+| real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels | — (new) | ✅ compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect) |
 
 **44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
-two performance defects (section 2.6). All key
+two performance defects (section 2.6). The Stage 3 chain validation found two
+more defects, both fixed: raw margin masks removed every event at a channel's
+observed extremes (half of a bead sample), and FCS output lacked HEADER DATA
+offsets, so strict readers such as FlowKit rejected it. All key
 ports (`stats::density`, `smooth.spline`, logicle, hyperlog, `flowjo_biexp`)
 are pinned by unit tests against reference values produced by R.
 
@@ -40,6 +47,8 @@ are pinned by unit tests against reference values produced by R.
    | `peacoqc` | 200,000 events, 6 channels, clog (4%), drift (6%), burst (1%) | bad-event mask (9.8%) |
    | `flowsom` | 100,000 × 10D, 15 well-separated populations | labels |
    | `flowsom_hard` | 100,000 × 10D, 20 overlapping populations, rare ones (≥0.2%) | labels |
+   | `pipeline` (`gen/pipeline.py`, seed `20261024`) | 200,000 raw events, 6×6 spillover, 7 populations (one 0.3%), debris, doublets, dead cells, an unstable interval, saturation | per-event population and artefact flags |
+   | `pipeline_beads` | 3,000 events of one discrete bead population (zero-MAD scatter) | — |
 
 3. **Runs.** Rust (`parity/run_rust.sh`) for the current branch and for `main`
    as the baseline; the upstream R tools (`parity/run_upstream.R`) with the
@@ -50,6 +59,12 @@ are pinned by unit tests against reference values produced by R.
    transforms; MAE/max |Δ|/Frobenius for matrices; RMSE/scale/correlation for
    unmixing; precision/recall/Jaccard/agreement for QC masks; ARI/NMI/purity
    for clustering; wall time and peak memory (`/usr/bin/time -l`).
+5. **Tolerances.** `parity/tolerances.json` (and `parity/real/tolerances.json`
+   for §2.10) turns the results into pass/fail rules, each with its reason;
+   `compare.py` exits with 1 on any violation or on a rule that matches no
+   metric, so `parity/run_all.sh` fails. The same chain also runs in CI on a
+   15,000-event golden fixture (`crates/cytiq-cli/tests/pipeline_cli.rs`,
+   thresholds in `data/fixtures/pipeline/thresholds.json`).
 
 Environment (`parity/versions.txt`): R 4.5.3, flowCore 2.22.1, flowWorkspace
 4.22.1, FlowSOM 2.18.0, PeacoQC 1.20.0, autospill 0.2.0 (`1e60e86`),
@@ -402,14 +417,66 @@ flowutils C polygon routine was checked directly:
 - raw events get `$PnE`, `$PnG` and `$TIMESTEP` pre-processing, as in flowio
 - Boolean gates combine the parent-intersected membership of their references
 
+### 2.9 End-to-end chain
+
+The documented conventional chain runs on the golden `pipeline` data:
+`preflight → compensate → transform (arcsinh 150) → peacoqc → clean (raw) →
+mask combine → gate --mask → flowsom --mask`. Upstream runs the same steps
+(`parity/pipeline.R`): `flowCore::compensate`, `arcsinhTransform`,
+`PeacoQC::RemoveMargins` and `PeacoQC`, FlowSOM; FlowKit evaluates the
+population strategy on the *raw* file with `FCS` compensation and `fasinh`
+inside Gating-ML, and `clean`'s exported gates. Everything is joined per event
+through `source_event_id`.
+
+| Stage | cytiq vs upstream | cytiq vs truth |
+|---|---|---|
+| compensate | max relative Δ 6.0e-08 (f32 storage) | — |
+| compensate → transform | max relative Δ 9.1e-08 | — |
+| margins (raw) | detector limits 100%, `RemoveMargins` 100% | recall 1.0, 0.77% of good events (raw values below flowCore's −111 floor) |
+| PeacoQC | 100% mask agreement | recall 1.0, 5.6% of good events (bins around the artefact; R removes the same) |
+| clean | 100% agreement with FlowKit on the exported gates | debris 0.9988, doublets 1.0, dead 0.9953 recall; ≤ 0.12% good events lost |
+| combined mask | — | F1 0.9668, 0.03% of artefacts kept |
+| gates | 0 events differ from FlowKit, every gate | precision ≥ 0.999, recall ≥ 0.998; Rare 423 of 425 |
+| FlowSOM (7 metaclusters) | ARI 0.9978 vs R | ARI 0.9988 (R 0.9987) |
+| FCS output | opens in flowio without `ignore_offset_discrepancy` | — |
+
+On `pipeline_beads` every stage completes and keeps the beads: the singlet
+band uses the relative-spread fallback (area equals height, so MAD and IQR are both zero), the margin mask removes nothing, while
+`PeacoQC::RemoveMargins` removes all 3,000 events (it drops every event
+equal to a channel's observed minimum or maximum). This found the first Stage 3
+defect: cytiq's raw margin masks used that rule too; they now use detector
+limits only.
+
+### 2.10 Real acquisitions
+
+`parity/real/run_real.sh` runs on real samples that ship with the R packages
+(no download) and on any files in `CYTIQ_REAL_DATA` (`parity/real/README.md`).
+
+| Dataset | Check | Result |
+|---|---|---|
+| FlowSOM `68983.fcs` (19,225 events, 18 colours) | compensate, logicle vs flowCore | Δ 5.9e-08, 7.8e-08 |
+| | manual Gating-ML (15 gates, rectangles and polygons) vs FlowKit | 0 events differ |
+| | gated populations vs FlowJo labels (Jaccard) | B 0.9959, CD4 T 0.9949, CD8 T 0.9908, γδ T 0.9804, NK 0.9778, NK T 0.8616 |
+| | FlowSOM (10 metaclusters) | ARI vs R 0.9395 (R seed to seed 0.9051); vs FlowJo labels 0.9869 (R 0.9718) |
+| PeacoQC `111.fcs` (10,000 events, 13 detectors) | compensate, logicle | Δ 5.9e-08, 7.9e-08 |
+| | PeacoQC vs R | 100% agreement (12.5% removed) |
+| | margins | detector limits 100%; `RemoveMargins` removes 334 vs 328 (observed extremes) |
+
+Running FlowKit on cytiq's compensated output found the second Stage 3 defect:
+the FCS writer left the HEADER DATA offsets at zero, which strict readers
+reject; it now writes them whenever they fit. The NK T difference is
+FlowJo's: its workspace counts 535 events, its exported Gating-ML gives 487 in
+both cytiq and FlowKit, because FlowJo evaluates that gate at
+`gateResolution="256"` on biex axes under a parent drawn on biex axes.
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
 |---|---|---|---|
 | FlowSOM | RNG: no bit-exact match with R (MT19937 + `R_unif_index`) | statistical agreement (ARI ≈ seed-to-seed) | port MT19937 if bit-exact reproducibility is needed |
 | FlowSOM | ConsensusClusterPlus → average-linkage hc | not visible on the tests | port if needed |
-| FlowSOM | `scale` and `nClus` defaults differ from R | product decision | expose as CLI flags |
-| AutoSpectral | 1–99% box gate instead of the `do.gate` KDE gate; no PeacoQC/AF removal on controls | not visible on clean controls | reuse the gate from `cytiq-autospill` |
+| FlowSOM | `scale` and `nClus` defaults differ from R | product decision | settable with `--no-scale`/`--metaclusters` |
+| AutoSpectral | 1–99% box gate instead of the `do.gate` KDE gate by default; no PeacoQC/AF removal on controls | not visible on clean controls | `--clean-controls` uses the `cytiq-autospill` KDE gate; PeacoQC/AF removal remain |
 | AutoSpectral | spectrum as a mean difference instead of an `rlm` slope; negatives are the whole AF control instead of scatter-matched kNN | spectrum shapes match to 5e-4 | `rlm` + kNN |
 | AutoSpectral | no WLS/Poisson/per-cell AF (R's default `AutoSpectral` method) | comparable only to `method = "OLS"` | separate task |
 | AutoSpread | no upstream; units are σ/√F while AutoSpectral expects σ²/F | format incompatibility | document the units |
@@ -417,10 +484,14 @@ flowutils C polygon routine was checked directly:
 | cytoscan | subsamples come from `rand`, not R's MT19937, so features on large files agree only statistically | Rust–R Δ equals R's seed-to-seed Δ | port R's RNG if bit-identical features are needed |
 | cytoscan | isotree uses its own C++ RNG | scores agree within isotree's Monte Carlo noise (≈0.014 at 1000 trees) | — |
 | cytoscan | `linfa` fits full covariance only; mclust also searches 13 constrained structures (EEI, VII, …) | with fewer reference files than features, Rust uses a diagonal Gaussian where mclust picks a constrained model; flags agree 50–100% | add constrained covariance models, or require n_ref > d |
-| cytoscan | upstream errors without `SPILL`; Rust warns and keeps raw values | only files without spillover metadata | — |
+| cytoscan | upstream errors without `SPILL`; Rust warns and keeps raw values | only files without spillover metadata | `--strict` errors like upstream |
 | autospill | on a perfectly regular lattice the KDE produces exact ties, broken in a different order than R | degenerate data only | — |
 | gate | compensation multiplies by an explicit inverse (Gauss-Jordan); FlowKit uses `np.linalg.solve` | round-off of about 1e-16 relative, so only events lying exactly on a boundary in compensated space could flip; none did at 1M events | — |
 | gate | quadrant gates, `fratio` and `new-dimension` are not supported | rejected with an explicit error | add when a real strategy needs them |
+| gate | Gating-ML without the required `compensation-ref` is read as `uncompensated`; FlowKit rejects it | FlowJo exports omit it | — |
+| margins | `compensate`/`autospectral` masks flag detector limits only; `peacoqc --remove-margins` keeps `PeacoQC::RemoveMargins`, which also removes each channel's observed extremes | identical on continuous data (§2.9); on discrete data RemoveMargins removes far more | — |
+| PeacoQC | on small files (15,000 events) the bins are coarse, so ~10% of good events around an artefact are removed (5.6% at 200,000) | same as R | prefer whole acquisitions |
+| real data | FlowRepository (AutoSpill datasets) serves an expired certificate (March 2023) | not fetched automatically | download by hand into `CYTIQ_REAL_DATA` |
 
 ## 4. Changed files
 
@@ -451,7 +522,9 @@ warnings`, `cargo test --workspace` — all green.
 
 ```bash
 parity/setup_env.sh        # once: R library and uv venv in parity/.env (git-ignored)
-parity/run_all.sh main     # synthetic data → Rust (branch + main) → R → parity/results/*.json
+parity/run_all.sh main     # synthetic data → Rust (branch + main) → R → parity/results/*.json; fails on a tolerance violation
+parity/real/run_real.sh    # real acquisitions → parity/results/metrics_real.json (also `just parity-real`)
+just parity-ci-fixture     # regenerate data/fixtures/pipeline (byte-identical)
 R_LIBS_USER=parity/.env/Rlib Rscript parity/make_fixtures.R   # regenerate R reference values for unit tests
 ```
 

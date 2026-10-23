@@ -19,6 +19,8 @@ cytiq-gating = { path = "../cytiq-gating" }
 cytiq-mask = { path = "../cytiq-mask" }
 cytiq-meta = { path = "../cytiq-meta" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
+cytiq-preflight = { path = "../cytiq-preflight" }
+cytiq-provenance = { path = "../cytiq-provenance" }
 cytiq-transform = { path = "../cytiq-transform" }
 log = "0.4.30"
 

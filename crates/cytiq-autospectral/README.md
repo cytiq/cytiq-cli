@@ -17,7 +17,9 @@ Follows the OLS path of AutoSpectral ([Burton et al., bioRxiv 2025](https://doi.
 2. Resolve spectral detectors: the `--detectors` manifest, or every channel of
    the first control present in all files, excluding FSC/SSC (any `fsc*` /
    `ssc*` name) and `Time`.
-3. Scatter gate each control at the 1st–99th percentile box on FSC and SSC.
+3. Scatter gate each control at the 1st–99th percentile box on FSC and SSC,
+   or with `clean_controls` (CLI `--clean-controls`) drop raw detector-margin
+   events and keep the `AutoSpill` KDE scatter gate (`cytiq_density::gate_events`).
 4. Autofluorescence spectrum = mean of the gated AF control, divided by
    `max |x|`.
 5. For each single stain, positives are events above the 99th percentile
@@ -26,8 +28,9 @@ Follows the OLS path of AutoSpectral ([Burton et al., bioRxiv 2025](https://doi.
    maximum (peak normalisation, as in `get.fluorophore.spectra`).
 6. Check conditioning: warn when the fluorophore-only condition number exceeds
    the number of fluorophores; fail above `1e8` for the full matrix.
-7. Unmix each sample with `(MᵀM)⁻¹Mᵀ` in event chunks of 8192 and record
-   per-sample residual and negative-fraction QC.
+7. Unmix each sample with the least-squares matrix `M⁺ = R⁻¹Qᵀ` (Householder
+   QR; equal to `(MᵀM)⁻¹Mᵀ` but without squaring the condition number) in event
+   chunks of 8192 and record per-sample residual and negative-fraction QC.
 
 Abundances are in units of each fluorophore's peak detector. Known gaps against
 upstream (box gate instead of the KDE gate, mean instead of `rlm` slope, no
@@ -89,13 +92,16 @@ Manifest formats are documented in the root
   references/fluorophore_spectra.csv        component,kind,<detectors...>
   references/autospectral-references.json   detectors, spectra, condition number
   unmixed/<sample-stem>.unmixed.fcs         non-detector columns + one column per component
+  unmixed/<sample-stem>.unmixed.masks.parquet  raw detector `margin_pass` per event
   diagnostics/run.json                      AutoSpectralSummary
 <debug-dir>/summary.json                    same summary, only with --debug-dir
 ```
 
 - Unmixed files are FCS 3.1 float32. Detector columns are replaced by component
-  columns; other parameters (scatter, time, ...) are copied. Source keywords
-  are not carried over; run `cytiq meta` on raw files to keep them.
+  columns; other parameters (scatter, time, ...) are copied with their `$Pn*`
+  keywords. Acquisition keywords are carried over; the spillover matrix and
+  earlier `CYTIQ_*` keywords are dropped. `CYTIQ_UNMIXING` lists the components
+  and detectors, and `CYTIQ_MARGINS` the bounds of the copied channels.
 - Duplicate sample stems get a `-<row>` suffix.
 - Existing output files are replaced; there is no `--overwrite` check.
 

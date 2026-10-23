@@ -25,18 +25,20 @@ use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
 
 pub use crate::compensation::{
-    Spillover, compensate, find_parameter_index, invert_matrix, is_spillover_keyword,
+    Spillover, compensate, condition_number_1, find_parameter_index, invert_matrix,
+    is_spillover_keyword,
 };
 pub use crate::error::FcsError as Error;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
 pub use crate::linear::linear_values;
 pub use crate::margins::{
-    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds,
+    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds, raw_margin_pass,
     recorded_margin_bounds,
 };
 pub use crate::signal::{
     COMPENSATION_KEYWORD, CompensationState, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
-    TransformState, compensation_state, transform_state,
+    TransformState, UNMIXING_KEYWORD, UnmixingState, compensation_state, transform_state,
+    unmixing_state,
 };
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,

@@ -9,10 +9,13 @@ members = [
     "crates/cytiq-density",
     "crates/cytiq-fcs",
     "crates/cytiq-gating",
+    "crates/cytiq-manifest",
     "crates/cytiq-mask",
     "crates/cytiq-meta",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",
+    "crates/cytiq-preflight",
+    "crates/cytiq-provenance",
     "crates/cytiq-transform",
 ]
 resolver = "3"

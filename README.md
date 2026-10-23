@@ -16,6 +16,9 @@ Current workspace crates:
 - `cytiq-compensate`: apply a spillover or compensation matrix to sample events
 - `cytiq-mask`: per-event masks shared by stages (`masks.parquet`)
 - `cytiq-meta`: FCS metadata export as JSON
+- `cytiq-provenance`: per-run records of arguments, inputs and outputs with SHA-256
+- `cytiq-manifest`: the run manifest (YAML/JSON): cytometry type, panel, samples, controls
+- `cytiq-preflight`: manifest and FCS checks before any computation
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -180,8 +183,11 @@ Rules:
 - independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
 - reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
 - positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
-- solver, autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
-- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
+- the OLS solution is computed with a Householder QR solve (`R⁻¹Qᵀ`), not the normal equations `(MᵀM)⁻¹Mᵀ`, which square the condition number; `run.json` records `solver_method`
+- autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
+- `--clean-controls` drops control events on a raw detector margin and gates FSC/SSC with the same KDE gate as `autospill` instead of the 1–99% quantile box; `run.json` records `control_gate`. It needs enough events for the KDE gate (a few hundred per control)
+- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
+- unmixed files record `CYTIQ_UNMIXING` (components and detectors) and the margin bounds of passed-through channels in `CYTIQ_MARGINS`. Components have no detector margins: `cytiq peacoqc --remove-margins` refuses them, and `cytiq gate` refuses to compensate them. Raw detector margins are written instead as `margin_pass` in `unmixed/<sample>.unmixed.masks.parquet`
 
 Outputs are always written under `--output`:
 
@@ -192,6 +198,7 @@ autospectral-out/
     autospectral-references.json
   unmixed/
     sample_01.unmixed.fcs
+    sample_01.unmixed.masks.parquet
   diagnostics/
     run.json
 ```
@@ -447,6 +454,10 @@ Rules:
   `parity/REPORT.md`)
 - inputs must be raw FCS: CytoScan compensates with the file's spillover and
   arcsinh-transforms itself, so files from `cytiq transform` are rejected
+- a file without spillover metadata, or a selected channel missing from it,
+  is scored on raw values with a warning (logged and in the `warnings`
+  column). `--strict` makes both an error, so no file in the cohort is scored
+  on a different scale
 
 Outputs are always written under `--output`:
 
@@ -493,10 +504,11 @@ Rules:
 - events are pre-processed as FlowKit "raw" events: `$PnE` log scaling,
   `$PnG` gain and `$TIMESTEP` on the `Time` channel are applied before
   compensation
-- on files from `cytiq transform` or `cytiq compensate`, a dimension that would
-  transform or compensate an already processed channel is an error, since
-  Gating-ML applies its own compensation and transformation. Gate the raw file
-  instead, or use `uncompensated` dimensions without `transformation-ref`
+- on files from `cytiq transform`, `cytiq compensate` or `cytiq autospectral`,
+  a dimension that would transform or compensate an already processed channel
+  is an error, since Gating-ML applies its own compensation and
+  transformation. Gate the raw file instead, or use `uncompensated` dimensions
+  without `transformation-ref`
 - `--mask` (repeatable, see [Masks](#masks)) restricts gating to events every
   mask keeps; events outside belong to no gate, and `percent_of_total` uses
   the masked event count
@@ -586,6 +598,17 @@ Rules:
 - `--debris-mode population` uses the AutoSpill FSC/SSC auto-gate around the
   single dominant population. That suits beads and cell lines, but it drops
   minor cell populations in mixed samples.
+- the singlet band is `median ± --singlet-mad · spread`, where spread is the
+  MAD. When more than half of the values are identical (discretised scatter,
+  beads) the MAD is zero, so `IQR / 1.349` is used, then `1e-3 · median`;
+  `metrics.json` reports which (`spread_source`: `mad`, `iqr`, `relative`).
+- `--require debris,singlets,viability` fails the run, before anything is
+  written, when a listed filter is not `applied`. Without it a
+  `not_assessed` filter simply does not contribute to `keep`.
+- the viability axis compensates and arcsinh-scales the dye itself, so an
+  input whose viability channel `cytiq transform` transformed is rejected at
+  once. Run clean on the raw file (or pass `--no-viability`) and combine the
+  masks.
 - singlets are fitted on non-debris events, and viability on non-debris
   singlets. Every gate is then evaluated on all events. Fitting uses at most
   `--max-fit-events` (default 50,000) evenly spaced events, so results are
@@ -712,9 +735,15 @@ Rules:
   comma-separated `--channels` value
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display
   identifiers like `$PnN [$PnS]`
-- SOM size, metacluster count, training iterations, learning-rate schedule,
-  radius schedule, random seed, and input scaling are fixed internal constants
-  for the MVP
+- `--xdim`/`--ydim` (SOM grid, default 10×10), `--metaclusters` (default 20,
+  at most `xdim·ydim`), `--seed` (default 1) and `--no-scale` (skip z-scoring)
+  default to the previous fixed values, so runs without them are unchanged
+- `--training-events N` trains the SOM on a deterministic sample of N events
+  (without replacement, from its own RNG stream) and then assigns every event
+  to its nearest node; scaling statistics still use every event. It bounds
+  training time on large files
+- training iterations, learning-rate schedule and radius schedule stay fixed
+  internal constants
 
 When `--debug-dir` is provided, `cytiq` writes:
 
@@ -782,6 +811,68 @@ and `$DATATYPE` always describe the written float data. The
 input file, so per-event results computed on the cleaned file (for example
 FlowSOM `event_index`, which is 0-based over the cleaned rows) map back to the
 input through `Original_ID`, not through their own row number.
+
+## Preflight
+
+`cytiq preflight` checks a run before any computation. The run is described
+by one manifest, YAML or JSON:
+
+```yaml
+cytometry: conventional        # or spectral
+panel:
+  name: T-cell-8c
+  markers:
+    - { marker: CD3, channel: FL1-A }        # channel optional: matched by $PnS
+    - { marker: Live/Dead, required: false }  # required defaults to true
+samples:
+  - { id: S01, file: fcs/s01.fcs }            # relative to the manifest
+controls:
+  - { file: fcs/unstained.fcs, dye: Autofluorescence }
+  - { file: fcs/cd3_fitc.fcs, dye: FITC, primary_channel: FL1-A }
+```
+
+```bash
+cytiq preflight --manifest run.yaml --output preflight.json
+```
+
+Checks, each reported as `pass`, `warn` or `fail` (full table in
+[`cytiq-preflight`](crates/cytiq-preflight/README.md)):
+- every file parses, has events, and is raw: files already processed by
+  `cytiq transform`, `compensate` or `autospectral` fail
+- every required panel marker maps to exactly one channel of every sample
+  (`$PnS` or `$PnN`; a marker found on several channels fails)
+- all samples and controls share one detector set (`$PnN`); different `$PnV`
+  voltages warn
+- conventional samples carry a spillover matrix over existing channels that is
+  invertible; a 1-norm condition number above 100 warns
+- missing `$CYT`/`$DATE` warns
+
+The JSON report is always written; the command exits with `1` when any check
+fails, and logs every failure and warning.
+
+## Provenance
+
+Every command that writes files, except `meta`, also writes a provenance
+record next to its output: `<output>.provenance.json` for a file output and
+`<dir>/provenance.json` for a directory output. It holds the tool and version,
+the exact command-line arguments, start and finish times, and the size and
+SHA-256 of every input and output file (debug directories are not listed):
+
+```json
+{
+  "schema_version": 1,
+  "tool": "cytiq gate",
+  "version": "0.1.0",
+  "arguments": ["gate", "--input", "s.t.fcs", "--gating-ml", "gates.xml", "--output", "counts.csv"],
+  "started_at_unix_ms": 1792790000000,
+  "finished_at_unix_ms": 1792790000120,
+  "inputs": [{ "path": "s.t.fcs", "bytes": 640905, "sha256": "…" }, { "path": "gates.xml", "…": "…" }],
+  "outputs": [{ "path": "counts.csv", "bytes": 214, "sha256": "…" }]
+}
+```
+
+Following the `inputs` of each record back to the outputs of earlier records
+reconstructs the whole chain from the raw FCS files.
 
 ## Algorithm Notes
 

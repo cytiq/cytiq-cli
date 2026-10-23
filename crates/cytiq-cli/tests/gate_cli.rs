@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -173,6 +175,7 @@ fn every_third_removed(events: usize) -> Vec<bool> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn cli_gates_only_events_inside_the_mask() {
     let directory = create_temp_dir("cytiq-cli-gate-mask");
     let input = fixture("sample.fcs");
@@ -261,6 +264,12 @@ fn cli_gates_only_events_inside_the_mask() {
     let expected = strategy
         .gate_sample_masked(&dataset, Some(&keep))
         .expect("gating should succeed");
+    common::assert_provenance(
+        &directory.join("masked.json.provenance.json"),
+        "cytiq gate",
+        &[&input, &gates, &mask_path],
+        &[&directory.join("masked.json"), &membership_path],
+    );
     let membership = cytiq_mask::EventMask::read_parquet(&membership_path)
         .expect("membership should be a valid mask file");
     assert_eq!(membership.keep, keep);

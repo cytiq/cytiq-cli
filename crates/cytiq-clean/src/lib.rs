@@ -38,8 +38,8 @@ pub use crate::filter::{
 };
 pub use crate::runner::{
     CleanConfig, CleanMasks, CleanMetrics, CleanResult, CleanRunner, DEFAULT_FSC_A, DEFAULT_FSC_H,
-    DEFAULT_FSC_W, DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, FilterReports,
-    InputMaskReport,
+    DEFAULT_FSC_W, DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, FilterKind,
+    FilterReports, InputMaskReport,
 };
 pub use crate::viability::{
     DEFAULT_VIABILITY_COFACTOR, DEFAULT_VIABILITY_CONTROL_QUANTILE, VIABILITY_TRANSFORM,

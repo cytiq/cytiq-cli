@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -94,6 +96,18 @@ fn combines_peacoqc_and_clean_masks_by_source_event() {
         .iter()
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
+    common::assert_provenance(
+        &directory.join("analysis.parquet.provenance.json"),
+        "cytiq mask combine",
+        &[&peacoqc_masks, &clean_masks],
+        &[&combined_path],
+    );
+    common::assert_provenance(
+        &clean.join("provenance.json"),
+        "cytiq clean",
+        &[&peacoqc],
+        &[&clean_masks, &clean.join("metrics.json")],
+    );
     assert_eq!(
         names,
         [

@@ -8,7 +8,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, FcsWriteParameter, Parameter};
+use cytiq_fcs::{
+    ColumnData, FcsDataset, FcsReader, FcsWriteParameter, MARGINS_KEYWORD, Parameter,
+    UNMIXING_KEYWORD, UnmixingState,
+};
+use cytiq_mask::EventMask;
 use log::{debug, info, warn};
 use nalgebra::{DMatrix, DVector};
 use rayon::{ThreadPoolBuilder, prelude::*};
@@ -22,6 +26,9 @@ use crate::manifest::{
 };
 
 pub const SOLVER: &str = "ols";
+/// How the OLS solution is computed: a Householder QR solve, which avoids the
+/// squared condition number of the normal equations `(AᵀA)⁻¹Aᵀ`.
+pub const SOLVER_METHOD: &str = "householder_qr";
 pub const AF_COMPONENT_COUNT: usize = 1;
 pub const DEFAULT_FSC_CHANNEL: &str = "FSC-A";
 pub const DEFAULT_SSC_CHANNEL: &str = "SSC-A";
@@ -49,7 +56,15 @@ pub struct AutoSpectralConfig {
     pub output_dir: PathBuf,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
+    /// Clean controls before building spectra: drop events on raw detector
+    /// margins and gate FSC/SSC with the `AutoSpill` KDE gate instead of the
+    /// 1-99% quantile box.
+    pub clean_controls: bool,
 }
+
+/// Control gate names recorded in `run.json`.
+const CONTROL_GATE_QUANTILE: &str = "fsc_ssc_quantile_box";
+const CONTROL_GATE_CLEAN: &str = "detector_margins+autospill_kde_gate";
 
 impl AutoSpectralConfig {
     #[must_use]
@@ -61,6 +76,7 @@ impl AutoSpectralConfig {
             output_dir,
             debug_dir: None,
             threads: None,
+            clean_controls: false,
         }
     }
 }
@@ -69,6 +85,9 @@ impl AutoSpectralConfig {
 pub struct AutoSpectralSummary {
     pub run_id: String,
     pub solver: String,
+    pub solver_method: String,
+    /// How control events were selected before building spectra.
+    pub control_gate: String,
     pub spectral_channels: Vec<String>,
     pub components: Vec<String>,
     pub condition_number: f64,
@@ -131,6 +150,9 @@ pub struct UnmixedSample {
     pub parameters: Vec<FcsWriteParameter>,
     pub columns: Vec<Vec<f32>>,
     pub text_keywords: Vec<(String, String)>,
+    /// Raw detector-margin flags per event (`margin_pass`), written next to
+    /// the unmixed FCS.
+    pub mask: EventMask,
 }
 
 pub struct AutoSpectralRunner;
@@ -227,6 +249,13 @@ impl AutoSpectralRunner {
         let summary = AutoSpectralSummary {
             run_id: run_id(),
             solver: SOLVER.to_owned(),
+            solver_method: SOLVER_METHOD.to_owned(),
+            control_gate: if config.clean_controls {
+                CONTROL_GATE_CLEAN
+            } else {
+                CONTROL_GATE_QUANTILE
+            }
+            .to_owned(),
             spectral_channels: detectors,
             components: references
                 .set
@@ -247,6 +276,7 @@ impl AutoSpectralRunner {
                     parameters: sample.parameters,
                     columns: sample.columns,
                     text_keywords: sample.text_keywords,
+                    mask: sample.mask,
                 })
                 .collect(),
             summary,
@@ -262,6 +292,7 @@ struct WorkingUnmixedSample {
     parameters: Vec<FcsWriteParameter>,
     columns: Vec<Vec<f32>>,
     text_keywords: Vec<(String, String)>,
+    mask: EventMask,
     summary: SampleQc,
 }
 
@@ -427,6 +458,7 @@ fn build_references(
     let af_gate = retained_indices(
         &autofluorescence.path,
         &autofluorescence.dataset,
+        detectors,
         &af_columns,
         config,
     )?;
@@ -517,7 +549,7 @@ fn build_single_stain_reference(
             channel: primary_channel.to_owned(),
         })?;
     let columns = detector_columns(&control.path, &control.dataset, detectors)?;
-    let retained = retained_indices(&control.path, &control.dataset, &columns, config)?;
+    let retained = retained_indices(&control.path, &control.dataset, detectors, &columns, config)?;
     let negative_primary = af_gate
         .iter()
         .map(|&index| af_columns[primary_detector_index][index])
@@ -552,12 +584,13 @@ fn build_single_stain_reference(
 fn retained_indices(
     path: &Path,
     dataset: &FcsDataset,
+    detectors: &[String],
     detector_columns: &[Vec<f64>],
     config: &AutoSpectralConfig,
 ) -> Result<Vec<usize>, AutoSpectralError> {
     let fsc = channel_column(path, dataset, &config.fsc)?;
     let ssc = channel_column(path, dataset, &config.ssc)?;
-    let valid = (0..event_count(dataset))
+    let mut valid = (0..event_count(dataset))
         .filter(|&index| {
             fsc[index].is_finite()
                 && ssc[index].is_finite()
@@ -566,18 +599,20 @@ fn retained_indices(
                     .all(|column| column[index].is_finite())
         })
         .collect::<Vec<_>>();
-    let fsc_values = valid.iter().map(|&index| fsc[index]).collect::<Vec<_>>();
-    let ssc_values = valid.iter().map(|&index| ssc[index]).collect::<Vec<_>>();
-    let fsc_low = quantile(fsc_values.clone(), SCATTER_GATE_LOWER_QUANTILE);
-    let fsc_high = quantile(fsc_values, SCATTER_GATE_UPPER_QUANTILE);
-    let ssc_low = quantile(ssc_values.clone(), SCATTER_GATE_LOWER_QUANTILE);
-    let ssc_high = quantile(ssc_values, SCATTER_GATE_UPPER_QUANTILE);
-    let retained = valid
-        .into_iter()
-        .filter(|&index| {
+    let retained = if config.clean_controls {
+        clean_control_indices(path, dataset, detectors, &fsc, &ssc, valid, config)?
+    } else {
+        let fsc_values = valid.iter().map(|&index| fsc[index]).collect::<Vec<_>>();
+        let ssc_values = valid.iter().map(|&index| ssc[index]).collect::<Vec<_>>();
+        let fsc_low = quantile(fsc_values.clone(), SCATTER_GATE_LOWER_QUANTILE);
+        let fsc_high = quantile(fsc_values, SCATTER_GATE_UPPER_QUANTILE);
+        let ssc_low = quantile(ssc_values.clone(), SCATTER_GATE_LOWER_QUANTILE);
+        let ssc_high = quantile(ssc_values, SCATTER_GATE_UPPER_QUANTILE);
+        valid.retain(|&index| {
             (fsc_low..=fsc_high).contains(&fsc[index]) && (ssc_low..=ssc_high).contains(&ssc[index])
-        })
-        .collect::<Vec<_>>();
+        });
+        valid
+    };
     if retained.len() < MIN_RETAINED_EVENTS {
         return Err(AutoSpectralError::TooFewRetainedEvents {
             path: path.to_path_buf(),
@@ -587,6 +622,55 @@ fn retained_indices(
     }
 
     Ok(retained)
+}
+
+/// `--clean-controls`: drop events on a raw detector margin, then keep the
+/// dense FSC/SSC core found by the `AutoSpill` KDE gate.
+fn clean_control_indices(
+    path: &Path,
+    dataset: &FcsDataset,
+    detectors: &[String],
+    fsc: &[f64],
+    ssc: &[f64],
+    mut valid: Vec<usize>,
+    config: &AutoSpectralConfig,
+) -> Result<Vec<usize>, AutoSpectralError> {
+    let detector_indices = detectors
+        .iter()
+        .filter_map(|detector| dataset.find_parameter(detector))
+        .collect::<Vec<_>>();
+    let margin_pass = cytiq_fcs::raw_margin_pass(dataset, &detector_indices).map_err(|source| {
+        AutoSpectralError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+    valid.retain(|&index| margin_pass[index]);
+    let points = valid
+        .iter()
+        .map(|&index| [fsc[index], ssc[index]])
+        .collect::<Vec<_>>();
+    // AutoSpill clamps scatter to the FSC range of the file.
+    let data_max = find_parameter_index(&dataset.parameters, &config.fsc).and_then(|index| {
+        let parameter = &dataset.parameters[index];
+        let key = format!("$P{}R", parameter.index);
+        parameter
+            .keywords
+            .iter()
+            .find_map(|(candidate, value)| (*candidate == key).then_some(value))
+            .and_then(|value| value.trim().parse::<f64>().ok())
+    });
+    let gate = cytiq_density::gate_events(&points, data_max).map_err(|reason| {
+        AutoSpectralError::DegenerateScatterGate {
+            path: path.to_path_buf(),
+            reason,
+        }
+    })?;
+    Ok(gate
+        .gated_indices
+        .into_iter()
+        .map(|position| valid[position])
+        .collect())
 }
 
 /// `get.universal.negative`: events above the 99th percentile of the negative
@@ -677,6 +761,25 @@ fn unmix_sample(
     let (component_columns, residuals, negative_count) =
         merge_unmixed_chunks(chunks, components.len(), event_total);
 
+    let read_error = |source| AutoSpectralError::FcsRead {
+        path: sample.path.clone(),
+        source,
+    };
+    // Unmixing mixes the detectors: judge raw detector margins now.
+    let detector_indices = detectors
+        .iter()
+        .filter_map(|detector| sample.dataset.find_parameter(detector))
+        .collect::<Vec<_>>();
+    let margin_pass =
+        cytiq_fcs::raw_margin_pass(&sample.dataset, &detector_indices).map_err(read_error)?;
+    let mask = EventMask::new(
+        margin_pass.clone(),
+        cytiq_fcs::source_event_ids(&sample.dataset).map_err(read_error)?,
+    )
+    .with_filter("margin_pass", margin_pass.into_iter().map(Some).collect());
+    let text_keywords =
+        output_keywords(&sample.dataset, detectors, components).map_err(read_error)?;
+
     let (mut parameters, mut columns) = preserved_columns(&sample.dataset, detectors);
     for (component, column) in components.iter().zip(component_columns) {
         parameters.push(FcsWriteParameter::new(component.name.clone()));
@@ -690,7 +793,8 @@ fn unmix_sample(
     Ok(WorkingUnmixedSample {
         parameters,
         columns,
-        text_keywords: acquisition_keywords(&sample.dataset),
+        text_keywords,
+        mask,
         summary: SampleQc {
             filename: sample.row.filename.clone(),
             events_processed: event_total,
@@ -813,11 +917,34 @@ fn preserved_columns(
 
 /// Source keywords that still describe the unmixed file. The spillover matrix
 /// and cytiq stage keywords refer to detector channels that were replaced.
-fn acquisition_keywords(dataset: &FcsDataset) -> Vec<(String, String)> {
-    cytiq_fcs::carried_keywords(&dataset.text)
+/// Source keywords that still describe the unmixed file, plus
+/// `CYTIQ_UNMIXING` and the margin bounds of the passed-through channels. The
+/// spillover matrix and earlier `CYTIQ_*` state refer to the replaced
+/// detectors.
+fn output_keywords(
+    dataset: &FcsDataset,
+    detectors: &[String],
+    components: &[SpectralComponent],
+) -> Result<Vec<(String, String)>, cytiq_fcs::Error> {
+    let mut keywords = cytiq_fcs::carried_keywords(&dataset.text)
         .into_iter()
         .filter(|(key, _)| !cytiq_fcs::is_spillover_keyword(key) && !key.starts_with("CYTIQ_"))
-        .collect()
+        .collect::<Vec<_>>();
+    let mut bounds = cytiq_fcs::dataset_margin_bounds(&dataset.text, &dataset.parameters)?;
+    bounds.retain(|name, _| !detectors.contains(name));
+    keywords.push((
+        MARGINS_KEYWORD.to_owned(),
+        cytiq_fcs::encode_margin_bounds(&bounds),
+    ));
+    let state = UnmixingState {
+        components: components
+            .iter()
+            .map(|component| component.name.clone())
+            .collect(),
+        detectors: detectors.to_vec(),
+    };
+    keywords.push((UNMIXING_KEYWORD.to_owned(), state.to_keyword_value()));
+    Ok(keywords)
 }
 
 fn reference_matrix(detector_count: usize, components: &[SpectralComponent]) -> DMatrix<f64> {
@@ -843,12 +970,17 @@ fn condition_number(matrix: &DMatrix<f64>) -> Result<f64, AutoSpectralError> {
     Ok(max / min)
 }
 
+/// Least-squares unmixing matrix `A⁺ = R⁻¹Qᵀ` from the thin QR decomposition
+/// `A = QR`, so that `abundances = A⁺ · detectors`. For a full-rank `A` this
+/// equals `(AᵀA)⁻¹Aᵀ`, but forming `AᵀA` squares the condition number and
+/// loses precision for similar spectra. (nalgebra's SVD was measured less
+/// accurate than QR here.)
 fn unmixing_matrix(reference_matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, AutoSpectralError> {
-    let gram = reference_matrix.transpose() * reference_matrix;
-    let inverse = gram
-        .try_inverse()
-        .ok_or(AutoSpectralError::SingularReferenceMatrix)?;
-    Ok(inverse * reference_matrix.transpose())
+    let qr = reference_matrix.clone().qr();
+    qr.r()
+        .solve_upper_triangular(&qr.q().transpose())
+        .filter(|unmixing| unmixing.iter().all(|value| value.is_finite()))
+        .ok_or(AutoSpectralError::SingularReferenceMatrix)
 }
 
 fn detector_columns(
@@ -1138,6 +1270,35 @@ mod tests {
             matrix,
             DMatrix::from_row_slice(3, 2, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
         );
+    }
+
+    #[test]
+    fn qr_solver_matches_normal_equations_when_well_conditioned() {
+        let reference = DMatrix::from_row_slice(
+            4,
+            3,
+            &[1.0, 0.1, 0.2, 0.3, 1.0, 0.2, 0.0, 0.4, 1.0, 0.2, 0.1, 0.3],
+        );
+        let normal = (reference.transpose() * &reference)
+            .try_inverse()
+            .expect("gram should invert")
+            * reference.transpose();
+        let qr = super::unmixing_matrix(&reference).expect("matrix should invert");
+        assert!((normal - qr).abs().max() < 1e-12);
+    }
+
+    #[test]
+    fn qr_solver_keeps_precision_for_similar_spectra() {
+        // Two spectra that differ by 1e-6: κ ≈ 2.5e6. The normal equations
+        // work with κ² and recover the coefficients to ~5e-5; QR to ~1e-9.
+        let reference = DMatrix::from_row_slice(3, 2, &[1.0, 1.0, 0.5, 0.5 + 1.0e-6, 0.25, 0.25]);
+        let coefficients = nalgebra::DVector::from_vec(vec![3.0, 7.0]);
+        let observed = &reference * &coefficients;
+        let recovered =
+            super::unmixing_matrix(&reference).expect("matrix should invert") * observed;
+        for (actual, expected) in recovered.iter().zip(coefficients.iter()) {
+            assert!((actual - expected).abs() < 1e-7, "{actual} vs {expected}");
+        }
     }
 
     #[test]

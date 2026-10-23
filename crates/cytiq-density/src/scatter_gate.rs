@@ -6,6 +6,8 @@
 
 use std::collections::HashSet;
 
+use crate::kde::quantile_type7;
+
 // Gating defaults are intentionally centralized here because they are part of
 // the published `AutoSpill` behavior rather than ad-hoc implementation knobs.
 //
@@ -649,9 +651,79 @@ pub fn mad(values: &[f64], center: f64) -> f64 {
     1.4826 * median(&deviations)
 }
 
+/// Which estimate [`robust_spread`] returned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpreadSource {
+    /// `mad`, the normal case.
+    Mad,
+    /// `IQR / 1.349`: more than half of the values equal the center, as with
+    /// heavily discretised data or beads.
+    Iqr,
+    /// A small fraction of `|center|`: the values are (nearly) constant.
+    Relative,
+}
+
+impl SpreadSource {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mad => "mad",
+            Self::Iqr => "iqr",
+            Self::Relative => "relative",
+        }
+    }
+}
+
+/// A spread that is never zero, so `center ± k·spread` gates never collapse.
+/// Falls back from the MAD to `IQR / 1.349` (equal to the standard deviation
+/// for normal data, like the MAD), then to `1e-3·|center|`, then to a few
+/// ULPs.
+#[must_use]
+pub fn robust_spread(values: &[f64], center: f64) -> (f64, SpreadSource) {
+    let spread = mad(values, center);
+    if spread > 0.0 {
+        return (spread, SpreadSource::Mad);
+    }
+    if values.len() > 1 {
+        let mut sorted = values.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        let iqr = quantile_type7(&sorted, 0.75) - quantile_type7(&sorted, 0.25);
+        if iqr > 0.0 {
+            return (iqr / 1.349, SpreadSource::Iqr);
+        }
+    }
+    let relative = 1.0e-3 * center.abs();
+    if relative > 0.0 {
+        (relative, SpreadSource::Relative)
+    } else {
+        (f64::EPSILON * center.abs().max(1.0), SpreadSource::Relative)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::gate_events;
+    use super::{SpreadSource, gate_events, robust_spread};
+
+    #[test]
+    fn robust_spread_falls_back_when_mad_is_zero() {
+        let normal = [1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(robust_spread(&normal, 3.0).1, SpreadSource::Mad);
+
+        // 60% of the values sit on the median: MAD = 0, IQR > 0.
+        let discrete = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 3.0, 4.0, 5.0];
+        let (spread, source) = robust_spread(&discrete, 2.0);
+        assert_eq!(source, SpreadSource::Iqr);
+        assert!(spread > 0.0);
+
+        let constant = [7.0; 10];
+        assert_eq!(
+            robust_spread(&constant, 7.0),
+            (7.0e-3, SpreadSource::Relative)
+        );
+        let (spread, source) = robust_spread(&[0.0; 10], 0.0);
+        assert_eq!(source, SpreadSource::Relative);
+        assert!(spread > 0.0);
+    }
 
     #[test]
     fn gate_events_prefers_main_cloud_over_lower_left_debris() {

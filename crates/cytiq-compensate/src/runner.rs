@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
     COMPENSATION_KEYWORD, CompensationState, FcsDataset, FcsReader, FcsWriteOptions,
-    FcsWriteParameter, MARGINS_KEYWORD, MarginBounds, SOURCE_SPILLOVER_KEYWORD,
+    FcsWriteParameter, MARGINS_KEYWORD, SOURCE_SPILLOVER_KEYWORD,
 };
 use cytiq_mask::EventMask;
 use log::{debug, info};
@@ -72,7 +72,15 @@ impl CompensateRunner {
             )
         );
 
-        let margin_pass = raw_margin_pass(input, &dataset, &matrix_indices)?;
+        // Compensation mixes channels: this is the last point where raw
+        // detector margins can be identified.
+        let margin_pass =
+            cytiq_fcs::raw_margin_pass(&dataset, &matrix_indices).map_err(|source| {
+                CompensateError::FcsRead {
+                    path: input.clone(),
+                    source,
+                }
+            })?;
         let (parameters, columns) = compensated_columns(&dataset, &matrix_indices, &matrix);
         let options = output_keywords(input, &dataset, config, &channels, &parameters)?;
         write_fcs(&config.output, &parameters, &columns, &options)?;
@@ -182,39 +190,6 @@ fn ensure_raw_input(
         });
     }
     Ok(())
-}
-
-/// Margin events of the compensated channels, judged on the stored raw values
-/// as `cytiq peacoqc --remove-margins` does. Compensation mixes channels, so
-/// this is the last point where raw detector margins can be identified.
-fn raw_margin_pass(
-    path: &Path,
-    dataset: &FcsDataset,
-    matrix_indices: &[usize],
-) -> Result<Vec<bool>, CompensateError> {
-    let bounds =
-        cytiq_fcs::dataset_margin_bounds(&dataset.text, &dataset.parameters).map_err(|source| {
-            CompensateError::FcsRead {
-                path: path.to_path_buf(),
-                source,
-            }
-        })?;
-    let mut pass = vec![true; dataset.event_count()];
-    for index in matrix_indices {
-        let parameter = &dataset.parameters[*index];
-        let bounds = bounds
-            .get(&parameter.name)
-            .copied()
-            .unwrap_or_else(|| MarginBounds::from_raw_parameter(parameter));
-        let values = stored_values(dataset, *index);
-        let minimum = values.iter().copied().fold(f64::INFINITY, f64::min);
-        let maximum = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let (low, high) = bounds.thresholds(minimum, maximum);
-        for (event, value) in pass.iter_mut().zip(&values) {
-            *event &= *value > low && *value < high;
-        }
-    }
-    Ok(pass)
 }
 
 fn stored_values(dataset: &FcsDataset, index: usize) -> Vec<f64> {

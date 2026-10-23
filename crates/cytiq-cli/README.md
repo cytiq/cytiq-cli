@@ -13,6 +13,7 @@ live in the library crates listed below.
 | `cytiq autospectral` | [`cytiq-autospectral`](../cytiq-autospectral) | Reference-based spectral unmixing | [AutoSpectral](../../README.md#autospectral) |
 | `cytiq transform` | [`cytiq-transform`](../cytiq-transform) | arcsinh / logicle / hyperlog / biexponential signal transforms | [Transform](../../README.md#transform) |
 | `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate) | Apply a spillover or compensation matrix to sample events | [Compensate](../../README.md#compensate) |
+| `cytiq preflight` | [`cytiq-preflight`](../cytiq-preflight) | Check a run manifest and its FCS files before computation | [Preflight](../../README.md#preflight) |
 | `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask) | Combine per-event masks of one acquisition | [Masks](../../README.md#masks) |
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan) | File-level anomaly detection over a cohort | [CytoScan](../../README.md#cytoscan) |
 | `cytiq gate` | [`cytiq-gating`](../cytiq-gating) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership | [Gating](../../README.md#gating) |
@@ -43,6 +44,13 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
   crate.
 - `--mask FILE` (repeatable) restricts `gate`, `flowsom` and `clean` to events
   every mask keeps; see [Masks](../../README.md#masks).
+
+## Provenance
+
+Each command arm finishes with `record_provenance`, which writes
+`<output>.provenance.json` (or `<dir>/provenance.json`) with the arguments and
+the SHA-256 of the command's input and output files; see
+[`cytiq-provenance`](../cytiq-provenance). `meta` writes none.
 
 ## Logging and output streams
 

@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::FcsError;
-use crate::signal::{compensation_state, transform_state};
-use crate::types::{FcsText, Parameter};
+use crate::signal::{compensation_state, transform_state, unmixing_state};
+use crate::types::{FcsDataset, FcsText, Parameter};
 
 pub const MARGINS_KEYWORD: &str = "CYTIQ_MARGINS";
 
@@ -101,8 +101,8 @@ pub fn encode_margin_bounds(bounds: &BTreeMap<String, MarginBounds>) -> String {
 
 /// Margin bounds of every parameter whose bounds are known in the space of
 /// its stored values: recorded by an earlier cytiq stage, or taken from raw
-/// acquisition keywords for channels no cytiq transform or compensation has
-/// touched. Such a channel without recorded bounds is left out.
+/// acquisition keywords for channels no cytiq transform, compensation or
+/// unmixing has produced. Such a channel without recorded bounds is left out.
 ///
 /// # Errors
 ///
@@ -115,6 +115,7 @@ pub fn dataset_margin_bounds(
     let recorded = recorded_margin_bounds(text)?.unwrap_or_default();
     let transform = transform_state(text)?;
     let compensation = compensation_state(text)?;
+    let unmixing = unmixing_state(text)?;
     // Files from older cytiq versions do not list their transformed channels.
     // Compensation mixes channels, so raw bounds no longer describe them.
     let transformed = |name: &str| {
@@ -124,6 +125,7 @@ pub fn dataset_margin_bounds(
             || compensation
                 .as_ref()
                 .is_some_and(|state| state.covers(name))
+            || unmixing.as_ref().is_some_and(|state| state.covers(name))
     };
 
     Ok(parameters
@@ -135,6 +137,42 @@ pub fn dataset_margin_bounds(
             Some((parameter.name.clone(), bounds))
         })
         .collect())
+}
+
+/// Per-event pass flags for the detector margins of `indices`, judged on the
+/// stored values as `cytiq peacoqc --remove-margins` does: an event fails when
+/// it sits on the low or high margin of any listed channel. Compensation and
+/// unmixing mix channels, so this must run on raw values before them.
+///
+/// # Errors
+///
+/// Returns an error when `CYTIQ_*` state keywords are invalid.
+///
+/// # Panics
+///
+/// Panics when an index is out of range.
+pub fn raw_margin_pass(dataset: &FcsDataset, indices: &[usize]) -> Result<Vec<bool>, FcsError> {
+    let bounds = dataset_margin_bounds(&dataset.text, &dataset.parameters)?;
+    let mut pass = vec![true; dataset.event_count()];
+    for index in indices {
+        let parameter = &dataset.parameters[*index];
+        let bounds = bounds
+            .get(&parameter.name)
+            .copied()
+            .unwrap_or_else(|| MarginBounds::from_raw_parameter(parameter));
+        let values = dataset
+            .data
+            .column(*index)
+            .expect("every parameter has a data column")
+            .to_f64_vec();
+        let minimum = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let maximum = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let (low, high) = bounds.thresholds(minimum, maximum);
+        for (event, value) in pass.iter_mut().zip(&values) {
+            *event &= *value > low && *value < high;
+        }
+    }
+    Ok(pass)
 }
 
 fn keyword_f64(parameter: &Parameter, key: &str) -> Option<f64> {

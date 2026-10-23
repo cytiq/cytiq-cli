@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -7,7 +6,6 @@ use std::path::{Path, PathBuf};
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter, ParameterDataType, ParameterWidth};
 use log::{debug, info};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 use crate::error::MetaError;
 
@@ -161,21 +159,10 @@ pub fn read_metadata(path: impl AsRef<Path>) -> Result<FcsMetadata, MetaError> {
 }
 
 fn hash_file(path: &Path) -> Result<(u64, String), MetaError> {
-    let hash_error = |source| MetaError::Hash {
+    cytiq_provenance::hash_file(path).map_err(|source| MetaError::Hash {
         path: path.to_path_buf(),
         source,
-    };
-    let mut file = File::open(path).map_err(hash_error)?;
-    let mut hasher = Sha256::new();
-    let bytes = io::copy(&mut file, &mut hasher).map_err(hash_error)?;
-    let sha256 = hasher
-        .finalize()
-        .iter()
-        .fold(String::with_capacity(64), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        });
-    Ok((bytes, sha256))
+    })
 }
 
 /// HEADER offsets, falling back to the TEXT keywords that large files use

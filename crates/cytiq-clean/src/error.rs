@@ -19,6 +19,16 @@ pub enum CleanError {
          pass --viability-channel or --no-viability"
     )]
     AmbiguousViabilityChannel { candidates: String },
+    #[error("--require {filter}: the filter is {status}, not applied ({reason})")]
+    RequiredFilterNotApplied {
+        filter: &'static str,
+        status: &'static str,
+        reason: String,
+    },
+    #[error(
+        "viability channel `{channel}` was transformed by `cytiq transform`; run `cytiq clean` on the raw FCS (or pass --no-viability) and combine its masks with `cytiq mask combine`"
+    )]
+    TransformedViability { channel: String },
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
     #[error(transparent)]

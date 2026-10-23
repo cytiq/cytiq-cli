@@ -7,6 +7,12 @@ pub enum CytoScanError {
     #[error("at least one `--input` value is required")]
     EmptyInputs,
     #[error(
+        "FCS input `{path}` has no spillover metadata (--strict); CytoScan would score its raw, uncompensated values"
+    )]
+    MissingSpillover { path: PathBuf },
+    #[error("selected channel `{channel}` of `{path}` is not in its spillover matrix (--strict)")]
+    ChannelNotCompensated { path: PathBuf, channel: String },
+    #[error(
         "FCS input `{path}` was transformed ({method}) by `cytiq transform`; CytoScan compensates and transforms raw files itself, so pass the raw FCS"
     )]
     TransformedInput { path: PathBuf, method: String },

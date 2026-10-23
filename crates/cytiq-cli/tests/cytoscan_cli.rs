@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,6 +45,15 @@ fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
     assert!(output_dir.join("cytoscan_features.csv").is_file());
     assert!(output_dir.join("cytoscan_config.json").is_file());
     assert!(debug_dir.join("pca_coordinates.csv").is_file());
+    common::assert_provenance(
+        &output_dir.join("provenance.json"),
+        "cytiq cytoscan",
+        &[
+            &input_dir.join("sample_00.fcs"),
+            &input_dir.join("sample_03.fcs"),
+        ],
+        &[&output_dir.join("cytoscan_summary.csv")],
+    );
     assert!(debug_dir.join("pca_loadings.csv").is_file());
     assert!(debug_dir.join("feature_heatmap.csv").is_file());
     assert!(debug_dir.join("boxplot_samples.csv").is_file());
@@ -325,6 +336,79 @@ fn cli_rejects_transformed_cytoscan_input() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pass the raw FCS"), "stderr: {stderr}");
+}
+
+/// Rewrite `path` without its spillover keyword.
+fn strip_spillover(path: &Path) {
+    let dataset = cytiq_fcs::FcsReader::open(path)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .expect("fixture should be readable");
+    let parameters = dataset
+        .parameters
+        .iter()
+        .map(FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    let columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(|column| match column {
+            cytiq_fcs::ColumnData::F32(values) => values.clone(),
+            other => panic!("expected f32 fixture column, got {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    let keywords = cytiq_fcs::carried_keywords(&dataset.text)
+        .into_iter()
+        .filter(|(key, _)| !cytiq_fcs::is_spillover_keyword(key));
+    cytiq_fcs::write_fcs3_1_f32_with_options(
+        path,
+        &parameters,
+        &columns,
+        &FcsWriteOptions::new().with_text_keywords(keywords),
+    )
+    .expect("fixture should be rewritten");
+}
+
+#[test]
+fn cli_strict_rejects_files_without_spillover() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-strict");
+    let input_dir = directory.join("test");
+    write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0, 10.0]);
+    strip_spillover(&input_dir.join("sample_01.fcs"));
+    let run = |strict: bool, output: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_cytiq"));
+        command.args([
+            "cytoscan",
+            "--input",
+            utf8(&input_dir),
+            "--output",
+            utf8(&directory.join(output)),
+            "--channels",
+            "CD3,CD4",
+        ]);
+        if strict {
+            command.arg("--strict");
+        }
+        command.output().expect("command should run")
+    };
+
+    let lenient = run(false, "lenient");
+    assert!(
+        lenient.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&lenient.stderr)
+    );
+    let summary = fs::read_to_string(directory.join("lenient/cytoscan_summary.csv"))
+        .expect("summary should exist");
+    assert!(summary.contains("spillover metadata was not found"));
+
+    let strict = run(true, "strict");
+    assert!(!strict.status.success());
+    let stderr = String::from_utf8_lossy(&strict.stderr);
+    assert!(
+        stderr.contains("sample_01.fcs") && stderr.contains("--strict"),
+        "stderr: {stderr}"
+    );
 }
 
 fn write_cytoscan_fixture_set(directory: &Path, offsets: &[f32]) {

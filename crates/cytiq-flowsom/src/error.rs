@@ -12,6 +12,8 @@ pub enum FlowSomError {
         #[source]
         source: cytiq_fcs::Error,
     },
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
     #[error("FCS input `{path}` has no events")]
     EmptyInput { path: PathBuf },
     #[error("the event mask keeps no events of `{path}`")]

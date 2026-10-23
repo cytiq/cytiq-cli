@@ -75,8 +75,9 @@ let xml = to_gatingml(&strategy)?;
   layout: one nullable Boolean column per gate id (null outside the event
   mask) and `keep` marking events inside it. Gate ids `event_id`,
   `source_event_id` and `keep` are rejected there.
-- Files from `cytiq transform` or `cytiq compensate` are refused when a
-  dimension would transform or compensate an already processed channel.
+- Files from `cytiq transform`, `cytiq compensate` or `cytiq autospectral`
+  are refused when a dimension would transform or compensate an already
+  processed channel.
 - `threads: Some(n)` runs in a local rayon pool; `Some(0)` is an error.
 - `to_gatingml` cannot write `logicle` or `hyperlog` transformations, because
   their original parameters are not kept in memory.

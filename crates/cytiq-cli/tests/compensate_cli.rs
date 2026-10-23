@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -112,6 +114,12 @@ fn compensates_with_the_file_spillover() {
         .expect("raw margin mask should be written");
     assert_eq!(mask.len(), raw.event_count());
     assert_eq!(mask.filters[0].0, "margin_pass");
+    common::assert_provenance(
+        &directory.join("sample.comp.fcs.provenance.json"),
+        "cytiq compensate",
+        &[&input],
+        &[&output, &directory.join("sample.comp.masks.parquet")],
+    );
 }
 
 #[test]

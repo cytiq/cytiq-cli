@@ -1,3 +1,4 @@
+mod common;
 #[path = "../../cytiq-autospill/tests/support.rs"]
 mod support;
 
@@ -14,6 +15,12 @@ fn cli_writes_csv_tsv_and_parquet_outputs() {
     run_success(&manifest_path, &directory, &csv_path);
     let csv_output = fs::read_to_string(&csv_path).expect("csv output should exist");
     assert!(csv_output.starts_with("channel,FL1-A,FL2-A"));
+    common::assert_provenance(
+        &directory.join("matrix.csv.provenance.json"),
+        "cytiq autospill",
+        &[&manifest_path, &directory.join("control_a.fcs")],
+        &[&csv_path],
+    );
 
     let tsv_path = directory.join("matrix.tsv");
     run_success(&manifest_path, &directory, &tsv_path);

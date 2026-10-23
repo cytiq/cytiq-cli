@@ -32,12 +32,27 @@ pub const FLOWSOM_RANDOM_SEED: u64 = 1;
 pub const FLOWSOM_SCALE_INPUT: bool = true;
 
 const EQUALITY_EPSILON: f64 = 1.0e-12;
+/// Mixed into the seed for the training subsample, so it does not reuse the
+/// training RNG stream.
+const TRAINING_SAMPLE_STREAM: u64 = 0x9e37_79b9_7f4a_7c15;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlowSomConfig {
     pub channels: Vec<String>,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
+    /// SOM grid width and height; defaults `FLOWSOM_XDIM` × `FLOWSOM_YDIM`.
+    pub xdim: usize,
+    pub ydim: usize,
+    /// Metacluster count; default `FLOWSOM_METACLUSTERS`.
+    pub metaclusters: usize,
+    /// Training seed; default `FLOWSOM_RANDOM_SEED`.
+    pub seed: u64,
+    /// Z-score channels before training; default `FLOWSOM_SCALE_INPUT`.
+    pub scale: bool,
+    /// Train on this many distinct events, chosen deterministically, then
+    /// assign every event to its nearest node. `None` trains on all events.
+    pub training_events: Option<usize>,
     /// Event masks (`masks.parquet`); only events every mask keeps are
     /// scaled, trained on and assigned.
     pub masks: Vec<PathBuf>,
@@ -50,6 +65,12 @@ impl FlowSomConfig {
             channels,
             debug_dir: None,
             threads: None,
+            xdim: FLOWSOM_XDIM,
+            ydim: FLOWSOM_YDIM,
+            metaclusters: FLOWSOM_METACLUSTERS,
+            seed: FLOWSOM_RANDOM_SEED,
+            scale: FLOWSOM_SCALE_INPUT,
+            training_events: None,
             masks: Vec::new(),
         }
     }
@@ -90,6 +111,8 @@ pub struct FlowSomParameters {
     pub radius_end: f64,
     pub random_seed: u64,
     pub scale_input: bool,
+    /// Events the SOM was trained on; every event is then assigned.
+    pub training_events: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -149,11 +172,24 @@ struct ScaledMatrix {
     scale: Vec<FlowSomScaleSummary>,
 }
 
-#[derive(Clone, Debug)]
-struct SomTrainingResult {
-    codebook: Vec<Vec<f64>>,
-    assignments: Vec<usize>,
-    node_counts: Vec<usize>,
+/// SOM grid geometry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SomGrid {
+    xdim: usize,
+    ydim: usize,
+}
+
+impl SomGrid {
+    const fn of(config: &FlowSomConfig) -> Self {
+        Self {
+            xdim: config.xdim,
+            ydim: config.ydim,
+        }
+    }
+
+    const fn node_count(self) -> usize {
+        self.xdim * self.ydim
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -212,12 +248,13 @@ impl FlowSomRunner {
         output: &Path,
         config: &FlowSomConfig,
     ) -> Result<FlowSomResult, FlowSomError> {
+        validate_config(config)?;
         let dataset = load_dataset(input)?;
         let rows = selected_rows(input, &dataset, &config.masks)?;
         let events = rows.len();
         let channels = resolve_channels(input, &dataset, &config.channels, &rows)?;
         let matrix = channel_matrix(&channels, events);
-        let scaled = scale_matrix(matrix, &channels);
+        let scaled = scale_matrix(matrix, &channels, config.scale);
         info!(
             "flowsom pipeline: loaded {} events and {} selected channels from {}",
             events,
@@ -225,21 +262,38 @@ impl FlowSomRunner {
             input.display()
         );
 
-        let trained = train_som(&scaled.values);
-        let node_metaclusters = hierarchical_metaclusters(&trained.codebook, FLOWSOM_METACLUSTERS);
+        let grid = SomGrid::of(config);
+        let training = training_rows(scaled.values.len(), config);
+        let codebook = if let Some(training) = &training {
+            info!(
+                "flowsom: training on {} of {} event(s)",
+                training.len(),
+                scaled.values.len()
+            );
+            let events = training
+                .iter()
+                .map(|row| scaled.values[*row].clone())
+                .collect::<Vec<_>>();
+            train_som(&events, grid, config.seed)
+        } else {
+            train_som(&scaled.values, grid, config.seed)
+        };
+        let node_assignments = assign_events(&scaled.values, &codebook);
+        let node_counts = count_nodes(&node_assignments, codebook.len());
+        let node_metaclusters = hierarchical_metaclusters(&codebook, config.metaclusters);
         let source_event_ids =
             cytiq_fcs::source_event_ids(&dataset).map_err(|source| FlowSomError::FcsRead {
                 path: input.to_path_buf(),
                 source,
             })?;
         let assignments = build_assignments(
-            &trained.assignments,
+            &node_assignments,
             &node_metaclusters,
             &rows,
             source_event_ids.as_deref(),
         );
-        let nodes = build_nodes(&trained.codebook, &trained.node_counts, &node_metaclusters);
-        let metaclusters = build_metaclusters(&node_metaclusters, &trained.node_counts);
+        let nodes = build_nodes(&codebook, &node_counts, &node_metaclusters, grid);
+        let metaclusters = build_metaclusters(&node_metaclusters, &node_counts);
         let summary = build_summary(
             input,
             output,
@@ -248,11 +302,8 @@ impl FlowSomRunner {
             &scaled,
             nodes.len(),
             metaclusters.len(),
-            trained
-                .node_counts
-                .iter()
-                .filter(|count| **count == 0)
-                .count(),
+            node_counts.iter().filter(|count| **count == 0).count(),
+            training.as_ref().map_or(scaled.values.len(), Vec::len),
         );
 
         write_assignments_csv(output, &assignments)?;
@@ -330,6 +381,39 @@ fn load_dataset(path: &Path) -> Result<FcsDataset, FlowSomError> {
     }
 
     Ok(dataset)
+}
+
+fn validate_config(config: &FlowSomConfig) -> Result<(), FlowSomError> {
+    let invalid = |message: String| Err(FlowSomError::InvalidConfig(message));
+    if config.xdim == 0 || config.ydim == 0 {
+        return invalid("--xdim and --ydim must be at least 1".to_owned());
+    }
+    let nodes = config.xdim * config.ydim;
+    if config.metaclusters == 0 || config.metaclusters > nodes {
+        return invalid(format!(
+            "--metaclusters must be between 1 and the {nodes} SOM nodes"
+        ));
+    }
+    if config.training_events == Some(0) {
+        return invalid("--training-events must be at least 1".to_owned());
+    }
+    Ok(())
+}
+
+/// Rows of the scaled matrix to train on when `training_events` is smaller
+/// than the event count: a deterministic sample without replacement, from its
+/// own RNG stream so the training draws match a full run's seed, in row order.
+fn training_rows(events: usize, config: &FlowSomConfig) -> Option<Vec<usize>> {
+    let target = config.training_events.filter(|target| *target < events)?;
+    let mut rng = DeterministicRng::new(config.seed ^ TRAINING_SAMPLE_STREAM);
+    let mut rows = (0..events).collect::<Vec<_>>();
+    for position in 0..target {
+        let swap_with = position + rng.next_index(events - position);
+        rows.swap(position, swap_with);
+    }
+    rows.truncate(target);
+    rows.sort_unstable();
+    Some(rows)
 }
 
 /// Input rows to cluster: every row, or those every event mask keeps.
@@ -444,7 +528,11 @@ fn channel_matrix(channels: &[ResolvedChannel], events: usize) -> Vec<Vec<f64>> 
         .collect()
 }
 
-fn scale_matrix(mut values: Vec<Vec<f64>>, channels: &[ResolvedChannel]) -> ScaledMatrix {
+fn scale_matrix(
+    mut values: Vec<Vec<f64>>,
+    channels: &[ResolvedChannel],
+    scale_input: bool,
+) -> ScaledMatrix {
     let events = values.len();
     let scale = channels
         .iter()
@@ -468,7 +556,7 @@ fn scale_matrix(mut values: Vec<Vec<f64>>, channels: &[ResolvedChannel]) -> Scal
         })
         .collect::<Vec<_>>();
 
-    if FLOWSOM_SCALE_INPUT {
+    if scale_input {
         if values.len() >= 2 {
             debug!(
                 "parallelizing FlowSOM input scaling with rayon for {} events",
@@ -531,18 +619,18 @@ where
 /// rate and radius per update, a bubble neighbourhood on the Chebyshev grid
 /// distance, and only the best-matching node updated once the radius drops
 /// below one.
-fn train_som(events: &[Vec<f64>]) -> SomTrainingResult {
-    let mut rng = DeterministicRng::new(FLOWSOM_RANDOM_SEED);
-    let mut codebook = initialize_codebook(events, &mut rng);
+fn train_som(events: &[Vec<f64>], grid: SomGrid, seed: u64) -> Vec<Vec<f64>> {
+    let mut rng = DeterministicRng::new(seed);
+    let mut codebook = initialize_codebook(events, &mut rng, grid.node_count());
     let node_count = codebook.len();
     let grid_distances = (0..node_count)
         .map(|left| {
             (0..node_count)
-                .map(|right| grid_distance_chebyshev(left, right))
+                .map(|right| grid_distance_chebyshev(left, right, grid.xdim))
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let radius_start = default_radius_start();
+    let radius_start = default_radius_start(grid);
     let total_updates = FLOWSOM_TRAINING_ITERATIONS * events.len();
     let radius_step = (radius_start - FLOWSOM_RADIUS_END) / total_updates as f64;
     let mut threshold = radius_start;
@@ -567,20 +655,16 @@ fn train_som(events: &[Vec<f64>]) -> SomTrainingResult {
         }
         threshold -= radius_step;
     }
-    let assignments = assign_events(events, &codebook);
-    let node_counts = count_nodes(&assignments, codebook.len());
-
-    SomTrainingResult {
-        codebook,
-        assignments,
-        node_counts,
-    }
+    codebook
 }
 
 /// Initial codes are distinct events sampled without replacement, as in
 /// `FlowSOM::SOM(init = FALSE)`; small inputs repeat events once exhausted.
-fn initialize_codebook(events: &[Vec<f64>], rng: &mut DeterministicRng) -> Vec<Vec<f64>> {
-    let node_count = FLOWSOM_XDIM * FLOWSOM_YDIM;
+fn initialize_codebook(
+    events: &[Vec<f64>],
+    rng: &mut DeterministicRng,
+    node_count: usize,
+) -> Vec<Vec<f64>> {
     let mut indices = (0..events.len()).collect::<Vec<_>>();
     let distinct = node_count.min(events.len());
     for position in 0..distinct {
@@ -594,10 +678,12 @@ fn initialize_codebook(events: &[Vec<f64>], rng: &mut DeterministicRng) -> Vec<V
 
 /// Type-7 quantile of the full Chebyshev grid-distance matrix (diagonal
 /// included), which is 6 for the default 10x10 grid.
-fn default_radius_start() -> f64 {
-    let node_count = FLOWSOM_XDIM * FLOWSOM_YDIM;
+fn default_radius_start(grid: SomGrid) -> f64 {
+    let node_count = grid.node_count();
     let mut distances = (0..node_count)
-        .flat_map(|left| (0..node_count).map(move |right| grid_distance_chebyshev(left, right)))
+        .flat_map(|left| {
+            (0..node_count).map(move |right| grid_distance_chebyshev(left, right, grid.xdim))
+        })
         .collect::<Vec<_>>();
     distances.sort_by(f64::total_cmp);
     let position = FLOWSOM_RADIUS_START_QUANTILE * (distances.len() - 1) as f64;
@@ -735,14 +821,15 @@ fn build_nodes(
     codebook: &[Vec<f64>],
     node_counts: &[usize],
     node_metaclusters: &[usize],
+    grid: SomGrid,
 ) -> Vec<FlowSomNode> {
     codebook
         .par_iter()
         .enumerate()
         .map(|(node_index, prototype)| FlowSomNode {
             node_id: node_index + 1,
-            x: node_index % FLOWSOM_XDIM + 1,
-            y: node_index / FLOWSOM_XDIM + 1,
+            x: node_index % grid.xdim + 1,
+            y: node_index / grid.xdim + 1,
             metacluster: node_metaclusters[node_index],
             event_count: node_counts[node_index],
             codebook: prototype.clone(),
@@ -784,6 +871,7 @@ fn build_summary(
     node_count: usize,
     metacluster_count: usize,
     empty_nodes: usize,
+    training_events: usize,
 ) -> FlowSomSummary {
     FlowSomSummary {
         tool: "cytiq flowsom".to_owned(),
@@ -800,16 +888,17 @@ fn build_summary(
             .map(|channel| channel.display_name.clone())
             .collect(),
         parameters: FlowSomParameters {
-            xdim: FLOWSOM_XDIM,
-            ydim: FLOWSOM_YDIM,
-            metaclusters: FLOWSOM_METACLUSTERS,
+            xdim: config.xdim,
+            ydim: config.ydim,
+            metaclusters: config.metaclusters,
             training_iterations: FLOWSOM_TRAINING_ITERATIONS,
             learning_rate_start: FLOWSOM_LEARNING_RATE_START,
             learning_rate_end: FLOWSOM_LEARNING_RATE_END,
-            radius_start: default_radius_start(),
+            radius_start: default_radius_start(SomGrid::of(config)),
             radius_end: FLOWSOM_RADIUS_END,
-            random_seed: FLOWSOM_RANDOM_SEED,
-            scale_input: FLOWSOM_SCALE_INPUT,
+            random_seed: config.seed,
+            scale_input: config.scale,
+            training_events,
         },
         metrics: FlowSomMetrics {
             events: scaled.values.len(),
@@ -839,9 +928,9 @@ fn squared_distance(left: &[f64], right: &[f64]) -> f64 {
 
 /// Chebyshev ("maximum") distance between SOM grid nodes, as
 /// `stats::dist(grid, method = "maximum")` in `FlowSOM::SOM`.
-fn grid_distance_chebyshev(left: usize, right: usize) -> f64 {
-    let dx = (left % FLOWSOM_XDIM).abs_diff(right % FLOWSOM_XDIM);
-    let dy = (left / FLOWSOM_XDIM).abs_diff(right / FLOWSOM_XDIM);
+fn grid_distance_chebyshev(left: usize, right: usize, xdim: usize) -> f64 {
+    let dx = (left % xdim).abs_diff(right % xdim);
+    let dy = (left / xdim).abs_diff(right / xdim);
     dx.max(dy) as f64
 }
 
@@ -902,24 +991,43 @@ mod tests {
     #[test]
     fn trains_som_deterministically() {
         let events = synthetic_events();
-        let first = train_som(&events);
-        let second = train_som(&events);
-        assert_eq!(first.assignments, second.assignments);
-        assert_eq!(first.node_counts, second.node_counts);
-        assert_eq!(first.codebook, second.codebook);
+        let grid = SomGrid {
+            xdim: FLOWSOM_XDIM,
+            ydim: FLOWSOM_YDIM,
+        };
+        let first = train_som(&events, grid, FLOWSOM_RANDOM_SEED);
+        let second = train_som(&events, grid, FLOWSOM_RANDOM_SEED);
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn training_rows_are_a_distinct_sorted_deterministic_sample() {
+        let mut config = FlowSomConfig::new(vec!["CD3".to_owned()]);
+        assert_eq!(training_rows(100, &config), None);
+        config.training_events = Some(150);
+        assert_eq!(training_rows(100, &config), None);
+        config.training_events = Some(10);
+        let rows = training_rows(100, &config).expect("subsample");
+        assert_eq!(rows.len(), 10);
+        assert!(rows.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(training_rows(100, &config), Some(rows));
     }
 
     #[test]
     fn default_radius_matches_flowsom_quantile() {
         // stats::quantile(as.matrix(dist(expand.grid(1:10, 1:10), "maximum")), 0.67) == 6
-        assert!((default_radius_start() - 6.0).abs() < 1e-12);
+        let grid = SomGrid {
+            xdim: FLOWSOM_XDIM,
+            ydim: FLOWSOM_YDIM,
+        };
+        assert!((default_radius_start(grid) - 6.0).abs() < 1e-12);
     }
 
     #[test]
     fn chebyshev_grid_distance_uses_maximum_axis_offset() {
-        assert!((grid_distance_chebyshev(0, 0) - 0.0).abs() < f64::EPSILON);
-        assert!((grid_distance_chebyshev(0, 11) - 1.0).abs() < f64::EPSILON);
-        assert!((grid_distance_chebyshev(0, 23) - 3.0).abs() < f64::EPSILON);
+        assert!((grid_distance_chebyshev(0, 0, FLOWSOM_XDIM) - 0.0).abs() < f64::EPSILON);
+        assert!((grid_distance_chebyshev(0, 11, FLOWSOM_XDIM) - 1.0).abs() < f64::EPSILON);
+        assert!((grid_distance_chebyshev(0, 23, FLOWSOM_XDIM) - 3.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -928,7 +1036,7 @@ mod tests {
             .map(|index| vec![f64::from(index)])
             .collect::<Vec<_>>();
         let mut rng = DeterministicRng::new(FLOWSOM_RANDOM_SEED);
-        let codebook = initialize_codebook(&events, &mut rng);
+        let codebook = initialize_codebook(&events, &mut rng, FLOWSOM_XDIM * FLOWSOM_YDIM);
         let distinct = codebook
             .iter()
             .map(|code| code[0].to_bits())

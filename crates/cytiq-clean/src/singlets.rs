@@ -1,7 +1,7 @@
 //! Singlet filter: drop doublets whose FSC area is too large for their
 //! height (or whose FSC width is too large).
 
-use cytiq_density::{mad, median};
+use cytiq_density::{median, robust_spread};
 use cytiq_fcs::FcsDataset;
 use cytiq_gating::{Gate, GateKind};
 use serde_json::json;
@@ -56,7 +56,9 @@ fn fit_area_height(
         return Ok(too_few_events(ratios.len()));
     }
     let center = median(&ratios);
-    let spread = mad(&ratios, center);
+    // A zero MAD (discretised scatter, beads) would collapse the wedge to a
+    // line and drop every singlet.
+    let (spread, spread_source) = robust_spread(&ratios, center);
     let low = (center - mad_factor * spread).max(0.0);
     let high = center + mad_factor * spread;
     let top = height
@@ -82,6 +84,7 @@ fn fit_area_height(
             json!({
                 "ratio_median": center,
                 "ratio_mad": spread,
+                "spread_source": spread_source.as_str(),
                 "ratio_min": low,
                 "ratio_max": high,
                 "mad_factor": mad_factor,
@@ -104,7 +107,9 @@ fn fit_width(
         return Ok(too_few_events(values.len()));
     }
     let center = median(&values);
-    let spread = mad(&values, center);
+    // The rectangle maximum is exclusive, so a zero MAD would drop the events
+    // at the median.
+    let (spread, spread_source) = robust_spread(&values, center);
     let max = center + mad_factor * spread;
     let mut dimension = raw_dimension(fsc_w);
     dimension.max = Some(max);
@@ -124,6 +129,7 @@ fn fit_width(
             json!({
                 "width_median": center,
                 "width_mad": spread,
+                "spread_source": spread_source.as_str(),
                 "width_max": max,
                 "mad_factor": mad_factor,
                 "fit_events": values.len(),

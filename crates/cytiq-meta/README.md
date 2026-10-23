@@ -65,7 +65,8 @@ let result = MetaRunner::run(&MetaConfig {
 ## Dependencies
 
 - [`cytiq-fcs`](../cytiq-fcs) for parsing
-- `serde` / `serde_json` for the document, `sha2` for hashing
+- `serde` / `serde_json` for the document,
+  [`cytiq-provenance`](../cytiq-provenance) for hashing
 
 ## Tests
 

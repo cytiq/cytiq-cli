@@ -70,6 +70,10 @@ pub enum AutoSpectralError {
         #[source]
         source: cytiq_fcs::Error,
     },
+    #[error("FSC/SSC gate of control `{path}` failed: {reason}")]
+    DegenerateScatterGate { path: PathBuf, reason: &'static str },
+    #[error("failed to write event mask: {0}")]
+    Mask(#[from] cytiq_mask::MaskError),
     #[error("FCS file `{path}` has no events")]
     EmptyFcs { path: PathBuf },
     #[error(

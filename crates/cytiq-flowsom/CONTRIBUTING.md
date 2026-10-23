@@ -35,8 +35,13 @@ this crate.
 - IDs: `event_index` and `source_event_id` are 0-based; node, metacluster and
   grid coordinates are 1-based. Downstream joins on `source_event_id` depend
   on this.
-- All algorithm settings stay `FLOWSOM_*` constants, not CLI flags, unless a
-  deliberate API change is made.
+- Grid size, metacluster count, seed, scaling and the training subsample are
+  `FlowSomConfig` fields whose defaults are the `FLOWSOM_*` constants; with
+  defaults the output must stay bit-identical to earlier versions. The
+  training schedule (iterations, learning rate, radius) stays fixed constants.
+- The training subsample draws from its own RNG stream
+  (`seed ^ TRAINING_SAMPLE_STREAM`) and is sorted, so subsampling never changes
+  the training draws of a full run with the same seed.
 
 ## Where changes belong
 

@@ -12,8 +12,10 @@ live in the library crates listed below.
 | `cytiq autospread` | [`cytiq-autospill`](../cytiq-autospill) | Spillover spreading matrix from single-color controls | [AutoSpill](../../README.md#autospill) |
 | `cytiq autospectral` | [`cytiq-autospectral`](../cytiq-autospectral) | Reference-based spectral unmixing | [AutoSpectral](../../README.md#autospectral) |
 | `cytiq transform` | [`cytiq-transform`](../cytiq-transform) | arcsinh / logicle / hyperlog / biexponential signal transforms | [Transform](../../README.md#transform) |
+| `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate) | Apply a spillover or compensation matrix to sample events | [Compensate](../../README.md#compensate) |
+| `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask) | Combine per-event masks of one acquisition | [Masks](../../README.md#masks) |
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan) | File-level anomaly detection over a cohort | [CytoScan](../../README.md#cytoscan) |
-| `cytiq gate` | [`cytiq-gating`](../cytiq-gating) | Gating-ML 2.0 evaluation with per-gate counts | [Gating](../../README.md#gating) |
+| `cytiq gate` | [`cytiq-gating`](../cytiq-gating) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership | [Gating](../../README.md#gating) |
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean) | Debris, doublet and dead-cell removal as per-event masks | [Clean](../../README.md#clean) |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc) | Peak-based acquisition quality control | [PeacoQC](../../README.md#peacoqc) |
 | `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom) | FlowSOM-style clustering | [FlowSOM](../../README.md#flowsom) |
@@ -36,8 +38,11 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
   required). `transform` takes `--channels` / `--exclude-channels` only.
 - Numeric flags are validated at parse time (positive, non-negative or finite,
   depending on the flag).
-- `--overwrite` exists only on `transform` and `meta`; other commands follow
-  the output rules of their library crate.
+- `--overwrite` exists only on `transform`, `meta`, `compensate` and
+  `mask combine`; other commands follow the output rules of their library
+  crate.
+- `--mask FILE` (repeatable) restricts `gate`, `flowsom` and `clean` to events
+  every mask keeps; see [Masks](../../README.md#masks).
 
 ## Logging and output streams
 

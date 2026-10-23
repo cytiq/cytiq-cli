@@ -13,6 +13,8 @@ Current workspace crates:
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-transform`: FCS signal transformation workflow
+- `cytiq-compensate`: apply a spillover or compensation matrix to sample events
+- `cytiq-mask`: per-event masks shared by stages (`masks.parquet`)
 - `cytiq-meta`: FCS metadata export as JSON
 - `cytiq-cli`: command-line entry point
 
@@ -280,6 +282,105 @@ Rules:
   `metrics.csv`, and a Plotly `report.html` with per-channel transformation
   diagnostics
 
+## Compensate
+
+`cytiq compensate` applies a compensation matrix to the events of one FCS file
+and writes the compensated FCS:
+
+```bash
+# the file's own $SPILLOVER/$SPILL keyword
+cytiq compensate --input sample.fcs --output sample.comp.fcs
+
+# a square matrix written by cytiq autospill
+cytiq compensate \
+  --input sample.fcs \
+  --output sample.comp.fcs \
+  --matrix autospill/compensation.csv \
+  --matrix-kind compensation
+```
+
+Outputs:
+
+```text
+sample.comp.fcs             compensated events
+sample.comp.masks.parquet   event_id, source_event_id, margin_pass, keep
+```
+
+Rules:
+- `--matrix` takes a square `.csv`/`.tsv` with a corner label, the channel
+  names as columns and one row per channel (the `cytiq autospill` square
+  layout). `--matrix-kind` is required with it: `spillover` (inverted before
+  use) or `compensation` (applied as is). Rectangular matrices are unmixing,
+  not compensation, and are rejected
+- matrix channels match `$PnN`, then `$PnS`; a missing channel is an error
+- values are linearised first (`$PnE` log scaling and `$PnG` gain, as `cytiq
+  gate` and FlowKit do), then compensated as `raw · compensation`. Other
+  channels are copied unchanged, except that non-time channels with log
+  scaling or gain are written linearised, because the output declares
+  `$PnE=0,0`
+- the output records `CYTIQ_COMPENSATION` (matrix source and channels) and
+  keeps the source matrix only as `CYTIQ_SOURCE_SPILL`, so later stages do
+  not compensate again. An input that `cytiq compensate` already compensated,
+  or whose matrix channels `cytiq transform` transformed, is rejected
+- compensation mixes channels, so raw detector margins cannot be identified
+  afterwards. `margin_pass` in the mask is computed on the raw values with the
+  same bounds as `cytiq peacoqc --remove-margins`, and compensated channels
+  are dropped from `CYTIQ_MARGINS`. Pass the mask on with `--mask` (or combine
+  it with `cytiq mask combine`) instead of removing margins after compensation
+- existing outputs are not replaced unless `--overwrite` is passed
+
+## Masks
+
+Stages never delete events from the raw file. They describe per-event results
+as masks, Parquet files with one row per event of the file they ran on:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `event_id` | `UInt64` | 0-based row in that file |
+| `source_event_id` | `UInt64` | 0-based row in the raw file (`Original_ID - 1` when the file has `Original_ID`) |
+| filter columns | nullable `Boolean` | pass/fail; null means the filter did not assess the event |
+| `keep` | `Boolean` | whether later stages should use the event |
+
+`cytiq compensate`, `cytiq peacoqc` and `cytiq clean` write masks.
+`cytiq gate`, `cytiq flowsom` and `cytiq clean` read them with `--mask`
+(repeatable). A mask applies to any file derived from the same acquisition:
+its rows are matched through `source_event_id`, and a file row missing from
+the mask is an error.
+
+`cytiq mask combine` joins masks of one acquisition into a single analysis
+mask. An event is kept only if every mask has it and keeps it. Filter columns
+are concatenated, and a repeated name gets the 1-based index of its mask as a
+prefix (`2.margin_pass`):
+
+```bash
+cytiq mask combine \
+  --mask sample.comp.masks.parquet \
+  --mask sample.peacoqc.masks.parquet \
+  --mask clean/masks.parquet \
+  --output sample.analysis.parquet
+```
+
+A typical conventional chain:
+
+```bash
+cytiq meta       --input sample.fcs --output sample.meta.json
+cytiq compensate --input sample.fcs --output sample.comp.fcs
+cytiq transform  --input sample.comp.fcs --output sample.t.fcs
+cytiq peacoqc    --input sample.t.fcs --output sample.peacoqc.fcs --channels CD3,CD4,CD8
+cytiq clean      --input sample.fcs --output clean/     # raw scatter and viability
+cytiq mask combine --mask sample.comp.masks.parquet --mask sample.peacoqc.masks.parquet \
+  --mask clean/masks.parquet --output sample.analysis.parquet
+cytiq gate       --input sample.t.fcs --gating-ml gates.xml --output counts.csv \
+  --mask sample.analysis.parquet --membership membership.parquet
+cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD8 \
+  --mask sample.analysis.parquet
+```
+
+Gating-ML strategies applied to `sample.t.fcs` must use `uncompensated`
+dimensions without `transformation-ref` on the compensated and transformed
+channels. Otherwise apply the strategy to the raw `sample.fcs`, which `cytiq
+gate` compensates and transforms itself.
+
 ## CytoScan
 
 `cytiq cytoscan` flags anomalous FCS files across a cohort. Outlier detection
@@ -392,10 +493,16 @@ Rules:
 - events are pre-processed as FlowKit "raw" events: `$PnE` log scaling,
   `$PnG` gain and `$TIMESTEP` on the `Time` channel are applied before
   compensation
-- on files from `cytiq transform`, a dimension that would transform or
-  compensate an already-transformed channel is an error, since Gating-ML
-  applies its own compensation and transformation. Gate the raw file instead,
-  or use `uncompensated` dimensions without `transformation-ref`
+- on files from `cytiq transform` or `cytiq compensate`, a dimension that would
+  transform or compensate an already processed channel is an error, since
+  Gating-ML applies its own compensation and transformation. Gate the raw file
+  instead, or use `uncompensated` dimensions without `transformation-ref`
+- `--mask` (repeatable, see [Masks](#masks)) restricts gating to events every
+  mask keeps; events outside belong to no gate, and `percent_of_total` uses
+  the masked event count
+- `--membership membership.parquet` writes per-event membership in the mask
+  layout: one nullable Boolean column per gate id in evaluation order, null
+  outside the event mask, and `keep` marking events inside it
 - membership semantics follow FlowKit/flowutils exactly:
   - rectangles use `min <= x < max`
   - polygons use the winding number with odd-winding interiors, so points on
@@ -485,6 +592,10 @@ Rules:
   deterministic.
 - masks are computed by evaluating `gates.gatingml.xml` itself, so
   `cytiq gate` on that file reproduces the counts exactly.
+- `--mask` (repeatable, see [Masks](#masks)) takes masks from earlier stages:
+  filters are fitted only on events every mask keeps, and `keep` is false for
+  the others. Filter columns are still evaluated on every event.
+  `metrics.json` gains `input_mask` with the mask paths and the kept count.
 
 Manual corrections: edit `gates.gatingml.xml` (for example in FlowJo or by
 hand), then re-apply it without refitting. The gate ids `non_debris`,
@@ -591,8 +702,12 @@ cytiq flowsom \
 
 Rules:
 - input is a single FCS file for the MVP
-- output is a per-event CSV assignment table with `event_index`,
+- output is a per-event CSV assignment table with `event_index` (0-based input
+  row), `source_event_id` (0-based raw row, from `Original_ID` when present),
   `flowsom_node`, and `flowsom_metacluster`
+- `--mask` (repeatable, see [Masks](#masks)) clusters only events every mask
+  keeps: scaling, training and assignment use those rows, and only they are
+  listed in the output
 - pass channels either as repeated `--channel` values or as one compact
   comma-separated `--channels` value
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display

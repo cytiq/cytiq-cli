@@ -12,7 +12,8 @@ this crate.
   mask, cleaned FCS output and summary; `DEFAULT_*` constants.
 - `src/smooth_spline.rs` — port of R `stats::smooth.spline(spar = ...)` used by
   `MADOutliers`.
-- `src/export.rs` — debug artifacts: `summary.json`, `mask.csv`, `report.html`.
+- `src/export.rs` — `<output>.masks.parquet` (through `cytiq-mask`) and debug
+  artifacts: `summary.json`, `mask.csv`, `report.html`.
 - `src/error.rs` — `PeacoQcError` (`thiserror`).
 
 ## Invariants
@@ -29,13 +30,14 @@ this crate.
 - The Isolation Tree is deterministic (best split, no randomness); keep it so.
 - Events are processed in file order; the `Time` channel name is recorded in
   the summary but events are not re-sorted.
-- `Original_ID` in the output is the 1-based row of this run's input. Downstream
-  per-event results (for example FlowSOM `event_index`) map back to the input
-  through it (root `README.md`, `## Meta`).
+- `Original_ID` in the output is the 1-based row of this run's input (kept as
+  is when the input already has one). Downstream stages join through
+  `source_event_id` (`Original_ID - 1`), which `cytiq-mask` and FlowSOM
+  output carry.
 - Output FCS is written only after the mask is complete, and non-finite output
   values are an error rather than being written.
-- `summary.json` and `mask.csv` are output contracts; update the `## PeacoQC`
-  section of the root `README.md` when their fields change.
+- `summary.json`, `mask.csv` and `masks.parquet` are output contracts; update
+  the `## PeacoQC` section of the root `README.md` when their fields change.
 
 ## Where changes belong
 

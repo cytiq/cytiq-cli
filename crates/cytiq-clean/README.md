@@ -56,13 +56,17 @@ println!("kept {} of {}", result.metrics.kept, result.metrics.event_count);
 `output` is a directory (created if needed; existing files are replaced):
 
 ```
-masks.parquet       event_id, non_debris, singlets, live, keep
+masks.parquet       event_id, source_event_id, non_debris, singlets, live, keep
 metrics.json        per-filter status, method, fitted parameters, counts, overlaps
 gates.gatingml.xml  the fitted gates plus `clean` (Boolean AND of the applied ones)
 report.html         each gate drawn on its own dimensions (Plotly)
 ```
 
-- `event_id` is the 0-based row index of the input FCS.
+- `event_id` is the 0-based row index of the input FCS; `source_event_id` is
+  the raw-file row (from `Original_ID`, otherwise equal to `event_id`).
+- With `masks` (CLI `--mask`), filters are fitted only on events every mask
+  keeps and `keep` is false for the others; filter columns are still evaluated
+  on every event. `metrics.json` then has an `input_mask` section.
 - A filter is `applied`, `not_assessed` or `disabled`, with a `reason`. The mask
   column of a filter that is not `applied` is null, not all-true. `keep` is the
   AND of the applied filters only.
@@ -80,7 +84,8 @@ report.html         each gate drawn on its own dimensions (Plotly)
   for gate evaluation and Gating-ML I/O
 - [`cytiq-density`](../cytiq-density) for KDE, valleys, median/MAD and the
   FSC/SSC population gate
-- `arrow` / `parquet` for masks, `plotly` for the report, `rayon`
+- [`cytiq-mask`](../cytiq-mask) for reading and writing masks, `plotly` for
+  the report, `rayon`
 
 ## Tests
 

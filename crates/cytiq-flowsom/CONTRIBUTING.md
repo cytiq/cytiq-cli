@@ -32,8 +32,9 @@ this crate.
 - The `scale = TRUE`, 20-metacluster and average-linkage choices are documented
   MVP decisions. Changing them changes every user's clusters: update the root
   README and the report.
-- IDs: `event_index` is 0-based; node, metacluster and grid coordinates are
-  1-based. Downstream mapping (`Original_ID`) depends on this.
+- IDs: `event_index` and `source_event_id` are 0-based; node, metacluster and
+  grid coordinates are 1-based. Downstream joins on `source_event_id` depend
+  on this.
 - All algorithm settings stay `FLOWSOM_*` constants, not CLI flags, unless a
   deliberate API change is made.
 
@@ -57,4 +58,5 @@ cargo test -p cytiq-cli --test flowsom_cli
   training, radius quantile, Chebyshev distance, distinct-event
   initialisation, metacluster count.
 - `crates/cytiq-cli/tests/flowsom_cli.rs` — end-to-end runs with debug
-  artifacts, determinism, missing input / channel / output, zero threads.
+  artifacts, determinism, event masks, missing input / channel / output, zero
+  threads.

@@ -3,10 +3,10 @@
 Exports the metadata of one FCS file as a single JSON document. Backs the
 `cytiq meta` command.
 
-Derived FCS files written by other `cytiq` commands (`transform`, `peacoqc`,
-`autospectral`) keep only the keywords they generate, so instrument,
-acquisition and spillover keywords of the source are lost after processing.
-Run `cytiq meta` on raw files first to keep that record.
+Derived FCS files written by other `cytiq` commands carry over the source's
+instrument and acquisition keywords, but drop or rename keywords that no longer
+describe their values (for example the spillover matrix after `compensate` or
+`transform`). Run `cytiq meta` on raw files first to keep the full record.
 
 ## What is recorded
 

@@ -61,10 +61,17 @@ println!("kept {}", result.summary.metrics.events_after);
 
 - Input and output are FCS; an output path without a `.fcs` extension is an
   error. An existing output file is replaced.
-- The output is FCS 3.1 float32 with the retained events of every input
-  parameter, plus an `Original_ID` column (the 1-based input row) unless the
-  input already has one. Source keywords are not carried over; run
-  `cytiq meta` on the input to keep them.
+- The output is FCS 3.1 with the retained events of every input parameter,
+  plus an `Original_ID` column (the 1-based input row) unless the input already
+  has one. It is float32, or float64 when float32 would change a value (for
+  example `Original_ID` above 2^24). Values are unchanged, so every source
+  keyword is kept, including the spillover matrix and the original `$PnR`.
+- `<output>.masks.parquet` holds one row per input event in the
+  [`cytiq-mask`](../cytiq-mask) layout: `event_id`, `source_event_id`,
+  `margin_pass`, `peacoqc_pass` and `keep` (null = not assessed).
+- `remove_margins` uses raw detector bounds, or the bounds recorded in
+  `CYTIQ_MARGINS` by `cytiq transform`. Channels transformed or compensated
+  without recorded bounds are an error.
 - Channels match `$PnN`, then `$PnS`, then `$PnN [$PnS]`.
 - With `debug_dir`, writes `summary.json`, `mask.csv` and `report.html`
   (Plotly from the CDN).
@@ -73,6 +80,7 @@ println!("kept {}", result.summary.metrics.events_after);
 ## Dependencies
 
 - [`cytiq-fcs`](../cytiq-fcs) for reading and writing FCS
+- [`cytiq-mask`](../cytiq-mask) for `<output>.masks.parquet`
 - [`cytiq-density`](../cytiq-density) for the `stats::density` port
 - `rayon`, `csv`, `serde_json`, `plotly`
 

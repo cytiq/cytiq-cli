@@ -30,6 +30,8 @@ matching, are in the root [README](../../README.md#gating).
 
 ```bash
 cytiq gate --input sample.fcs --gating-ml gates.xml --output counts.csv --format csv
+cytiq gate --input sample.fcs --gating-ml gates.xml --output counts.csv \
+  --mask sample.analysis.parquet --membership membership.parquet
 ```
 
 From Rust:
@@ -53,8 +55,8 @@ let xml = to_gatingml(&strategy)?;
 | --- | --- |
 | `parse_gatingml` | Parse a Gating-ML 2.0 document into a `GatingStrategy` |
 | `to_gatingml` | Serialize a strategy back to Gating-ML (deterministic, round-trips) |
-| `GatingStrategy` | Gates in evaluation order; `new`, `gate_sample`, `dimension_values`, `gate_path` |
-| `GatingResults` / `GateCount` | Per-gate membership masks, counts and percentages |
+| `GatingStrategy` | Gates in evaluation order; `new`, `gate_sample`, `gate_sample_masked`, `dimension_values`, `gate_path` |
+| `GatingResults` / `GateCount` | Per-gate membership masks, counts and percentages; `event_mask` |
 | `Gate`, `GateKind`, `GateRef`, `BooleanOp`, `Dimension`, `CompensationRef`, `SpectrumMatrix` | Strategy model |
 | `Transform` | Gating-ML parametrized transformations |
 | `GatingRunner::run` / `GatingConfig` / `GatingRunResult` / `OutputFormat` | The `cytiq gate` command |
@@ -67,13 +69,22 @@ let xml = to_gatingml(&strategy)?;
   `percent_of_parent`, `percent_of_total`.
 - The output's parent directory is created if needed. An existing output file
   is replaced.
+- `masks` (CLI `--mask`) restricts gating to events every mask keeps; events
+  outside belong to no gate and `percent_of_total` uses the masked count.
+- `membership` writes a Parquet file in the [`cytiq-mask`](../cytiq-mask)
+  layout: one nullable Boolean column per gate id (null outside the event
+  mask) and `keep` marking events inside it. Gate ids `event_id`,
+  `source_event_id` and `keep` are rejected there.
+- Files from `cytiq transform` or `cytiq compensate` are refused when a
+  dimension would transform or compensate an already processed channel.
 - `threads: Some(n)` runs in a local rayon pool; `Some(0)` is an error.
 - `to_gatingml` cannot write `logicle` or `hyperlog` transformations, because
   their original parameters are not kept in memory.
 
 ## Dependencies
 
-- [`cytiq-fcs`](../cytiq-fcs) for events and `$SPILLOVER`
+- [`cytiq-fcs`](../cytiq-fcs) for events, `$SPILLOVER`, linearisation and signal state
+- [`cytiq-mask`](../cytiq-mask) for `--mask` and `--membership`
 - [`cytiq-transform`](../cytiq-transform) for `Logicle` / `Hyperlog`
 - `roxmltree` for XML, `rayon` for column-parallel transforms, `csv` / `serde_json` for reports
 

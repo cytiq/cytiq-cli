@@ -407,6 +407,20 @@ def compare_pipeline_dataset(data: Path, rust: Path, upstream: Path, dataset: st
         scale = np.maximum(np.abs(theirs), 1.0)
         out[f"{stage}_max_rel_delta"] = _r(float(np.max(np.abs(mine - theirs) / scale)))
 
+    # FCS written by cytiq must open in strict readers, without flowio's
+    # `ignore_offset_discrepancy`.
+    import flowio
+
+    strict = []
+    for name in ("s.comp.fcs", "s.t.fcs", "s.peacoqc.fcs"):
+        try:
+            flowio.FlowData(str(r / name))
+            strict.append(True)
+        except Exception as error:  # noqa: BLE001 - any parse failure counts
+            print(f"{dataset}/{name} is not strictly readable: {error}", file=sys.stderr)
+            strict.append(False)
+    out["outputs_strictly_readable"] = all(strict)
+
     raw = _fcs_columns(d / "sample.fcs", PIPELINE_FLUOR)
     comp_mask = _parquet_by_row(r / "s.comp.masks.parquet", rows)
     margin_removed = ~comp_mask["margin_pass"].astype(bool).to_numpy()

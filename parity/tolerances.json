@@ -27,6 +27,8 @@
      "why": "CytoScan features equal R on the full-sample dataset"},
     {"path": ["gating", "all_counts_match"], "equals": true,
      "why": "every gate count equals FlowKit"},
+    {"path": ["pipeline", "*", "outputs_strictly_readable"], "equals": true,
+     "why": "FCS written by cytiq opens in flowio/FlowKit without ignoring offset discrepancies"},
     {"path": ["pipeline", "*", "compensated_max_rel_delta"], "max": 1e-6,
      "why": "compensation equals flowCore::compensate up to f32 storage"},
     {"path": ["pipeline", "*", "transformed_max_rel_delta"], "max": 1e-6,

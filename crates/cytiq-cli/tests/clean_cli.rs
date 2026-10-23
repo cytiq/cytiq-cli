@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -443,9 +445,13 @@ fn restricts_keep_and_fitting_to_the_input_mask() {
     let output = directory.join("clean");
     let mask_path = directory.join("mask.parquet");
     let input_mask = (0..10_000).map(|row| row % 2 == 0).collect::<Vec<_>>();
-    cytiq_mask::EventMask::new(input_mask.clone(), None)
-        .write_parquet(&mask_path)
-        .expect("mask should write");
+    cytiq_mask::EventMask::new(
+        common::acquisition_of(&fixture("sample.fcs")),
+        input_mask.clone(),
+        None,
+    )
+    .write_parquet(&mask_path)
+    .expect("mask should write");
 
     run_clean("sample.fcs", &output, &["--mask", utf8(&mask_path)]);
 
@@ -592,4 +598,37 @@ fn rejects_a_transformed_viability_channel_early() {
         utf8(&directory.join("clean-no-viability")),
         "--no-viability",
     ]);
+}
+
+#[test]
+fn fails_when_mask_belongs_to_another_file() {
+    let directory = create_temp_dir("cytiq-cli-clean-foreign-mask");
+    let output = directory.join("clean");
+    let mask_path = directory.join("mask.parquet");
+    // The viability control has its own acquisition.
+    cytiq_mask::EventMask::new(
+        common::acquisition_of(&fixture("control.fcs")),
+        vec![true; 10_000],
+        None,
+    )
+    .write_parquet(&mask_path)
+    .expect("mask should write");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "clean",
+            "--input",
+            utf8(&fixture("sample.fcs")),
+            "--output",
+            utf8(&output),
+            "--mask",
+            utf8(&mask_path),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("was computed on acquisition"), "{stderr}");
+    assert!(!output.join("masks.parquet").exists());
 }

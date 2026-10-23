@@ -167,6 +167,8 @@ pub struct CleanMasks {
     pub keep: Vec<bool>,
     /// 0-based raw-file row of each event, from the input's `Original_ID`.
     pub source_event_ids: Option<Vec<u64>>,
+    /// The input's raw acquisition (`cytiq_fcs::acquisition_id`).
+    pub acquisition: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -243,6 +245,21 @@ fn validate(config: &CleanConfig) -> Result<(), CleanError> {
     Ok(())
 }
 
+/// The input's raw acquisition and the raw row of each of its events.
+fn lineage(
+    config: &CleanConfig,
+    dataset: &FcsDataset,
+) -> Result<(String, Option<Vec<u64>>), CleanError> {
+    let read_error = |source| CleanError::FcsRead {
+        path: config.input.clone(),
+        source,
+    };
+    Ok((
+        cytiq_fcs::acquisition_id(&config.input, &dataset.text).map_err(read_error)?,
+        cytiq_fcs::source_event_ids(dataset).map_err(read_error)?,
+    ))
+}
+
 /// Gates to evaluate plus the report sections and the `GatingML` to write.
 struct Plan {
     strategy: GatingStrategy,
@@ -266,8 +283,9 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         roles.viability_source
     );
 
+    let (acquisition, source_event_ids) = lineage(config, &dataset)?;
     let input_mask = cytiq_mask::read_combined(&config.masks)?
-        .map(|mask| mask.keep_for(&dataset))
+        .map(|mask| mask.keep_for(&dataset, &acquisition))
         .transpose()?;
     let Plan {
         strategy,
@@ -287,11 +305,8 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
             *keep &= *kept;
         }
     }
-    masks.source_event_ids =
-        cytiq_fcs::source_event_ids(&dataset).map_err(|source| CleanError::FcsRead {
-            path: config.input.clone(),
-            source,
-        })?;
+    masks.source_event_ids = source_event_ids;
+    masks.acquisition = acquisition;
     ensure_required(&config.required, &reports)?;
     let event_count = dataset.event_count();
     let removal_overlap = count_masks(&mut reports, &masks, event_count);
@@ -570,6 +585,7 @@ fn collect_masks(results: &GatingResults, reports: &FilterReports) -> CleanMasks
         live,
         keep,
         source_event_ids: None,
+        acquisition: String::new(),
     }
 }
 

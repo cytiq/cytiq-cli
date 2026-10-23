@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
     ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, MARGINS_KEYWORD,
-    Parameter, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
+    ORIGINAL_ID_PARAMETER, Parameter, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
 };
 pub use error::TransformError;
 use export::write_debug_artifacts;
@@ -244,7 +244,7 @@ struct ResolvedChannel {
 
 #[derive(Clone, Debug, PartialEq)]
 struct TransformedData {
-    columns: Vec<Vec<f32>>,
+    columns: Vec<Vec<f64>>,
     metrics: Vec<TransformChannelMetrics>,
 }
 
@@ -253,6 +253,18 @@ pub struct TransformRunner;
 impl TransformRunner {
     pub fn run(config: &TransformConfig) -> Result<TransformRunResult, TransformError> {
         with_thread_pool(config.threads, || Self::run_inner(config))
+    }
+
+    /// The FCS files a run with `config` reads, with directories and globs
+    /// resolved as [`Self::run`] does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configuration is invalid or an input cannot
+    /// be resolved.
+    pub fn input_files(config: &TransformConfig) -> Result<Vec<PathBuf>, TransformError> {
+        validate_config(config)?;
+        resolve_inputs(&config.inputs)
     }
 
     fn run_inner(config: &TransformConfig) -> Result<TransformRunResult, TransformError> {
@@ -576,8 +588,16 @@ fn transform_one(
     let operator = TransformOperator::from_config(config)?;
     let parameters = write_parameters(&dataset, &selection.channels);
     let metadata = fcs_metadata_json(config, &result)?;
+    let acquisition = cytiq_fcs::acquisition_id(&plan.input, &dataset.text).map_err(|source| {
+        TransformError::FcsRead {
+            path: plan.input.clone(),
+            source,
+        }
+    })?;
+    let mut keywords = carried_keywords(&dataset);
+    cytiq_fcs::set_acquisition(&mut keywords, &acquisition);
     let options = FcsWriteOptions::new()
-        .with_text_keywords(carried_keywords(&dataset))
+        .with_text_keywords(keywords)
         .with_text_keyword(
             MARGINS_KEYWORD,
             transformed_margin_bounds(&plan.input, &dataset, &selection.channels, &operator)?,
@@ -683,6 +703,14 @@ fn resolve_channel_selection(
     } else {
         resolve_requested_channels(path, dataset, &config.channels)?
     };
+    if let Some(channel) = channels
+        .iter()
+        .find(|channel| channel.name == ORIGINAL_ID_PARAMETER)
+    {
+        return Err(TransformError::ReservedChannel {
+            channel: channel.name.clone(),
+        });
+    }
     let excluded = resolve_requested_channels(path, dataset, &config.exclude_channels)?;
     let excluded_indexes = excluded
         .iter()
@@ -707,7 +735,9 @@ fn default_transform_channels(dataset: &FcsDataset) -> Vec<ResolvedChannel> {
         .parameters
         .iter()
         .enumerate()
-        .filter(|(_, parameter)| !is_acquisition_channel(parameter))
+        .filter(|(_, parameter)| {
+            !is_acquisition_channel(parameter) && parameter.name != ORIGINAL_ID_PARAMETER
+        })
         .map(|(index, parameter)| ResolvedChannel {
             index,
             name: parameter.name.clone(),
@@ -797,7 +827,7 @@ fn transformed_columns(
 
 #[derive(Clone, Debug, PartialEq)]
 struct TransformedColumn {
-    values: Vec<f32>,
+    values: Vec<f64>,
     metrics: Option<TransformChannelMetrics>,
 }
 
@@ -848,7 +878,7 @@ fn transform_column(
         let value = value?;
         if selected_channel.is_some() {
             raw_values.push(f64::from(value.raw));
-            transformed_values.push(f64::from(value.transformed));
+            transformed_values.push(value.transformed);
         }
         output.push(value.transformed);
     }
@@ -865,7 +895,9 @@ fn transform_column(
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct TransformedValue {
     raw: f32,
-    transformed: f32,
+    /// Transformed values are rounded to f32; values of unselected channels
+    /// (such as `Original_ID`) are kept exact.
+    transformed: f64,
 }
 
 fn transform_raw_value(
@@ -894,7 +926,11 @@ fn transform_raw_value(
 
     Ok(TransformedValue {
         raw: value as f32,
-        transformed: output as f32,
+        transformed: if selected {
+            f64::from(output as f32)
+        } else {
+            output
+        },
     })
 }
 
@@ -1016,7 +1052,7 @@ impl TransformOperator {
 fn write_fcs_output(
     plan: &OutputPlan,
     parameters: &[FcsWriteParameter],
-    columns: &[Vec<f32>],
+    columns: &[Vec<f64>],
     options: &FcsWriteOptions,
 ) -> Result<(), TransformError> {
     if let Some(parent) = plan
@@ -1031,7 +1067,7 @@ fn write_fcs_output(
     }
     if plan.same_file {
         let temp_path = temporary_output_path(&plan.output);
-        cytiq_fcs::write_fcs3_1_f32_with_options(&temp_path, parameters, columns, options)
+        cytiq_fcs::write_fcs3_1_exact_with_options(&temp_path, parameters, columns, options)
             .map_err(|source| TransformError::FcsWrite {
                 path: temp_path.clone(),
                 source,
@@ -1044,7 +1080,7 @@ fn write_fcs_output(
         return Ok(());
     }
 
-    cytiq_fcs::write_fcs3_1_f32_with_options(&plan.output, parameters, columns, options).map_err(
+    cytiq_fcs::write_fcs3_1_exact_with_options(&plan.output, parameters, columns, options).map_err(
         |source| TransformError::FcsWrite {
             path: plan.output.clone(),
             source,

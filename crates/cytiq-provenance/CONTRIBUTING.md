@@ -16,9 +16,12 @@ this crate.
   of the root `README.md`.
 - `arguments` is the command line verbatim. Do not normalise or reorder it.
 - Records are written atomically (`.tmp` + rename).
+- Inputs are hashed by `snapshot_inputs` before the command runs, never at
+  `finish`.
 - The CLI decides which files are inputs and outputs of each command
-  (`crates/cytiq-cli/src/main.rs`, `record_provenance`). When a command gains
-  an input or output file, add it there and to its `*_cli.rs` provenance check.
+  (`crates/cytiq-cli/src/main.rs`, `snapshot_inputs` and `record_provenance`).
+  When a command gains an input or output file, add it there and to its
+  `*_cli.rs` provenance check.
 
 ## Testing
 

@@ -183,6 +183,61 @@ fn cli_rejects_zero_threads_for_autospectral() {
     assert!(stderr.contains("thread count must be greater"));
 }
 
+#[test]
+fn preserves_large_original_ids_exactly() {
+    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-original-id");
+    let sample = directory.join("sample.fcs");
+    let source = directory.join("source.fcs");
+    fs::rename(&sample, &source).expect("fixture should move");
+    let ids = common::write_with_large_original_ids(&source, &sample);
+    let output_dir = directory.join("out");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospectral",
+            "--controls",
+            utf8(&directory.join("controls.csv")),
+            "--samples",
+            utf8(&directory.join("samples.csv")),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&output_dir),
+            "--threads",
+            "1",
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let unmixed = output_dir.join("unmixed/sample.unmixed.fcs");
+    let dataset = FcsReader::open(&unmixed)
+        .and_then(FcsReader::read)
+        .expect("unmixed FCS should be readable");
+    let index = dataset.find_parameter("Original_ID").expect("lineage");
+    let Some(cytiq_fcs::ColumnData::F64(written)) = dataset.data.column(index) else {
+        panic!("identifiers beyond 2^24 need a double column");
+    };
+    assert_eq!(written, &ids);
+    let state = cytiq_fcs::unmixing_state(&dataset.text)
+        .expect("unmixing state should parse")
+        .expect("unmixing should be recorded");
+    assert!(!state.detectors.iter().any(|name| name == "Original_ID"));
+    assert_eq!(
+        common::acquisition_of(&unmixed),
+        common::sha256_hex(&sample)
+    );
+    let mask = cytiq_mask::EventMask::read_parquet(
+        &output_dir.join("unmixed/sample.unmixed.masks.parquet"),
+    )
+    .expect("mask should be written");
+    assert_eq!(mask.source_event_ids[0], 16_777_216);
+}
+
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
 }

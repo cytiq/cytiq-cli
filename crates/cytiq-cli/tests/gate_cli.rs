@@ -184,7 +184,7 @@ fn cli_gates_only_events_inside_the_mask() {
         .expect("fixture should be readable");
     let keep = every_third_removed(dataset.event_count());
     let mask_path = directory.join("mask.parquet");
-    cytiq_mask::EventMask::new(keep.clone(), None)
+    cytiq_mask::EventMask::new(common::acquisition_of(&input), keep.clone(), None)
         .write_parquet(&mask_path)
         .expect("mask should write");
 
@@ -289,4 +289,40 @@ fn cli_gates_only_events_inside_the_mask() {
     }
 
     fs::remove_dir_all(directory).ok();
+}
+
+#[test]
+fn fails_when_mask_belongs_to_another_file() {
+    let directory = create_temp_dir("cytiq-cli-gate-foreign-mask");
+    let input = fixture("sample.fcs");
+    let events = cytiq_fcs::FcsReader::open(&input)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .expect("fixture should be readable")
+        .event_count();
+    // Enough rows for every event, but computed on another raw file.
+    let mask_path = directory.join("mask.parquet");
+    cytiq_mask::EventMask::new("0".repeat(64), vec![true; events], None)
+        .write_parquet(&mask_path)
+        .expect("mask should write");
+    let output = directory.join("counts.json");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "gate",
+            "--input",
+            utf8(&input),
+            "--gating-ml",
+            utf8(&fixture("gates.xml")),
+            "--output",
+            utf8(&output),
+            "--mask",
+            utf8(&mask_path),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("was computed on acquisition"), "{stderr}");
+    assert!(!output.exists());
 }

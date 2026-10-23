@@ -67,12 +67,17 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
 - One input writes to `output`; several inputs, or an existing directory as
   `output`, write `<stem><suffix>.fcs` (default suffix `.transformed`) into it.
 - Without `channels`, every channel except obvious acquisition channels
-  (`Time`, event/cell length, `FSC-A/H/W`, `SSC-A/H/W`) is transformed.
+  (`Time`, event/cell length, `FSC-A/H/W`, `SSC-A/H/W`) and `Original_ID` is
+  transformed. Naming `Original_ID` in `channels` is an error
+  (`ReservedChannel`): it is event lineage, not a measurement.
   Channels match `$PnN`, then `$PnS`, then `$PnN [$PnS]`.
 - Only `TransformFormat::Fcs` is implemented; `Csv` and `Parquet` are rejected.
-- Values are written as `f32` FCS 3.1 with `$PnN`/`$PnS` and a
-  `CYTIQ_TRANSFORM` keyword holding the transform metadata JSON. Other source
-  keywords are not carried over (use `cytiq meta` first).
+- Transformed values are rounded to `f32`; untransformed columns keep their
+  exact values, so the FCS 3.1 output uses doubles when one of them (such as
+  `Original_ID` above 2^24) does not fit `f32`. The output carries the source
+  keywords, `CYTIQ_TRANSFORM` (the transform metadata JSON) and
+  `CYTIQ_ACQUISITION`.
+- `TransformRunner::input_files` resolves the inputs a run would read.
 - Existing outputs and the `metadata_json` sidecar are errors unless
   `overwrite` is set; writing over the input itself goes through a temporary
   sibling and a rename.

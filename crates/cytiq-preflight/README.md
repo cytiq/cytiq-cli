@@ -34,6 +34,7 @@ it, or whose `$PnS` starts with it as a word (`CD3 BUV395`), ignoring case;
 | Item | Purpose |
 | --- | --- |
 | `PreflightRunner::run` / `PreflightConfig` | Run the checks and write the report |
+| `PreflightRunner::input_files` | The manifest and the FCS files it lists, for provenance |
 | `PreflightReport` (`ensure_passed`) | The report: status, counts, files, checks |
 | `Check`, `CheckStatus` | One finding: `pass`, `warn`, `fail` |
 | `SPILLOVER_CONDITION_WARN` | Condition-number warning threshold |

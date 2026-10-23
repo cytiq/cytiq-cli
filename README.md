@@ -186,7 +186,8 @@ Rules:
 - the OLS solution is computed with a Householder QR solve (`R⁻¹Qᵀ`), not the normal equations `(MᵀM)⁻¹Mᵀ`, which square the condition number; `run.json` records `solver_method`
 - autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
 - `--clean-controls` drops control events on a raw detector margin and gates FSC/SSC with the same KDE gate as `autospill` instead of the 1–99% quantile box; `run.json` records `control_gate`. It needs enough events for the KDE gate (a few hundred per control)
-- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced
+- unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced, except `CYTIQ_ACQUISITION`
+- passed-through channels keep their exact values (the file uses doubles when one does not fit f32, for example `Original_ID` above 2^24); components are rounded to f32. `Time` and `Original_ID` are never inferred as detectors, and `Original_ID` is rejected as an explicit detector
 - unmixed files record `CYTIQ_UNMIXING` (components and detectors) and the margin bounds of passed-through channels in `CYTIQ_MARGINS`. Components have no detector margins: `cytiq peacoqc --remove-margins` refuses them, and `cytiq gate` refuses to compensate them. Raw detector margins are written instead as `margin_pass` in `unmixed/<sample>.unmixed.masks.parquet`
 
 Outputs are always written under `--output`:
@@ -268,6 +269,11 @@ Rules:
   worker thread count
 - if `--channels` is omitted, obvious acquisition channels such as `Time`,
   `FSC-A/H/W`, and `SSC-A/H/W` are left untransformed
+- `Original_ID` (event lineage written by `peacoqc`) is never transformed;
+  naming it in `--channels` is an error. Untransformed columns keep their exact
+  values, so the output is written with doubles when a value such as an event
+  identifier above 2^24 does not fit f32; transformed values are always rounded
+  to f32
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display
   identifiers like `$PnN [$PnS]`
 - output format is FCS for the MVP; CSV and parquet exports are follow-up work
@@ -324,7 +330,9 @@ Rules:
   gate` and FlowKit do), then compensated as `raw · compensation`. Other
   channels are copied unchanged, except that non-time channels with log
   scaling or gain are written linearised, because the output declares
-  `$PnE=0,0`
+  `$PnE=0,0`. Changed values are rounded to f32; unchanged channels keep their
+  exact values, so the output uses doubles when one of them (an `Original_ID`
+  above 2^24, 32-bit integer data) does not fit f32
 - the output records `CYTIQ_COMPENSATION` (matrix source and channels) and
   keeps the source matrix only as `CYTIQ_SOURCE_SPILL`, so later stages do
   not compensate again. An input that `cytiq compensate` already compensated,
@@ -352,11 +360,27 @@ as masks, Parquet files with one row per event of the file they ran on:
 | filter columns | nullable `Boolean` | pass/fail; null means the filter did not assess the event |
 | `keep` | `Boolean` | whether later stages should use the event |
 
-`cytiq compensate`, `cytiq peacoqc` and `cytiq clean` write masks.
-`cytiq gate`, `cytiq flowsom` and `cytiq clean` read them with `--mask`
-(repeatable). A mask applies to any file derived from the same acquisition:
-its rows are matched through `source_event_id`, and a file row missing from
-the mask is an error.
+`cytiq compensate`, `cytiq peacoqc`, `cytiq clean`, `cytiq autospectral` and
+`cytiq gate --membership` write masks. `cytiq gate`, `cytiq flowsom` and
+`cytiq clean` read them with `--mask` (repeatable). A mask applies to any file
+derived from the same acquisition: its rows are matched through
+`source_event_id`, and a file row missing from the mask is an error.
+
+Each mask records which acquisition it belongs to in Parquet key-value
+metadata:
+
+| Key | Value |
+| --- | --- |
+| `cytiq.mask.schema_version` | `2` |
+| `cytiq.acquisition_sha256` | SHA-256 of the raw FCS file |
+| `cytiq.event_id_base` | `0` |
+
+Every stage that writes FCS (`compensate`, `transform`, `peacoqc`,
+`autospectral`) records the same hash in the `CYTIQ_ACQUISITION` keyword. A
+file without the keyword is raw, and its own SHA-256 is the acquisition.
+Combining masks from different acquisitions, or applying a mask to a file of
+another acquisition, is an error. Masks without this metadata, written by
+earlier cytiq versions, are rejected and must be regenerated.
 
 `cytiq mask combine` joins masks of one acquisition into a single analysis
 mask. An event is kept only if every mask has it and keeps it. Filter columns
@@ -860,7 +884,11 @@ Every command that writes files, except `meta`, also writes a provenance
 record next to its output: `<output>.provenance.json` for a file output and
 `<dir>/provenance.json` for a directory output. It holds the tool and version,
 the exact command-line arguments, start and finish times, and the size and
-SHA-256 of every input and output file (debug directories are not listed):
+SHA-256 of every input and output file (debug directories are not listed).
+Inputs are hashed before the command runs, so a command that replaces its own
+input (`transform --overwrite` with the same input and output) records what it
+read; an input that changes during the run and is not also an output fails
+the command:
 
 ```json
 {

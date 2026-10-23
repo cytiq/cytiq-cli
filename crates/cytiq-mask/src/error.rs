@@ -28,6 +28,20 @@ pub enum MaskError {
         "event mask has no row for raw event {source_event_id}; it was computed on a different acquisition"
     )]
     MissingEvent { source_event_id: u64 },
+    #[error(
+        "event mask `{path}` does not record its acquisition; it was written by an older cytiq, regenerate it with this version"
+    )]
+    MissingAcquisition { path: PathBuf },
+    #[error("event mask acquisition `{value}` is not a lowercase hex SHA-256")]
+    InvalidAcquisition { value: String },
+    #[error(
+        "{what} was computed on acquisition {found}, not {expected}; masks only apply to files derived from the same raw FCS"
+    )]
+    AcquisitionMismatch {
+        expected: String,
+        found: String,
+        what: String,
+    },
     #[error("failed to read event lineage of the FCS input: {0}")]
     Lineage(#[source] cytiq_fcs::Error),
 }

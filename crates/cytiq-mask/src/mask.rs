@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::ffi::OsString;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -9,6 +10,8 @@ use cytiq_fcs::FcsDataset;
 use log::debug;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::file::metadata::KeyValue;
+use parquet::file::properties::WriterProperties;
 
 use crate::error::MaskError;
 
@@ -16,9 +19,20 @@ pub const EVENT_ID_COLUMN: &str = "event_id";
 pub const SOURCE_EVENT_ID_COLUMN: &str = "source_event_id";
 pub const KEEP_COLUMN: &str = "keep";
 
+/// Version of the mask file format. Version 1 masks carry no acquisition and
+/// are rejected.
+pub const SCHEMA_VERSION: u32 = 2;
+/// Parquet key-value metadata written with every mask.
+pub const SCHEMA_VERSION_KEY: &str = "cytiq.mask.schema_version";
+pub const ACQUISITION_KEY: &str = "cytiq.acquisition_sha256";
+pub const EVENT_ID_BASE_KEY: &str = "cytiq.event_id_base";
+
 /// One row per event of the file the mask was computed on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EventMask {
+    /// SHA-256 of the raw acquisition whose rows `source_event_ids` count
+    /// (`cytiq_fcs::acquisition_id`).
+    pub acquisition: String,
     pub event_ids: Vec<u64>,
     pub source_event_ids: Vec<u64>,
     /// Filter columns in order; `None` means the filter did not assess the
@@ -28,12 +42,17 @@ pub struct EventMask {
 }
 
 impl EventMask {
-    /// A mask over `keep.len()` events whose rows are their raw rows unless
-    /// `source_event_ids` says otherwise.
+    /// A mask over `keep.len()` events of `acquisition` whose rows are their
+    /// raw rows unless `source_event_ids` says otherwise.
     #[must_use]
-    pub fn new(keep: Vec<bool>, source_event_ids: Option<Vec<u64>>) -> Self {
+    pub fn new(
+        acquisition: impl Into<String>,
+        keep: Vec<bool>,
+        source_event_ids: Option<Vec<u64>>,
+    ) -> Self {
         let event_ids = (0..keep.len() as u64).collect::<Vec<_>>();
         Self {
+            acquisition: acquisition.into(),
             source_event_ids: source_event_ids.unwrap_or_else(|| event_ids.clone()),
             event_ids,
             filters: Vec::new(),
@@ -63,6 +82,11 @@ impl EventMask {
     }
 
     fn validate(&self) -> Result<(), MaskError> {
+        if !cytiq_fcs::is_sha256(&self.acquisition) {
+            return Err(MaskError::InvalidAcquisition {
+                value: self.acquisition.clone(),
+            });
+        }
         let expected = self.keep.len();
         let lengths = [
             (EVENT_ID_COLUMN, self.event_ids.len()),
@@ -86,12 +110,13 @@ impl EventMask {
         Ok(())
     }
 
-    /// Write the mask as Parquet.
+    /// Write the mask as Parquet, through a temporary sibling so readers never
+    /// see a partial file.
     ///
     /// # Errors
     ///
-    /// Returns an error when columns have different lengths or the file cannot
-    /// be written.
+    /// Returns an error when columns have different lengths, the acquisition
+    /// is not a SHA-256, or the file cannot be written.
     pub fn write_parquet(&self, path: &Path) -> Result<(), MaskError> {
         self.validate()?;
         debug!("writing event mask to {}", path.display());
@@ -117,11 +142,22 @@ impl EventMask {
         let batch = RecordBatch::try_new(Arc::clone(&schema), columns)
             .map_err(|error| parquet_error(error.to_string()))?;
 
-        let file = File::create(path).map_err(|source| MaskError::Io {
+        let properties = WriterProperties::builder()
+            .set_key_value_metadata(Some(vec![
+                KeyValue::new(SCHEMA_VERSION_KEY.to_owned(), SCHEMA_VERSION.to_string()),
+                KeyValue::new(ACQUISITION_KEY.to_owned(), self.acquisition.clone()),
+                KeyValue::new(EVENT_ID_BASE_KEY.to_owned(), "0".to_owned()),
+            ]))
+            .build();
+        let io_error = |source| MaskError::Io {
             path: path.to_path_buf(),
             source,
-        })?;
-        let mut writer = ArrowWriter::try_new(file, schema, None)
+        };
+        let mut temporary = OsString::from(path.as_os_str());
+        temporary.push(".tmp");
+        let temporary = PathBuf::from(temporary);
+        let file = File::create(&temporary).map_err(io_error)?;
+        let mut writer = ArrowWriter::try_new(file, schema, Some(properties))
             .map_err(|error| parquet_error(error.to_string()))?;
         writer
             .write(&batch)
@@ -129,15 +165,16 @@ impl EventMask {
         writer
             .close()
             .map_err(|error| parquet_error(error.to_string()))?;
-        Ok(())
+        fs::rename(&temporary, path).map_err(io_error)
     }
 
     /// Read a mask written by any cytiq stage.
     ///
     /// # Errors
     ///
-    /// Returns an error when the file cannot be read, lacks `source_event_id`
-    /// or `keep`, has non-boolean filter columns, or repeats a source event.
+    /// Returns an error when the file cannot be read, has no acquisition
+    /// metadata (a version 1 mask), lacks `source_event_id` or `keep`, has
+    /// non-boolean filter columns, or repeats a source event.
     pub fn read_parquet(path: &Path) -> Result<Self, MaskError> {
         debug!("reading event mask from {}", path.display());
         let invalid = |reason: String| MaskError::Invalid {
@@ -152,8 +189,14 @@ impl EventMask {
             path: path.to_path_buf(),
             source,
         })?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)
-            .and_then(ParquetRecordBatchReaderBuilder::build)
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+            .map_err(|error| parquet_error(error.to_string()))?;
+        let acquisition = read_acquisition(
+            path,
+            builder.metadata().file_metadata().key_value_metadata(),
+        )?;
+        let reader = builder
+            .build()
             .map_err(|error| parquet_error(error.to_string()))?;
 
         let mut event_ids = Vec::new();
@@ -216,6 +259,7 @@ impl EventMask {
             event_ids = (0..keep.len() as u64).collect();
         }
         let mask = Self {
+            acquisition,
             event_ids,
             source_event_ids,
             filters,
@@ -244,11 +288,23 @@ impl EventMask {
     ///
     /// # Errors
     ///
-    /// Returns an error when `masks` is empty.
+    /// Returns an error when `masks` is empty or the masks come from different
+    /// acquisitions.
     pub fn combine(masks: &[Self]) -> Result<Self, MaskError> {
         let Some(first) = masks.first() else {
             return Err(MaskError::Empty);
         };
+        if let Some((index, mask)) = masks
+            .iter()
+            .enumerate()
+            .find(|(_, mask)| mask.acquisition != first.acquisition)
+        {
+            return Err(MaskError::AcquisitionMismatch {
+                expected: first.acquisition.clone(),
+                found: mask.acquisition.clone(),
+                what: format!("mask {}", index + 1),
+            });
+        }
         let lookups = masks.iter().map(Self::row_lookup).collect::<Vec<_>>();
         let rows = &first.source_event_ids;
         let keep = rows
@@ -262,7 +318,7 @@ impl EventMask {
             })
             .collect::<Vec<_>>();
 
-        let mut combined = Self::new(keep, Some(rows.clone()));
+        let mut combined = Self::new(first.acquisition.clone(), keep, Some(rows.clone()));
         let mut names = HashSet::new();
         for (index, (mask, lookup)) in masks.iter().zip(&lookups).enumerate() {
             for (name, values) in &mask.filters {
@@ -282,13 +338,26 @@ impl EventMask {
     }
 
     /// `keep` for each row of `dataset`, matched through `Original_ID` when the
-    /// dataset has one and by row otherwise.
+    /// dataset has one and by row otherwise. `acquisition` is the dataset's
+    /// `cytiq_fcs::acquisition_id`.
     ///
     /// # Errors
     ///
-    /// Returns an error when `Original_ID` is invalid or the mask has no row
-    /// for one of the dataset's events.
-    pub fn keep_for(&self, dataset: &FcsDataset) -> Result<Vec<bool>, MaskError> {
+    /// Returns an error when the mask belongs to another acquisition,
+    /// `Original_ID` is invalid, or the mask has no row for one of the
+    /// dataset's events.
+    pub fn keep_for(
+        &self,
+        dataset: &FcsDataset,
+        acquisition: &str,
+    ) -> Result<Vec<bool>, MaskError> {
+        if self.acquisition != acquisition {
+            return Err(MaskError::AcquisitionMismatch {
+                expected: acquisition.to_owned(),
+                found: self.acquisition.clone(),
+                what: "the event mask".to_owned(),
+            });
+        }
         let lookup = self.row_lookup();
         let source_event_ids = cytiq_fcs::source_event_ids(dataset)
             .map_err(MaskError::Lineage)?
@@ -315,6 +384,50 @@ impl EventMask {
     }
 }
 
+fn read_acquisition(path: &Path, metadata: Option<&Vec<KeyValue>>) -> Result<String, MaskError> {
+    let value = |key: &str| {
+        metadata
+            .into_iter()
+            .flatten()
+            .find(|entry| entry.key == key)
+            .and_then(|entry| entry.value.as_deref())
+    };
+    let Some(version) = value(SCHEMA_VERSION_KEY) else {
+        return Err(MaskError::MissingAcquisition {
+            path: path.to_path_buf(),
+        });
+    };
+    let invalid = |reason: String| MaskError::Invalid {
+        path: path.to_path_buf(),
+        reason,
+    };
+    match version.parse::<u32>() {
+        Ok(SCHEMA_VERSION) => {}
+        Ok(version) if version < SCHEMA_VERSION => {
+            return Err(MaskError::MissingAcquisition {
+                path: path.to_path_buf(),
+            });
+        }
+        _ => {
+            return Err(invalid(format!(
+                "unsupported `{SCHEMA_VERSION_KEY}` {version}; this cytiq reads version {SCHEMA_VERSION}"
+            )));
+        }
+    }
+    if value(EVENT_ID_BASE_KEY) != Some("0") {
+        return Err(invalid(format!("`{EVENT_ID_BASE_KEY}` must be 0")));
+    }
+    match value(ACQUISITION_KEY) {
+        Some(acquisition) if cytiq_fcs::is_sha256(acquisition) => Ok(acquisition.to_owned()),
+        Some(acquisition) => Err(invalid(format!(
+            "`{ACQUISITION_KEY}` `{acquisition}` is not a lowercase hex SHA-256"
+        ))),
+        None => Err(MaskError::MissingAcquisition {
+            path: path.to_path_buf(),
+        }),
+    }
+}
+
 /// Read and combine one or more masks; `None` when `paths` is empty.
 ///
 /// # Errors
@@ -335,6 +448,9 @@ pub fn read_combined(paths: &[PathBuf]) -> Result<Option<EventMask>, MaskError> 
 mod tests {
     use super::*;
 
+    const RAW: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    const OTHER: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+
     fn temp_path(name: &str) -> PathBuf {
         let directory = std::env::temp_dir().join(format!(
             "cytiq-mask-{}-{}",
@@ -348,22 +464,63 @@ mod tests {
     #[test]
     fn round_trips_parquet() {
         let path = temp_path("round-trip.parquet");
-        let mask = EventMask::new(vec![true, false, true], Some(vec![4, 7, 9]))
+        let mask = EventMask::new(RAW, vec![true, false, true], Some(vec![4, 7, 9]))
             .with_filter("margin_pass", vec![Some(true), Some(false), None]);
         mask.write_parquet(&path).unwrap();
-        assert_eq!(EventMask::read_parquet(&path).unwrap(), mask);
+        let read = EventMask::read_parquet(&path).unwrap();
+        assert_eq!(read, mask);
+        assert_eq!(read.acquisition, RAW);
+        assert!(!path.with_extension("parquet.tmp").exists());
+    }
+
+    #[test]
+    fn rejects_a_mask_without_acquisition() {
+        // A version 1 mask: the same columns, no key-value metadata.
+        let path = temp_path("legacy.parquet");
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(SOURCE_EVENT_ID_COLUMN, DataType::UInt64, false),
+            Field::new(KEEP_COLUMN, DataType::Boolean, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(UInt64Array::from(vec![0_u64, 1])),
+                Arc::new(BooleanArray::from(vec![true, false])),
+            ],
+        )
+        .unwrap();
+        let mut writer = ArrowWriter::try_new(File::create(&path).unwrap(), schema, None).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+
+        let error = EventMask::read_parquet(&path).unwrap_err();
+        assert!(
+            matches!(error, MaskError::MissingAcquisition { .. }),
+            "{error}"
+        );
+        assert!(error.to_string().contains("regenerate"), "{error}");
+    }
+
+    #[test]
+    fn refuses_to_write_without_an_acquisition() {
+        let mask = EventMask::new("sample.fcs", vec![true], None);
+        assert!(matches!(
+            mask.write_parquet(&temp_path("no-acquisition.parquet")),
+            Err(MaskError::InvalidAcquisition { .. })
+        ));
     }
 
     #[test]
     fn combine_ands_keep_by_source_event() {
-        let first = EventMask::new(vec![true, true, false, true], None)
+        let first = EventMask::new(RAW, vec![true, true, false, true], None)
             .with_filter("margin_pass", vec![Some(true); 4]);
         // Derived file: raw events 1 and 3 only, the second one removed.
-        let second = EventMask::new(vec![true, false], Some(vec![1, 3]))
+        let second = EventMask::new(RAW, vec![true, false], Some(vec![1, 3]))
             .with_filter("margin_pass", vec![Some(true), Some(false)]);
 
         let combined = EventMask::combine(&[first, second]).unwrap();
 
+        assert_eq!(combined.acquisition, RAW);
         assert_eq!(combined.source_event_ids, vec![0, 1, 2, 3]);
         assert_eq!(combined.keep, vec![false, true, false, false]);
         assert_eq!(combined.filters[0].0, "margin_pass");
@@ -375,9 +532,20 @@ mod tests {
     }
 
     #[test]
+    fn combine_rejects_masks_from_different_acquisitions() {
+        let first = EventMask::new(RAW, vec![true, true], None);
+        let second = EventMask::new(OTHER, vec![true, true], None);
+        let error = EventMask::combine(&[first, second]).unwrap_err();
+        assert!(
+            matches!(&error, MaskError::AcquisitionMismatch { what, .. } if what == "mask 2"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn rejects_duplicate_source_events() {
         let path = temp_path("duplicate.parquet");
-        EventMask::new(vec![true, true], Some(vec![5, 5]))
+        EventMask::new(RAW, vec![true, true], Some(vec![5, 5]))
             .write_parquet(&path)
             .unwrap();
         let error = EventMask::read_parquet(&path).unwrap_err();
@@ -400,31 +568,41 @@ mod tests {
 
     #[test]
     fn keep_for_follows_original_id() {
-        let raw_mask = EventMask::new(vec![true, false, true, false, true], None);
+        let raw_mask = EventMask::new(RAW, vec![true, false, true, false, true], None);
         // A derived file holding raw rows 0, 2 and 3 (Original_ID is 1-based).
         let derived = dataset(Some(vec![1.0, 3.0, 4.0]));
         assert_eq!(
-            raw_mask.keep_for(&derived).unwrap(),
+            raw_mask.keep_for(&derived, RAW).unwrap(),
             vec![true, true, false]
         );
         assert_eq!(
-            raw_mask.keep_for(&dataset(None)).unwrap(),
+            raw_mask.keep_for(&dataset(None), RAW).unwrap(),
             vec![true, false, true]
         );
     }
 
     #[test]
-    fn keep_for_rejects_mask_of_another_acquisition() {
-        let mask = EventMask::new(vec![true, true], None);
+    fn keep_for_rejects_another_acquisition() {
+        // Enough rows to cover the dataset: only the acquisition tells them apart.
+        let mask = EventMask::new(OTHER, vec![true; 5], None);
         assert!(matches!(
-            mask.keep_for(&dataset(None)),
+            mask.keep_for(&dataset(None), RAW),
+            Err(MaskError::AcquisitionMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn keep_for_rejects_a_mask_missing_events() {
+        let mask = EventMask::new(RAW, vec![true, true], None);
+        assert!(matches!(
+            mask.keep_for(&dataset(None), RAW),
             Err(MaskError::MissingEvent { source_event_id: 2 })
         ));
     }
 
     #[test]
     fn rejects_mismatched_column_lengths() {
-        let mask = EventMask::new(vec![true, true], None).with_filter("live", vec![None]);
+        let mask = EventMask::new(RAW, vec![true, true], None).with_filter("live", vec![None]);
         assert!(matches!(
             mask.write_parquet(&temp_path("mismatch.parquet")),
             Err(MaskError::LengthMismatch { .. })

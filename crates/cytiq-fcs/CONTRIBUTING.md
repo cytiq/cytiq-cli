@@ -15,7 +15,10 @@ this crate.
 - `src/data.rs` — DATA decoding into typed columns; raw ANALYSIS bytes.
 - `src/types.rs` — public data types (`FcsDataset`, `FcsText`, `Parameter`,
   `ColumnData`, ...) and `find_parameter_index`.
-- `src/writer.rs` — FCS 3.1 little-endian float32 writer.
+- `src/writer.rs` — FCS 3.1 little-endian float32 / float64 writer and the
+  exact writer that picks between them.
+- `src/acquisition.rs` — `CYTIQ_ACQUISITION` and `acquisition_id`.
+- `src/lineage.rs` — `Original_ID` and `source_event_ids`.
 - `src/compensation.rs` — `Spillover`, `invert_matrix`, `compensate` and their
   unit tests.
 - `src/error.rs` — `FcsError`, exported as `cytiq_fcs::Error`.
@@ -35,13 +38,16 @@ this crate.
   (`parameter_keywords_do_not_leak_across_indexes`).
 - Integer columns decode to `u64`, `F` to `f32` and `D` to `f64`. Do not widen
   or convert at read time; consumers call `to_f64_vec`.
-- The writer emits one fixed layout (FCS 3.1, `F`, 32-bit, `$BYTEORD=1,2,3,4`).
-  Every derived FCS file in the workspace depends on it, so changing it changes
-  every command's output. It must keep rejecting non-finite values and
-  overrides of generated keywords.
+- The writer emits one fixed layout (FCS 3.1, `F` 32-bit or `D` 64-bit,
+  `$BYTEORD=1,2,3,4`). Every derived FCS file in the workspace depends on it,
+  so changing it changes every command's output. It must keep rejecting
+  non-finite values and overrides of generated keywords.
+- Event identifiers must survive every stage exactly: stages that write FCS go
+  through `write_fcs3_1_exact_with_options` and record `CYTIQ_ACQUISITION`.
 - Spillover matrices are row-major, rows = fluorochromes, columns = detectors.
   `compensate` panics on shape mismatch; callers check shapes first.
-- No `unsafe`, and no dependencies beyond `log` and `thiserror`.
+- No `unsafe`, and no dependencies beyond `log`, `thiserror`, `serde` /
+  `serde_json` and `sha2`.
 
 ## Where changes belong
 

@@ -26,13 +26,14 @@ records the input's SHA-256) writes a `provenance.json` next to its output:
 ```
 
 `arguments` is the exact command line, so a run can be repeated from its
-record. Debug directories are not listed.
+record. Inputs are hashed before the command runs, so a command that replaces
+its own input still records what it read. Debug directories are not listed.
 
 ## Public API
 
 | Item | Purpose |
 | --- | --- |
-| `RunRecorder::start` / `finish` | Start a record before a command runs; hash its files and write the record afterwards |
+| `RunRecorder::start` / `snapshot_inputs` / `finish` | Start a record and hash the inputs before a command runs; hash its outputs and write the record afterwards |
 | `RunRecord`, `FileRecord`, `SCHEMA_VERSION` | The document |
 | `record_path_for_file`, `record_path_for_dir` | Where a command's record goes |
 | `files_under` | Every file of an output directory, sorted, without records and `.tmp` files |
@@ -43,8 +44,12 @@ record. Debug directories are not listed.
 
 - Records are written through a `.tmp` sibling and renamed, so a failed run
   never leaves half a record.
-- Paths that are not files when the command finishes (optional outputs that
-  were not requested) are skipped.
+- Paths that are not files (optional inputs and outputs that were not given)
+  are skipped.
+- An input that changed during the run and is not also an output fails
+  `finish` (`InputChanged`) rather than write a record that does not describe
+  what was read. An input that is also an output (`transform --overwrite` in
+  place) is recorded with both hashes.
 - `--dry-run` runs write no record.
 
 ## Dependencies

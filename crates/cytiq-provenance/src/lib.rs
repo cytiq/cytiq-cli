@@ -3,7 +3,9 @@
 //! Each cytiq command that writes files also writes a `provenance.json`
 //! record next to its output: the tool and version, the exact command-line
 //! arguments, start and finish times, and the size and SHA-256 of every input
-//! and output file.
+//! and output file. Inputs are hashed before the command runs, so a command
+//! that replaces its own input (`transform --overwrite` in place) still
+//! records what it read.
 
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -26,6 +28,10 @@ pub enum ProvenanceError {
         #[source]
         source: io::Error,
     },
+    #[error(
+        "input `{path}` changed while the command ran; its provenance record would not describe what was read"
+    )]
+    InputChanged { path: PathBuf },
     #[error("failed to write provenance record `{path}`: {source}")]
     Write {
         path: PathBuf,
@@ -77,14 +83,23 @@ pub struct RunRecord {
     pub outputs: Vec<FileRecord>,
 }
 
-/// Collects a run's record: start it before the command runs, finish it
-/// with the files the command read and wrote.
+/// Collects a run's record: start it and snapshot the inputs before the
+/// command runs, finish it with the files the command wrote.
 #[derive(Clone, Debug)]
 pub struct RunRecorder {
     tool: String,
     version: String,
     arguments: Vec<String>,
     started_at_unix_ms: u128,
+    inputs: Vec<InputSnapshot>,
+}
+
+/// An input as it was before the command ran.
+#[derive(Clone, Debug)]
+struct InputSnapshot {
+    path: PathBuf,
+    record: FileRecord,
+    modified: Option<SystemTime>,
 }
 
 impl RunRecorder {
@@ -99,31 +114,62 @@ impl RunRecorder {
             version: version.into(),
             arguments,
             started_at_unix_ms: unix_ms(),
+            inputs: Vec::new(),
         }
     }
 
-    /// Hash `inputs` and `outputs` and write the record to `record_path`
-    /// (through a `.tmp` sibling, so a failed run never leaves half a record).
-    /// Paths that are not files (missing optional outputs, directories) are
-    /// skipped.
+    /// Hash `inputs` now, before the command reads them. Paths that are not
+    /// files (missing optional inputs, directories) are skipped.
     ///
     /// # Errors
     ///
-    /// Returns an error when a file cannot be hashed or the record cannot be
+    /// Returns an error when an input cannot be hashed.
+    pub fn snapshot_inputs(&mut self, inputs: &[PathBuf]) -> Result<(), ProvenanceError> {
+        for path in inputs.iter().filter(|path| path.is_file()) {
+            let modified = modified(path);
+            let record = FileRecord::of(path)?;
+            self.inputs.push(InputSnapshot {
+                path: path.clone(),
+                record,
+                modified,
+            });
+        }
+        Ok(())
+    }
+
+    /// Hash `outputs` and write the record, with the inputs as snapshotted,
+    /// to `record_path` (through a `.tmp` sibling, so a failed run never
+    /// leaves half a record). Paths that are not files (missing optional
+    /// outputs, directories) are skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an input that is not also an output changed
+    /// since its snapshot, a file cannot be hashed, or the record cannot be
     /// written.
     pub fn finish(
         self,
-        inputs: &[PathBuf],
         outputs: &[PathBuf],
         record_path: &Path,
     ) -> Result<RunRecord, ProvenanceError> {
-        let records = |paths: &[PathBuf]| {
-            paths
-                .iter()
-                .filter(|path| path.is_file())
-                .map(|path| FileRecord::of(path))
-                .collect::<Result<Vec<_>, _>>()
-        };
+        let outputs = outputs
+            .iter()
+            .filter(|path| path.is_file())
+            .collect::<Vec<_>>();
+        let written = outputs
+            .iter()
+            .map(|path| canonical(path))
+            .collect::<Vec<_>>();
+        for input in &self.inputs {
+            let unchanged = fs::metadata(&input.path).is_ok_and(|metadata| {
+                metadata.len() == input.record.bytes && metadata.modified().ok() == input.modified
+            });
+            if !unchanged && !written.contains(&canonical(&input.path)) {
+                return Err(ProvenanceError::InputChanged {
+                    path: input.path.clone(),
+                });
+            }
+        }
         let record = RunRecord {
             schema_version: SCHEMA_VERSION,
             tool: self.tool,
@@ -131,8 +177,11 @@ impl RunRecorder {
             arguments: self.arguments,
             started_at_unix_ms: self.started_at_unix_ms,
             finished_at_unix_ms: unix_ms(),
-            inputs: records(inputs)?,
-            outputs: records(outputs)?,
+            inputs: self.inputs.into_iter().map(|input| input.record).collect(),
+            outputs: outputs
+                .into_iter()
+                .map(|path| FileRecord::of(path))
+                .collect::<Result<_, _>>()?,
         };
         write_record(record_path, &record)?;
         Ok(record)
@@ -221,6 +270,17 @@ fn write_record(path: &Path, record: &RunRecord) -> Result<(), ProvenanceError> 
     fs::rename(&temporary, path).map_err(write_error)
 }
 
+fn modified(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+}
+
+/// `path` resolved, so `./a` and `a` name the same file.
+fn canonical(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 fn unix_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -231,35 +291,80 @@ fn unix_ms() -> u128 {
 mod tests {
     use super::*;
 
+    fn temp_dir(name: &str) -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("cytiq-provenance-{}-{name}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
     #[test]
     fn records_inputs_and_outputs_with_hashes() {
-        let directory =
-            std::env::temp_dir().join(format!("cytiq-provenance-{}", std::process::id()));
-        fs::create_dir_all(&directory).unwrap();
+        let directory = temp_dir("record");
         let input = directory.join("in.txt");
         let output = directory.join("out.txt");
         fs::write(&input, b"abc").unwrap();
-        fs::write(&output, b"").unwrap();
         let record_path = record_path_for_file(&output);
 
-        let record = RunRecorder::start("cytiq test", "0.0.0", vec!["--input".to_owned()])
-            .finish(
-                &[input, directory.join("missing.txt")],
-                &[output],
-                &record_path,
-            )
+        let mut recorder = RunRecorder::start("cytiq test", "0.0.0", vec!["--input".to_owned()]);
+        recorder
+            .snapshot_inputs(&[input, directory.join("missing.txt")])
             .unwrap();
+        fs::write(&output, b"").unwrap();
+        let record = recorder.finish(&[output], &record_path).unwrap();
 
         assert_eq!(record.inputs.len(), 1, "missing paths are skipped");
-        assert_eq!(
-            record.inputs[0].sha256,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+        assert_eq!(record.inputs[0].sha256, ABC_SHA256);
         assert_eq!(record.outputs[0].bytes, 0);
         assert!(record.finished_at_unix_ms >= record.started_at_unix_ms);
         let written: RunRecord =
             serde_json::from_str(&fs::read_to_string(&record_path).unwrap()).unwrap();
         assert_eq!(written, record);
         assert!(record_path.ends_with("out.txt.provenance.json"));
+    }
+
+    #[test]
+    fn hashes_inputs_before_they_change() {
+        let directory = temp_dir("in-place");
+        let file = directory.join("sample.fcs");
+        fs::write(&file, b"abc").unwrap();
+
+        let mut recorder = RunRecorder::start("cytiq test", "0.0.0", Vec::new());
+        recorder
+            .snapshot_inputs(std::slice::from_ref(&file))
+            .unwrap();
+        // The command replaces its input in place.
+        fs::write(&file, b"abcdef").unwrap();
+        let record = recorder
+            .finish(std::slice::from_ref(&file), &record_path_for_file(&file))
+            .unwrap();
+
+        assert_eq!(record.inputs[0].sha256, ABC_SHA256);
+        assert_eq!(record.inputs[0].bytes, 3);
+        assert_eq!(record.outputs[0].bytes, 6);
+    }
+
+    #[test]
+    fn fails_when_an_input_changes_during_the_run() {
+        let directory = temp_dir("changed");
+        let input = directory.join("in.txt");
+        let output = directory.join("out.txt");
+        fs::write(&input, b"abc").unwrap();
+
+        let mut recorder = RunRecorder::start("cytiq test", "0.0.0", Vec::new());
+        recorder
+            .snapshot_inputs(std::slice::from_ref(&input))
+            .unwrap();
+        fs::write(&input, b"abcd").unwrap();
+        fs::write(&output, b"").unwrap();
+        let record_path = record_path_for_file(&output);
+
+        assert!(matches!(
+            recorder.finish(&[output], &record_path),
+            Err(ProvenanceError::InputChanged { .. })
+        ));
+        assert!(!record_path.exists());
     }
 }

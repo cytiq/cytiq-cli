@@ -11,7 +11,17 @@
 //! | `keep`            | `Bool`          | whether later stages should use the event |
 //!
 //! `source_event_id` lets a mask computed on one file apply to any file derived
-//! from the same raw acquisition.
+//! from the same raw acquisition. Parquet key-value metadata ties the mask to
+//! that acquisition:
+//!
+//! | key                         | value                                          |
+//! | --------------------------- | ---------------------------------------------- |
+//! | `cytiq.mask.schema_version` | `2`                                            |
+//! | `cytiq.acquisition_sha256`  | SHA-256 of the raw FCS (`CYTIQ_ACQUISITION`)   |
+//! | `cytiq.event_id_base`       | `0`                                            |
+//!
+//! Combining masks, or applying one to a file, from different acquisitions is
+//! an error, and masks without this metadata are rejected.
 
 mod error;
 mod mask;
@@ -19,6 +29,7 @@ mod runner;
 
 pub use crate::error::MaskError;
 pub use crate::mask::{
-    EVENT_ID_COLUMN, EventMask, KEEP_COLUMN, SOURCE_EVENT_ID_COLUMN, read_combined,
+    ACQUISITION_KEY, EVENT_ID_BASE_KEY, EVENT_ID_COLUMN, EventMask, KEEP_COLUMN, SCHEMA_VERSION,
+    SCHEMA_VERSION_KEY, SOURCE_EVENT_ID_COLUMN, read_combined,
 };
 pub use crate::runner::{MaskCombineConfig, MaskCombineRunner};

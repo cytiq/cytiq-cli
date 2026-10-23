@@ -52,6 +52,11 @@ impl CompensateRunner {
         validate_paths(config)?;
         let input = &config.input;
         let dataset = load_dataset(input)?;
+        let read_error = |source| CompensateError::FcsRead {
+            path: input.clone(),
+            source,
+        };
+        let acquisition = cytiq_fcs::acquisition_id(input, &dataset.text).map_err(read_error)?;
         let matrix = match &config.matrix {
             Some((path, kind)) => read_matrix_file(path, *kind)?,
             None => CompensationMatrix::from_dataset(input, &dataset)?,
@@ -75,23 +80,21 @@ impl CompensateRunner {
         // Compensation mixes channels: this is the last point where raw
         // detector margins can be identified.
         let margin_pass =
-            cytiq_fcs::raw_margin_pass(&dataset, &matrix_indices).map_err(|source| {
-                CompensateError::FcsRead {
-                    path: input.clone(),
-                    source,
-                }
-            })?;
+            cytiq_fcs::raw_margin_pass(&dataset, &matrix_indices).map_err(read_error)?;
         let (parameters, columns) = compensated_columns(&dataset, &matrix_indices, &matrix);
-        let options = output_keywords(input, &dataset, config, &channels, &parameters)?;
+        let options = output_keywords(
+            input,
+            &dataset,
+            config,
+            &channels,
+            &parameters,
+            &acquisition,
+        )?;
         write_fcs(&config.output, &parameters, &columns, &options)?;
 
         let masks = masks_path(&config.output);
-        let source_event_ids =
-            cytiq_fcs::source_event_ids(&dataset).map_err(|source| CompensateError::FcsRead {
-                path: input.clone(),
-                source,
-            })?;
-        let mask = EventMask::new(margin_pass.clone(), source_event_ids)
+        let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
+        let mask = EventMask::new(acquisition, margin_pass.clone(), source_event_ids)
             .with_filter("margin_pass", margin_pass.into_iter().map(Some).collect());
         mask.write_parquet(&masks)?;
 
@@ -203,7 +206,10 @@ fn stored_values(dataset: &FcsDataset, index: usize) -> Vec<f64> {
 /// Output parameters and values. Matrix channels hold compensated values;
 /// other channels whose `$PnE`/`$PnG` scaling changes their values are written
 /// linearised, because the output always declares `$PnE=0,0`. Changed channels
-/// lose `$PnG` and take a `$PnR` computed from their new values.
+/// lose `$PnG` and take a `$PnR` computed from their new values; their values
+/// are rounded to f32, which keeps far more precision than the detectors
+/// deliver, so only unchanged channels (integer data, event identifiers above
+/// 2^24) can make the output use doubles.
 fn compensated_columns(
     dataset: &FcsDataset,
     matrix_indices: &[usize],
@@ -235,9 +241,12 @@ fn compensated_columns(
         {
             output.range = None;
             output.keywords.retain(|(suffix, _)| suffix != "G");
+            parameters.push(output);
+            columns.push(values.iter().map(|value| round_to_f32(*value)).collect());
+        } else {
+            parameters.push(output);
+            columns.push(values);
         }
-        parameters.push(output);
-        columns.push(values);
     }
     (parameters, columns)
 }
@@ -248,6 +257,7 @@ fn output_keywords(
     config: &CompensateConfig,
     channels: &[String],
     parameters: &[FcsWriteParameter],
+    acquisition: &str,
 ) -> Result<FcsWriteOptions, CompensateError> {
     let mut keywords = Vec::new();
     for (key, value) in cytiq_fcs::carried_keywords(&dataset.text) {
@@ -278,6 +288,7 @@ fn output_keywords(
             .map_or_else(|| "fcs".to_owned(), |(path, _)| path.display().to_string()),
         channels: channels.to_vec(),
     };
+    cytiq_fcs::set_acquisition(&mut keywords, acquisition);
     Ok(FcsWriteOptions::new()
         .with_text_keywords(keywords)
         .with_text_keyword(MARGINS_KEYWORD, cytiq_fcs::encode_margin_bounds(&bounds))
@@ -285,34 +296,18 @@ fn output_keywords(
 }
 
 #[allow(clippy::cast_possible_truncation)]
+fn round_to_f32(value: f64) -> f64 {
+    f64::from(value as f32)
+}
+
 fn write_fcs(
     path: &Path,
     parameters: &[FcsWriteParameter],
     columns: &[Vec<f64>],
     options: &FcsWriteOptions,
 ) -> Result<(), CompensateError> {
-    // Compensated values rarely fit f32 exactly, but f32 keeps far more
-    // precision than the detectors deliver; doubles are needed only for
-    // integer data or event identifiers above 2^24.
-    let needs_f64 = parameters
-        .iter()
-        .zip(columns)
-        .filter(|(parameter, _)| parameter.range.is_some())
-        .any(|(_, column)| {
-            column
-                .iter()
-                .any(|value| f64::from(*value as f32).to_bits() != value.to_bits())
-        });
     debug!("writing compensated FCS to {}", path.display());
-    let result = if needs_f64 {
-        cytiq_fcs::write_fcs3_1_f64_with_options(path, parameters, columns, options)
-    } else {
-        let columns = columns
-            .iter()
-            .map(|column| column.iter().map(|value| *value as f32).collect())
-            .collect::<Vec<Vec<f32>>>();
-        cytiq_fcs::write_fcs3_1_f32_with_options(path, parameters, &columns, options)
-    };
+    let result = cytiq_fcs::write_fcs3_1_exact_with_options(path, parameters, columns, options);
     result.map_err(|source| CompensateError::FcsWrite {
         path: path.to_path_buf(),
         source,

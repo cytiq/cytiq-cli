@@ -456,6 +456,112 @@ fn cli_accepts_negative_logicle_a() {
     assert!(stderr.contains("A is out of range"), "stderr: {stderr}");
 }
 
+/// FL1-A and FL2-A markers plus an `Original_ID` beyond f32 precision (2^24 + 1
+/// is the first integer f32 cannot represent).
+fn write_lineage_fixture_fcs(path: &Path) -> Vec<f64> {
+    let ids = vec![16_777_217.0, 16_777_219.0, 16_777_221.0];
+    let parameters = vec![
+        FcsWriteParameter::with_label("FL1-A", "CD3"),
+        FcsWriteParameter::with_label("FL2-A", "CD4"),
+        FcsWriteParameter::new("Original_ID"),
+    ];
+    let columns = vec![
+        vec![0.0, 150.0, 300.0],
+        vec![30.0, 180.0, 330.0],
+        ids.clone(),
+    ];
+    cytiq_fcs::write_fcs3_1_f64_with_options(path, &parameters, &columns, &FcsWriteOptions::new())
+        .expect("fixture FCS should write");
+    ids
+}
+
+#[test]
+#[allow(clippy::cast_possible_truncation)]
+fn transform_leaves_original_id_exact() {
+    let directory = create_temp_dir("cytiq-cli-transform-original-id");
+    let input = directory.join("sample.peacoqc.fcs");
+    let output_path = directory.join("sample.transformed.fcs");
+    let ids = write_lineage_fixture_fcs(&input);
+
+    let output = run_transform(&[utf8(&input), "--output", utf8(&output_path)]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dataset = FcsReader::open(&output_path)
+        .and_then(FcsReader::read)
+        .expect("transformed FCS should be readable");
+    let Some(ColumnData::F64(written)) = dataset.data.column(2) else {
+        panic!("identifiers beyond 2^24 need a double column");
+    };
+    assert_eq!(written, &ids);
+    let Some(ColumnData::F64(cd3)) = dataset.data.column(0) else {
+        panic!("expected a double column");
+    };
+    for (actual, raw) in cd3.iter().zip([0.0_f64, 150.0, 300.0]) {
+        // Transformed values keep f32 precision whatever the file encoding.
+        assert_eq!(*actual, f64::from((raw / 150.0).asinh() as f32));
+    }
+    let state = cytiq_fcs::transform_state(&dataset.text)
+        .expect("state should parse")
+        .expect("transform state");
+    assert_eq!(state.channels, ["FL1-A", "FL2-A"]);
+    assert_eq!(
+        dataset.text.get(cytiq_fcs::ACQUISITION_KEYWORD),
+        Some(common::sha256_hex(&input).as_str())
+    );
+}
+
+#[test]
+fn rejects_transforming_original_id() {
+    let directory = create_temp_dir("cytiq-cli-transform-reserved");
+    let input = directory.join("sample.peacoqc.fcs");
+    let output_path = directory.join("sample.transformed.fcs");
+    write_lineage_fixture_fcs(&input);
+
+    let output = run_transform(&[
+        utf8(&input),
+        "--output",
+        utf8(&output_path),
+        "--channels",
+        "FL1-A,Original_ID",
+    ]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("event lineage column"), "stderr: {stderr}");
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn in_place_transform_records_the_original_input_hash() {
+    let directory = create_temp_dir("cytiq-cli-transform-in-place");
+    let file = directory.join("sample.fcs");
+    write_transform_fixture_fcs(&file, 0.0);
+    let before = common::sha256_hex(&file);
+
+    let output = run_transform(&[utf8(&file), "--output", utf8(&file), "--overwrite"]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after = common::sha256_hex(&file);
+    assert_ne!(before, after);
+    let record: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(directory.join("sample.fcs.provenance.json"))
+            .expect("provenance should exist"),
+    )
+    .expect("provenance should be JSON");
+    assert_eq!(record["inputs"][0]["sha256"], before.as_str());
+    assert_eq!(record["outputs"][0]["sha256"], after.as_str());
+    // The rewritten file still names the original as its acquisition.
+    assert_eq!(common::acquisition_of(&file), before);
+}
+
 fn run_transform(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args(["transform", "--input"])

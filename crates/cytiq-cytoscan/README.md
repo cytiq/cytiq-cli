@@ -73,6 +73,7 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 | Item | Purpose |
 | --- | --- |
 | `CytoScanRunner::run` / `CytoScanConfig` | Run the pipeline and write outputs |
+| `CytoScanRunner::input_files` | Test then reference FCS files a run reads, resolved as `run` does |
 | `FeatureMethod`, `FlagMethod` | Feature and flagging methods |
 | `CytoScanResult` | `parameters`, test/reference `CytoScanFeatureMatrix`, `summary_rows`, `diagnostics` |
 | `CytoScanParameters`, `CytoScanConstants` | Effective settings, serialized into `cytoscan_config.json` |

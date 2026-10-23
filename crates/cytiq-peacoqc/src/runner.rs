@@ -329,14 +329,16 @@ impl PeacoQcRunner {
             &removed_by_it_working,
             &removed_by_consecutive_working,
         );
-        let source_event_ids =
-            cytiq_fcs::source_event_ids(&dataset).map_err(|source| PeacoQcError::FcsRead {
-                path: input.to_path_buf(),
-                source,
-            })?;
-        write_cleaned_fcs(input, output, &dataset, &mask)?;
+        let read_error = |source| PeacoQcError::FcsRead {
+            path: input.to_path_buf(),
+            source,
+        };
+        let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
+        let acquisition = cytiq_fcs::acquisition_id(input, &dataset.text).map_err(read_error)?;
+        write_cleaned_fcs(input, output, &dataset, &mask, &acquisition)?;
         write_masks_parquet(
             &masks_path(output),
+            &acquisition,
             &mask,
             source_event_ids.as_deref(),
             config.remove_margins,
@@ -1196,6 +1198,7 @@ fn write_cleaned_fcs(
     output: &Path,
     dataset: &FcsDataset,
     mask: &[EventMaskRecord],
+    acquisition: &str,
 ) -> Result<(), PeacoQcError> {
     let retained = mask
         .iter()
@@ -1252,31 +1255,22 @@ fn write_cleaned_fcs(
 
     let mut margin_bounds = known_margin_bounds(input, dataset)?;
     margin_bounds.remove(cytiq_fcs::ORIGINAL_ID_PARAMETER);
+    let mut keywords = cytiq_fcs::carried_keywords(&dataset.text);
+    cytiq_fcs::set_acquisition(&mut keywords, acquisition);
     let options = FcsWriteOptions::new()
-        .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text))
+        .with_text_keywords(keywords)
         .with_text_keyword(
             MARGINS_KEYWORD,
             cytiq_fcs::encode_margin_bounds(&margin_bounds),
         );
     // Event identifiers above 2^24, 32-bit integer data and f64 data do not
-    // survive f32; write doubles only when a value would change.
-    let write_result = if columns
-        .iter()
-        .flatten()
-        .all(|value| f64::from(*value as f32).to_bits() == value.to_bits())
-    {
-        let columns = columns
-            .iter()
-            .map(|column| column.iter().map(|value| *value as f32).collect())
-            .collect::<Vec<Vec<f32>>>();
-        cytiq_fcs::write_fcs3_1_f32_with_options(output, &parameters, &columns, &options)
-    } else {
-        cytiq_fcs::write_fcs3_1_f64_with_options(output, &parameters, &columns, &options)
-    };
-    write_result.map_err(|source| PeacoQcError::FcsWrite {
-        path: output.to_path_buf(),
-        source,
-    })
+    // survive f32; the writer uses doubles only when a value would change.
+    cytiq_fcs::write_fcs3_1_exact_with_options(output, &parameters, &columns, &options).map_err(
+        |source| PeacoQcError::FcsWrite {
+            path: output.to_path_buf(),
+            source,
+        },
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

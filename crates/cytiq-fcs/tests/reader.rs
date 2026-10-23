@@ -489,3 +489,98 @@ fn overwrite_header_range(
     bytes[start_offset..start_offset + 8].copy_from_slice(begin.as_bytes());
     bytes[end_offset..end_offset + 8].copy_from_slice(finish.as_bytes());
 }
+
+#[test]
+fn round_trips_f64_dataset() -> Result<(), Box<dyn Error>> {
+    let parameters = vec![FcsWriteParameter::new("Original_ID")];
+    // 2^24 + 1 is the first integer f32 cannot represent.
+    let ids = vec![16_777_217.0_f64, 16_777_218.0, 16_777_219.0];
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f64_to_writer_with_options(
+        &mut bytes,
+        &parameters,
+        std::slice::from_ref(&ids),
+        &FcsWriteOptions::new(),
+    )?;
+
+    let dataset = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+    assert_eq!(dataset.text.get("$DATATYPE"), Some("D"));
+    assert_eq!(dataset.text.get("$P1B"), Some("64"));
+    assert_f64_column(dataset.data.column(0), &ids);
+
+    Ok(())
+}
+
+#[test]
+fn carries_source_keywords_into_derived_file() -> Result<(), Box<dyn Error>> {
+    let source_parameters = vec![
+        FcsWriteParameter::new("FSC-A")
+            .with_range(262_144.0)
+            .with_keyword("V", "350"),
+        FcsWriteParameter::with_label("FL1-A", "CD3").with_keyword("G", "1.5"),
+    ];
+    let options = FcsWriteOptions::new()
+        .with_text_keyword("$CYT", "Aurora")
+        .with_text_keyword("$PROJ", "study")
+        .with_text_keyword("$SPILLOVER", "1,FL1-A,1");
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
+        &mut bytes,
+        &source_parameters,
+        &[vec![1.0_f32, 2.0], vec![3.0_f32, 4.0]],
+        &options,
+    )?;
+    let source = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+
+    let parameters = source
+        .parameters
+        .iter()
+        .map(FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    let options =
+        FcsWriteOptions::new().with_text_keywords(cytiq_fcs::carried_keywords(&source.text));
+    let mut bytes = Vec::new();
+    cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
+        &mut bytes,
+        &parameters,
+        &[vec![1.0_f32], vec![3.0_f32]],
+        &options,
+    )?;
+    let derived = FcsReader::new(std::io::Cursor::new(bytes)).read()?;
+
+    assert_eq!(derived.text.get("$CYT"), Some("Aurora"));
+    assert_eq!(derived.text.get("$PROJ"), Some("study"));
+    assert_eq!(derived.text.get("$SPILLOVER"), Some("1,FL1-A,1"));
+    assert_eq!(derived.text.get("$TOT"), Some("1"));
+    assert_eq!(derived.text.get("$P1R"), Some("262144"));
+    assert_eq!(derived.text.get("$P1V"), Some("350"));
+    assert_eq!(derived.text.get("$P2S"), Some("CD3"));
+    assert_eq!(derived.text.get("$P2G"), Some("1.5"));
+
+    Ok(())
+}
+
+#[test]
+#[ignore = "writes a ~120 MB file; run with --ignored"]
+fn writes_and_reads_dataset_over_100mb() -> Result<(), Box<dyn Error>> {
+    let events = 30_000_000_usize;
+    let parameters = vec![FcsWriteParameter::new("FL1-A")];
+    #[allow(clippy::cast_precision_loss)]
+    let column = (0..events)
+        .map(|index| (index % 1024) as f32)
+        .collect::<Vec<_>>();
+    let directory = std::env::temp_dir().join(format!("cytiq-large-{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("large.fcs");
+    cytiq_fcs::write_fcs3_1_f32(&path, &parameters, &[column])?;
+
+    let dataset = FcsReader::open(&path)?.read()?;
+    std::fs::remove_dir_all(&directory)?;
+    assert_eq!(dataset.data.column(0).map(ColumnData::len), Some(events));
+    match dataset.data.column(0) {
+        Some(ColumnData::F32(values)) => assert_eq!(values[events - 1], 895.0),
+        other => panic!("expected F32 column, got {other:?}"),
+    }
+
+    Ok(())
+}

@@ -27,8 +27,10 @@ pub use crate::types::{
     ParameterDataType, ParameterWidth, TextSegment,
 };
 pub use crate::writer::{
-    FcsWriteOptions, FcsWriteParameter, write_fcs3_1_f32, write_fcs3_1_f32_to_writer,
-    write_fcs3_1_f32_to_writer_with_options, write_fcs3_1_f32_with_options,
+    FcsWriteOptions, FcsWriteParameter, carried_keywords, write_fcs3_1_f32,
+    write_fcs3_1_f32_to_writer, write_fcs3_1_f32_to_writer_with_options,
+    write_fcs3_1_f32_with_options, write_fcs3_1_f64_to_writer_with_options,
+    write_fcs3_1_f64_with_options,
 };
 
 #[derive(Debug)]

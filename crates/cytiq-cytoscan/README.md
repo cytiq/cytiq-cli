@@ -90,6 +90,8 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 - With `debug_dir`: `reference_features.csv`, `aggregate_sampling.csv`,
   `model_diagnostics.json`, `pca_coordinates.csv`, `pca_loadings.csv`,
   `feature_heatmap.csv`, `boxplot_samples.csv` and a Plotly `report.html`.
+- `strict` (CLI `--strict`) turns the "no spillover metadata" and "channel
+  not in the spillover matrix" warnings into errors.
 - `novelty` and `both` require reference inputs; `threads = Some(0)` is
   rejected.
 

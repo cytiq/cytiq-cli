@@ -104,6 +104,9 @@ pub struct CytoScanConfig {
     pub flag_method: FlagMethod,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
+    /// Fail instead of warning when a file has no spillover metadata or a
+    /// selected channel is not in it, so no file is scored on raw values.
+    pub strict: bool,
 }
 
 impl CytoScanConfig {
@@ -118,6 +121,7 @@ impl CytoScanConfig {
             flag_method: FlagMethod::Outlier,
             debug_dir: None,
             threads: None,
+            strict: false,
         }
     }
 }
@@ -315,8 +319,8 @@ impl CytoScanRunner {
             test_paths.len(),
             reference_paths.len()
         );
-        let test_files = load_files(&test_paths, &config.channels)?;
-        let reference_files = load_files(&reference_paths, &config.channels)?;
+        let test_files = load_files(&test_paths, &config.channels, config.strict)?;
+        let reference_files = load_files(&reference_paths, &config.channels, config.strict)?;
         let aggregate_files = if config.flag_method.includes_novelty() {
             &reference_files
         } else {
@@ -625,15 +629,20 @@ fn wildcard_match_inner(pattern: &[u8], value: &[u8]) -> bool {
     }
 }
 
-fn load_files(paths: &[PathBuf], channels: &[String]) -> Result<Vec<LoadedFile>, CytoScanError> {
+fn load_files(
+    paths: &[PathBuf],
+    channels: &[String],
+    strict: bool,
+) -> Result<Vec<LoadedFile>, CytoScanError> {
     parallel_try_map(paths, "CytoScan FCS preprocessing", |_, path| {
-        load_processed_file(path, channels)
+        load_processed_file(path, channels, strict)
     })
 }
 
 fn load_processed_file(
     path: &Path,
     requested_channels: &[String],
+    strict: bool,
 ) -> Result<LoadedFile, CytoScanError> {
     debug!("loading FCS file {}", path.display());
     let dataset = FcsReader::open(path)
@@ -663,7 +672,8 @@ fn load_processed_file(
     }
     let channels = resolve_channels(path, &dataset, requested_channels)?;
     let spillover = parse_spillover(path, &dataset)?;
-    let (matrix, warnings) = preprocess_matrix(path, &dataset, &channels, spillover.as_ref())?;
+    let (matrix, warnings) =
+        preprocess_matrix(path, &dataset, &channels, spillover.as_ref(), strict)?;
     Ok(LoadedFile {
         path: path.to_path_buf(),
         filename: file_name(path),
@@ -729,6 +739,7 @@ fn preprocess_matrix(
     dataset: &FcsDataset,
     channels: &[ResolvedChannel],
     spillover: Option<&SpilloverMatrix>,
+    strict: bool,
 ) -> Result<(Vec<Vec<f64>>, Vec<String>), CytoScanError> {
     let event_count = event_count(dataset);
     let mut warnings = Vec::new();
@@ -743,6 +754,11 @@ fn preprocess_matrix(
                     .into_iter()
                     .map(|value| (value / DEFAULT_ARCSINH_COFACTOR).asinh())
                     .collect();
+            } else if strict {
+                return Err(CytoScanError::ChannelNotCompensated {
+                    path: path.to_path_buf(),
+                    channel: channels[channel_index].display_name.clone(),
+                });
             } else {
                 warnings.push(format!(
                     "selected channel `{}` is not present in spillover metadata; leaving raw values unchanged",
@@ -750,6 +766,10 @@ fn preprocess_matrix(
                 ));
             }
         }
+    } else if strict {
+        return Err(CytoScanError::MissingSpillover {
+            path: path.to_path_buf(),
+        });
     } else {
         warnings.push("FCS spillover metadata was not found; selected channels were not compensated or arcsinh transformed".to_owned());
     }

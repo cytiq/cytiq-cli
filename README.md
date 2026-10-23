@@ -447,6 +447,10 @@ Rules:
   `parity/REPORT.md`)
 - inputs must be raw FCS: CytoScan compensates with the file's spillover and
   arcsinh-transforms itself, so files from `cytiq transform` are rejected
+- a file without spillover metadata, or a selected channel missing from it,
+  is scored on raw values with a warning (logged and in the `warnings`
+  column). `--strict` makes both an error, so no file in the cohort is scored
+  on a different scale
 
 Outputs are always written under `--output`:
 

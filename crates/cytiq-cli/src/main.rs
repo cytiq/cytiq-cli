@@ -40,7 +40,7 @@ use cytiq_transform::{
     TransformParameters, TransformRunResult, TransformRunner,
     parse_channel_list as parse_transform_channel_list,
 };
-use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info};
+use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info, warn};
 
 #[derive(Debug, Parser)]
 #[command(name = "cytiq")]
@@ -174,6 +174,10 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Fail instead of warning when a file has no spillover metadata or a
+        /// selected channel is not in it.
+        #[arg(long)]
+        strict: bool,
     },
     /// Transform FCS signal intensities into analysis-ready values.
     Transform {
@@ -880,6 +884,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             flag_method,
             debug_dir,
             threads,
+            strict,
         } => {
             info!(
                 "starting cytoscan: inputs={}, references={}, output={}, method={:?}, flag_method={:?}",
@@ -900,8 +905,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 flag_method: flag_method.into(),
                 debug_dir,
                 threads,
+                strict,
             };
             let result = CytoScanRunner::run(&config)?;
+            for warning in &result.diagnostics.warnings {
+                warn!("cytoscan: {warning}");
+            }
             info!(
                 "cytoscan wrote {} summary row(s) and {} feature column(s)",
                 result.summary_rows.len(),

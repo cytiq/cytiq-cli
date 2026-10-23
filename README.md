@@ -7,7 +7,9 @@ Current workspace crates:
 - `cytiq-autospill`: AutoSpill/AutoSpread workflow with optional debug plotting
 - `cytiq-autospectral`: reference-based spectral unmixing workflow
 - `cytiq-cytoscan`: CytoScan-style file-level anomaly detection
-- `cytiq-gating`: Gating-ML 2.0 gate evaluation
+- `cytiq-gating`: Gating-ML 2.0 gate evaluation and export
+- `cytiq-clean`: debris, doublet and dead-cell removal as per-event masks
+- `cytiq-density`: shared kernel density and FSC/SSC auto-gating primitives
 - `cytiq-peacoqc`: PeacoQC-style peak-based acquisition quality control
 - `cytiq-flowsom`: FlowSOM-style cytometry clustering
 - `cytiq-transform`: FCS signal transformation workflow
@@ -397,6 +399,80 @@ let mask: &[bool] = results.membership("CD3pos").unwrap();
 let count = results.count("CD3pos").unwrap();
 ```
 
+Strategies built in code (`GatingStrategy::new`) can be written back out with
+`cytiq_gating::to_gatingml`. `logicle` and `hyperlog` transformations cannot be
+written yet, because their original parameters are not kept in memory.
+
+## Clean
+
+`cytiq clean` removes debris, doublets and dead cells from one FCS file. It
+runs three independent filters. Each one fits a gate from the data, or reports
+why it could not:
+
+| Filter | Gate id | Method | Needs |
+| --- | --- | --- | --- |
+| debris | `non_debris` | FSC-A threshold at the density valley above the low-FSC debris peak | `FSC-A` |
+| singlets | `singlets` | `FSC-A / FSC-H` within `median ± k·MAD` (a wedge polygon), or `FSC-W <= median + k·MAD` | `FSC-H` or `FSC-W` |
+| viability | `live` | threshold on the compensated, arcsinh-scaled dye: density valley between dim (live) and bright (dead) events, a control-file quantile, or an explicit value | a viability channel |
+
+```bash
+cytiq clean --input sample.fcs --output clean/
+```
+
+```
+clean/
+  masks.parquet       event_id, non_debris, singlets, live, keep
+  metrics.json        per-filter status, method, fitted parameters, counts, overlaps
+  gates.gatingml.xml  the fitted gates plus `clean` (Boolean AND of the applied ones)
+  report.html         each gate drawn on its own dimensions
+```
+
+Rules:
+- events are never copied. `event_id` is the 0-based row index in the input
+  FCS, so the masks can be joined back to the original events.
+- each filter reports `applied`, `not_assessed` or `disabled` in
+  `metrics.json`, with a `reason`. The mask column of a filter that is not
+  `applied` is null rather than all-true. `keep` is the AND of the applied
+  filters only.
+- scatter alone cannot identify dead cells, so without a viability dye the
+  viability filter is `not_assessed`. It does not mark every event as live.
+- the viability channel is auto-detected from `$PnN`/`$PnS` (Live/Dead,
+  L/D, Zombie, Viability, Fixable, DAPI, 7-AAD, PI, propidium, SYTOX).
+  Several candidates are an error; pass `--viability-channel` or
+  `--no-viability`.
+- the viability axis is `fasinh` with `T = cofactor · sinh(4.5 ln 10)`, which
+  is `asinh(x / cofactor)` rescaled, after `FCS` compensation.
+  `--viability-cofactor` defaults to 150.
+- the viability threshold comes from one of three sources:
+  - by default, the valley between the dimmest population and the next one;
+    when there is no clear valley the filter is `not_assessed`
+  - `--viability-control unstained.fcs` takes its
+    `--viability-control-quantile` (default 0.995)
+  - `--viability-threshold` sets it directly, in compensated intensity units
+- adaptive debris needs a separate low-FSC peak, at most 0.25× the FSC
+  position of the next population. Without one (for example when the
+  acquisition threshold already cut the debris) the filter is `not_assessed`.
+  `--debris-mode fixed --debris-fsc-min/--debris-ssc-min` sets the thresholds
+  by hand.
+- `--debris-mode population` uses the AutoSpill FSC/SSC auto-gate around the
+  single dominant population. That suits beads and cell lines, but it drops
+  minor cell populations in mixed samples.
+- singlets are fitted on non-debris events, and viability on non-debris
+  singlets. Every gate is then evaluated on all events. Fitting uses at most
+  `--max-fit-events` (default 50,000) evenly spaced events, so results are
+  deterministic.
+- masks are computed by evaluating `gates.gatingml.xml` itself, so
+  `cytiq gate` on that file reproduces the counts exactly.
+
+Manual corrections: edit `gates.gatingml.xml` (for example in FlowJo or by
+hand), then re-apply it without refitting. The gate ids `non_debris`,
+`singlets`, `live` and `clean` are looked up again. A missing gate makes its
+filter `not_assessed`.
+
+```bash
+cytiq clean --input sample.fcs --gates clean/gates.gatingml.xml --output clean-v2/
+```
+
 ## PeacoQC
 
 `cytiq peacoqc` removes unstable acquisition regions from compensated and
@@ -571,6 +647,7 @@ real acquisitions are stored in the repository.
 | [`data/fixtures/autospill/`](data/fixtures/autospill/) | `cytiq autospill` | two single-colour controls, [`controls.csv`](data/fixtures/autospill/controls.csv), expected [spillover](data/fixtures/autospill/expected_spillover.csv) and [compensation](data/fixtures/autospill/expected_compensation.csv) matrices ([README](data/fixtures/autospill/README.md)) |
 | [`data/fixtures/autospread/`](data/fixtures/autospread/) | `cytiq autospread` | two controls, [`controls.csv`](data/fixtures/autospread/controls.csv), [`detectors.csv`](data/fixtures/autospread/detectors.csv), expected [spread matrix](data/fixtures/autospread/expected_spread.csv) ([README](data/fixtures/autospread/README.md)) |
 | [`data/fixtures/autospectral/`](data/fixtures/autospectral/) | `cytiq autospectral` | unstained + FITC + PE controls, fully stained `sample.fcs`, [`controls.csv`](data/fixtures/autospectral/controls.csv), [`samples.csv`](data/fixtures/autospectral/samples.csv) ([README](data/fixtures/autospectral/README.md)) |
+| [`data/fixtures/clean/`](data/fixtures/clean/) | `cytiq clean` tests | synthetic `sample.fcs` with known debris, doublets and dead cells, `no_viability.fcs`, an unstained `control.fcs`, and per-event [`truth.json`](data/fixtures/clean/truth.json) ([README](data/fixtures/clean/README.md)) |
 | [`data/fixtures/gating/`](data/fixtures/gating/) | `cytiq-gating` / `cytiq gate` tests | synthetic `sample.fcs`, a Gating-ML 2.0 [`gates.xml`](data/fixtures/gating/gates.xml) covering every supported gate and transform, and FlowKit [reference membership](data/fixtures/gating/flowkit_reference.json) ([README](data/fixtures/gating/README.md)) |
 | [`data/fixtures/peacoqc/`](data/fixtures/peacoqc/) | `cytiq peacoqc` tests | [`sample_events.csv`](data/fixtures/peacoqc/sample_events.csv) (turned into FCS by the CLI tests), R reference values for the [`density`](data/fixtures/peacoqc/density_reference.rs) and [`smooth.spline`](data/fixtures/peacoqc/smooth_spline_reference.rs) ports ([README](data/fixtures/peacoqc/README.md)) |
 | [`data/fixtures/transform/`](data/fixtures/transform/) | `cytiq-transform` tests | [flowCore / flowWorkspace reference values](data/fixtures/transform/flowcore_reference.rs) for logicle, hyperlog, and `flowjo_biexp` |
@@ -598,6 +675,8 @@ cytiq transform -i data/fixtures/fcs/fcs3_2_mixed.fcs -o mixed.transformed.fcs
 
 cytiq gate --input data/fixtures/gating/sample.fcs \
   --gating-ml data/fixtures/gating/gates.xml --output gate_counts.csv
+
+cytiq clean --input data/fixtures/clean/sample.fcs --output ./clean-out
 
 cytiq flowsom --input data/fixtures/autospectral/sample.fcs \
   --output sample.flowsom.csv --channels FITC,PE,AF

@@ -15,10 +15,10 @@ use log::{debug, info};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
-use crate::density::density;
 use crate::error::PeacoQcError;
 use crate::export::write_debug_artifacts;
 use crate::smooth_spline::smooth_spline_fitted;
+use cytiq_density::density;
 
 pub const DEFAULT_MAD_THRESHOLD: f64 = 6.0;
 /// `PeacoQC::MADOutliers` smooths each peak series with `smooth.spline(spar = 0.5)`.

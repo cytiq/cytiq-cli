@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::error::GatingError;
 use crate::transforms::Transform;
 
 /// How a dimension's events are compensated before transformation.
@@ -113,6 +114,21 @@ pub struct GatingStrategy {
 }
 
 impl GatingStrategy {
+    /// Build a strategy from gates in any order, validating references the
+    /// same way the `GatingML` parser does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on duplicate gate ids, dangling gate, transformation
+    /// or compensation references, or a cyclic hierarchy.
+    pub fn new(
+        gates: Vec<Gate>,
+        transforms: HashMap<String, Transform>,
+        matrices: HashMap<String, SpectrumMatrix>,
+    ) -> Result<Self, GatingError> {
+        crate::parse::build_strategy(gates, transforms, matrices)
+    }
+
     /// Gates in evaluation order.
     #[must_use]
     pub fn gates(&self) -> &[Gate] {
@@ -127,6 +143,18 @@ impl GatingStrategy {
     #[must_use]
     pub fn transform(&self, id: &str) -> Option<&Transform> {
         self.transforms.get(id)
+    }
+
+    /// Transformations keyed by id.
+    #[must_use]
+    pub const fn transforms(&self) -> &HashMap<String, Transform> {
+        &self.transforms
+    }
+
+    /// Spectrum matrices keyed by id.
+    #[must_use]
+    pub const fn matrices(&self) -> &HashMap<String, SpectrumMatrix> {
+        &self.matrices
     }
 
     #[must_use]

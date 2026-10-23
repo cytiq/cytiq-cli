@@ -17,6 +17,11 @@ algorithmic implementations are:
   `cytiq flowsom`
 - Gating-ML 2.0 gate evaluation in `crates/cytiq-gating`, exposed through
   `cytiq gate`
+- debris/doublet/dead-cell cleaning in `crates/cytiq-clean`, exposed through
+  `cytiq clean`. Its `--debris-mode population` reuses the AutoSpill FSC/SSC
+  auto-gate (cite AutoSpill), and its gates are exported as Gating-ML 2.0
+  (cite Gating-ML 2.0). The other filters are standard density-valley and
+  median/MAD heuristics without a dedicated publication.
 
 ## AutoSpill
 

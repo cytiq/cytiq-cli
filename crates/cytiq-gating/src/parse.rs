@@ -70,7 +70,7 @@ pub fn parse_gatingml(xml: &str) -> Result<GatingStrategy, GatingError> {
     build_strategy(gates, transforms, matrices)
 }
 
-fn build_strategy(
+pub(crate) fn build_strategy(
     gates: Vec<Gate>,
     transforms: HashMap<String, Transform>,
     matrices: HashMap<String, SpectrumMatrix>,

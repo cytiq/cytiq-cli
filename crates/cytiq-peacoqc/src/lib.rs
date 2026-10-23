@@ -7,7 +7,6 @@
 //! Upstream R reference implementation:
 //! <https://github.com/saeyslab/PeacoQC>
 
-mod density;
 mod error;
 mod export;
 mod runner;

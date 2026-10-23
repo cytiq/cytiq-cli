@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::OnceLock;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use cytiq_autospectral::{
     AutoSpectralConfig, AutoSpectralRunner,
     read_controls_manifest as read_autospectral_controls_manifest,
@@ -14,6 +14,11 @@ use cytiq_autospill::{
     AutospillConfig, AutospillRunner, AutospreadConfig, AutospreadRunner, MatrixKind,
     export_matrix, export_spread_matrix, read_controls_manifest, read_detectors_manifest,
     read_transform_manifest,
+};
+use cytiq_clean::{
+    ChannelOverrides, CleanConfig, CleanRunner, DEFAULT_FSC_A, DEFAULT_FSC_H, DEFAULT_FSC_W,
+    DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, DEFAULT_VIABILITY_COFACTOR,
+    DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, DebrisMode, FilterStatus, ViabilityConfig,
 };
 use cytiq_cytoscan::{
     CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
@@ -235,6 +240,9 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+    /// Remove debris, doublets and dead cells; writes per-event masks,
+    /// metrics, Gating-ML gates and an HTML report.
+    Clean(CleanArgs),
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
     Flowsom {
         #[arg(long)]
@@ -253,6 +261,115 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+}
+
+#[derive(Debug, Args)]
+struct CleanArgs {
+    /// Input FCS file.
+    #[arg(long)]
+    input: PathBuf,
+    /// Output directory for masks.parquet, metrics.json, gates.gatingml.xml
+    /// and report.html.
+    #[arg(long)]
+    output: PathBuf,
+    /// Re-apply these Gating-ML gates (e.g. an edited gates.gatingml.xml)
+    /// instead of fitting new ones.
+    #[arg(long)]
+    gates: Option<PathBuf>,
+    #[arg(long, default_value = DEFAULT_FSC_A)]
+    fsc: String,
+    #[arg(long, default_value = DEFAULT_FSC_H)]
+    fsc_h: String,
+    #[arg(long, default_value = DEFAULT_FSC_W)]
+    fsc_w: String,
+    #[arg(long, default_value = DEFAULT_SSC_A)]
+    ssc: String,
+    #[arg(long, value_enum, default_value_t = CliDebrisMode::Adaptive)]
+    debris_mode: CliDebrisMode,
+    /// Minimum FSC for `--debris-mode fixed`.
+    #[arg(long, value_parser = parse_finite_f64)]
+    debris_fsc_min: Option<f64>,
+    /// Minimum SSC for `--debris-mode fixed`.
+    #[arg(long, value_parser = parse_finite_f64)]
+    debris_ssc_min: Option<f64>,
+    /// Singlet band half-width, in MADs of the FSC-A/FSC-H ratio (or FSC-W).
+    #[arg(long, value_parser = parse_positive_f64, default_value_t = DEFAULT_SINGLET_MAD)]
+    singlet_mad: f64,
+    /// Viability dye channel; auto-detected from $PnN/$PnS when omitted.
+    #[arg(long, conflicts_with = "no_viability")]
+    viability_channel: Option<String>,
+    /// Skip the viability filter.
+    #[arg(long)]
+    no_viability: bool,
+    /// Unstained/FMO control FCS; its upper quantile sets the live/dead threshold.
+    #[arg(long, conflicts_with = "viability_threshold")]
+    viability_control: Option<PathBuf>,
+    #[arg(long, value_parser = parse_positive_f64, default_value_t = DEFAULT_VIABILITY_CONTROL_QUANTILE)]
+    viability_control_quantile: f64,
+    /// Explicit live/dead threshold in compensated intensity units.
+    #[arg(long, value_parser = parse_finite_f64)]
+    viability_threshold: Option<f64>,
+    /// Arcsinh cofactor for the viability channel.
+    #[arg(long, value_parser = parse_positive_f64, default_value_t = DEFAULT_VIABILITY_COFACTOR)]
+    viability_cofactor: f64,
+    /// Fit gates on at most this many evenly spaced events.
+    #[arg(long, default_value_t = DEFAULT_MAX_FIT_EVENTS)]
+    max_fit_events: usize,
+    /// Worker thread limit; defaults to all available logical CPUs.
+    #[arg(long, value_parser = parse_threads)]
+    threads: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliDebrisMode {
+    /// FSC-A threshold at the density valley above the debris peak.
+    Adaptive,
+    /// FSC/SSC auto-gate around the dominant population (beads, cell lines).
+    Population,
+    /// Thresholds from --debris-fsc-min / --debris-ssc-min.
+    Fixed,
+}
+
+impl From<CliDebrisMode> for DebrisMode {
+    fn from(value: CliDebrisMode) -> Self {
+        match value {
+            CliDebrisMode::Adaptive => Self::Adaptive,
+            CliDebrisMode::Population => Self::Population,
+            CliDebrisMode::Fixed => Self::Fixed,
+        }
+    }
+}
+
+impl From<CleanArgs> for CleanConfig {
+    fn from(args: CleanArgs) -> Self {
+        Self {
+            input: args.input,
+            output: args.output,
+            channels: ChannelOverrides {
+                fsc_a: args.fsc,
+                fsc_h: args.fsc_h,
+                fsc_w: args.fsc_w,
+                ssc_a: args.ssc,
+                viability: args.viability_channel,
+                no_viability: args.no_viability,
+            },
+            debris: DebrisConfig {
+                mode: args.debris_mode.into(),
+                fsc_min: args.debris_fsc_min,
+                ssc_min: args.debris_ssc_min,
+            },
+            singlet_mad: args.singlet_mad,
+            viability: ViabilityConfig {
+                cofactor: args.viability_cofactor,
+                control: args.viability_control,
+                control_quantile: args.viability_control_quantile,
+                threshold: args.viability_threshold,
+            },
+            gates: args.gates,
+            max_fit_events: args.max_fit_events,
+            threads: args.threads,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -787,6 +904,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         }
+        Commands::Clean(args) => {
+            info!(
+                "starting clean: input={}, output={}",
+                args.input.display(),
+                args.output.display()
+            );
+            let result = CleanRunner::run(&args.into())?;
+            let metrics = &result.metrics;
+            for (name, report) in [
+                ("debris", &metrics.filters.debris),
+                ("singlets", &metrics.filters.singlets),
+                ("viability", &metrics.filters.viability),
+            ] {
+                match report.status {
+                    FilterStatus::Applied => info!(
+                        "{name}: removed {} event(s)",
+                        report.removed.unwrap_or_default()
+                    ),
+                    _ => info!(
+                        "{name}: {:?} ({})",
+                        report.status,
+                        report.reason.as_deref().unwrap_or_default()
+                    ),
+                }
+            }
+            info!(
+                "clean kept {} of {} event(s); wrote {}",
+                metrics.kept,
+                metrics.event_count,
+                result.output.display()
+            );
+            Ok(())
+        }
         Commands::Flowsom {
             input,
             output,
@@ -886,6 +1036,17 @@ fn parse_positive_f64(raw: &str) -> Result<f64, String> {
         Ok(value)
     } else {
         Err("value must be finite and greater than zero".to_owned())
+    }
+}
+
+fn parse_finite_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err("value must be finite".to_owned())
     }
 }
 

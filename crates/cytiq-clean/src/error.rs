@@ -1,0 +1,52 @@
+use std::path::PathBuf;
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CleanError {
+    #[error("failed to read FCS input `{path}`: {source}")]
+    FcsRead {
+        path: PathBuf,
+        #[source]
+        source: cytiq_fcs::Error,
+    },
+    #[error("channel `{name}` was not found in `{path}`")]
+    MissingChannel { name: String, path: PathBuf },
+    #[error(
+        "several viability channel candidates found ({candidates}); \
+         pass --viability-channel or --no-viability"
+    )]
+    AmbiguousViabilityChannel { candidates: String },
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
+    #[error(transparent)]
+    Gating(#[from] cytiq_gating::GatingError),
+    #[error("failed to read GatingML `{path}`: {source}")]
+    GatingMlRead {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to write `{path}`: {source}")]
+    OutputWrite {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to serialize JSON `{path}`: {source}")]
+    JsonWrite {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("failed to write parquet `{path}`: {message}")]
+    ParquetWrite { path: PathBuf, message: String },
+    #[error("threads must be greater than zero")]
+    InvalidThreads,
+    #[error("failed to build rayon thread pool with {threads} threads: {source}")]
+    ThreadPoolBuild {
+        threads: usize,
+        #[source]
+        source: rayon::ThreadPoolBuildError,
+    },
+}

@@ -31,12 +31,13 @@ pub enum GatingError {
     #[error("invalid signal state metadata: {0}")]
     SignalState(#[source] cytiq_fcs::Error),
     #[error(
-        "gate `{gate}` would {action} channel `{channel}` a second time: the FCS was already transformed by `cytiq transform`; gate the raw FCS or drop the step from the GatingML"
+        "gate `{gate}` would {action} channel `{channel}` a second time: the FCS was already {state}; gate the raw FCS or drop the step from the GatingML"
     )]
-    AlreadyTransformed {
+    AlreadyProcessed {
         gate: String,
         channel: String,
         action: &'static str,
+        state: &'static str,
     },
     #[error("compensation `{reference}` is invalid: {source}")]
     Compensation {

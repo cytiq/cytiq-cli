@@ -20,6 +20,7 @@ use cytiq_clean::{
     DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, DEFAULT_VIABILITY_COFACTOR,
     DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, DebrisMode, FilterStatus, ViabilityConfig,
 };
+use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
 use cytiq_cytoscan::{
     CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
     parse_channel_list as parse_cytoscan_channel_list,
@@ -260,6 +261,26 @@ enum Commands {
         #[arg(long)]
         overwrite: bool,
     },
+    /// Apply a spillover or compensation matrix to FCS events; also writes a
+    /// raw detector-margin mask next to the output.
+    Compensate {
+        /// Input FCS file with raw (uncompensated, untransformed) values.
+        #[arg(long)]
+        input: PathBuf,
+        /// Output FCS file; `<output stem>.masks.parquet` is written beside it.
+        #[arg(long)]
+        output: PathBuf,
+        /// Square matrix CSV/TSV as written by `cytiq autospill`; defaults to
+        /// the input's `$SPILLOVER` keyword.
+        #[arg(long, requires = "matrix_kind")]
+        matrix: Option<PathBuf>,
+        /// What `--matrix` holds.
+        #[arg(long, value_enum, requires = "matrix")]
+        matrix_kind: Option<CliMatrixKind>,
+        /// Replace existing output files.
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Remove debris, doublets and dead cells; writes per-event masks,
     /// metrics, Gating-ML gates and an HTML report.
     Clean(CleanArgs),
@@ -281,6 +302,15 @@ enum Commands {
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
     },
+}
+
+impl From<CliMatrixKind> for CompensateMatrixKind {
+    fn from(value: CliMatrixKind) -> Self {
+        match value {
+            CliMatrixKind::Spillover => Self::Spillover,
+            CliMatrixKind::Compensation => Self::Compensation,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -940,6 +970,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.gates.len(),
                 result.event_count,
                 result.output.display()
+            );
+            Ok(())
+        }
+        Commands::Compensate {
+            input,
+            output,
+            matrix,
+            matrix_kind,
+            overwrite,
+        } => {
+            info!(
+                "starting compensate: input={}, output={}",
+                input.display(),
+                output.display()
+            );
+            let config = CompensateConfig {
+                input,
+                output,
+                matrix: matrix.zip(matrix_kind.map(CompensateMatrixKind::from)),
+                overwrite,
+            };
+            let result = CompensateRunner::run(&config)?;
+            info!(
+                "compensated {} channel(s) over {} event(s); {} on a raw detector margin; wrote {} and {}",
+                result.channels.len(),
+                result.event_count,
+                result.margin_event_count,
+                result.output.display(),
+                result.masks.display()
             );
             Ok(())
         }

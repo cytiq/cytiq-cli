@@ -1,15 +1,18 @@
 //! Signal state recorded by cytiq stages, so later stages can refuse to
 //! transform or compensate values twice.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::FcsError;
 use crate::types::FcsText;
 
 /// Written by `cytiq transform`; its JSON value describes the transform.
 pub const TRANSFORM_KEYWORD: &str = "CYTIQ_TRANSFORM";
-/// The source spillover matrix of a transformed file. It no longer applies to
-/// the stored values, so it is kept under a non-standard keyword.
+/// Written by `cytiq compensate`; its JSON value is a [`CompensationState`].
+pub const COMPENSATION_KEYWORD: &str = "CYTIQ_COMPENSATION";
+/// The source spillover matrix of a transformed or compensated file. It no
+/// longer applies to the stored values, so it is kept under a non-standard
+/// keyword.
 pub const SOURCE_SPILLOVER_KEYWORD: &str = "CYTIQ_SOURCE_SPILL";
 
 /// Transform recorded in `CYTIQ_TRANSFORM`.
@@ -62,4 +65,46 @@ pub fn transform_state(text: &FcsText) -> Result<Option<TransformState>, FcsErro
             .flat_map(|file| file.channels)
             .collect(),
     }))
+}
+
+/// Compensation recorded in `CYTIQ_COMPENSATION`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompensationState {
+    /// `fcs` for the file's own spillover keyword, otherwise the matrix file.
+    pub source: String,
+    /// Channels (`$PnN`) whose values were compensated.
+    pub channels: Vec<String>,
+}
+
+impl CompensationState {
+    #[must_use]
+    pub fn covers(&self, channel: &str) -> bool {
+        self.channels.iter().any(|name| name == channel)
+    }
+
+    /// The `CYTIQ_COMPENSATION` keyword value.
+    ///
+    /// # Panics
+    ///
+    /// Never: the state holds only strings.
+    #[must_use]
+    pub fn to_keyword_value(&self) -> String {
+        serde_json::to_string(self).expect("compensation state serializes to JSON")
+    }
+}
+
+/// The compensation a dataset went through, if any.
+///
+/// # Errors
+///
+/// Returns an error when `CYTIQ_COMPENSATION` is present but cannot be parsed.
+pub fn compensation_state(text: &FcsText) -> Result<Option<CompensationState>, FcsError> {
+    text.get(COMPENSATION_KEYWORD)
+        .map(|value| {
+            serde_json::from_str(value).map_err(|_| FcsError::InvalidKeywordValue {
+                key: COMPENSATION_KEYWORD.to_owned(),
+                value: value.to_owned(),
+            })
+        })
+        .transpose()
 }

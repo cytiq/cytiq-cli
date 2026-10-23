@@ -526,6 +526,7 @@ dependencies = [
  "cytiq-autospectral",
  "cytiq-autospill",
  "cytiq-clean",
+ "cytiq-compensate",
  "cytiq-cytoscan",
  "cytiq-fcs",
  "cytiq-flowsom",
@@ -538,6 +539,17 @@ dependencies = [
  "parquet",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "cytiq-compensate"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "cytiq-mask",
+ "log",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

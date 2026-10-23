@@ -3,6 +3,7 @@ members = [
     "crates/cytiq-autospectral",
     "crates/cytiq-autospill",
     "crates/cytiq-clean",
+    "crates/cytiq-compensate",
     "crates/cytiq-cli",
     "crates/cytiq-cytoscan",
     "crates/cytiq-density",

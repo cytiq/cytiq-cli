@@ -156,16 +156,18 @@ impl GatingStrategy {
         })
     }
 
-    /// Refuse to transform or compensate channels that `cytiq transform`
-    /// already transformed. Its output keeps the source spillover matrix only
-    /// as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference is wrong
-    /// there even though `$SPILLOVER` is absent.
+    /// Refuse to transform or compensate channels that `cytiq transform` or
+    /// `cytiq compensate` already processed. Both keep the source spillover
+    /// matrix only as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference
+    /// is wrong there even though `$SPILLOVER` is absent.
     fn ensure_single_processing(&self, dataset: &FcsDataset) -> Result<(), GatingError> {
-        let Some(state) =
-            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?
-        else {
+        let transform =
+            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?;
+        let compensation =
+            cytiq_fcs::compensation_state(&dataset.text).map_err(GatingError::SignalState)?;
+        if transform.is_none() && compensation.is_none() {
             return Ok(());
-        };
+        }
         let had_spillover = dataset
             .text
             .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
@@ -178,23 +180,32 @@ impl GatingStrategy {
                         dataset.parameters[index].name.as_str()
                     });
                 // Files from older cytiq versions do not list their channels.
-                if !(state.channels.is_empty() || state.covers(channel)) {
-                    continue;
-                }
-                let action = if dimension.transform.is_some() {
-                    Some("transform")
-                } else {
-                    match &dimension.compensation {
-                        CompensationRef::Uncompensated => None,
-                        CompensationRef::Fcs => had_spillover.then_some("compensate"),
-                        CompensationRef::Matrix(_) => Some("compensate"),
-                    }
+                let transformed = transform
+                    .as_ref()
+                    .is_some_and(|state| state.channels.is_empty() || state.covers(channel));
+                let compensated = compensation
+                    .as_ref()
+                    .is_some_and(|state| state.covers(channel));
+                let applies_compensation = match &dimension.compensation {
+                    CompensationRef::Uncompensated => false,
+                    CompensationRef::Fcs => had_spillover,
+                    CompensationRef::Matrix(_) => true,
                 };
-                if let Some(action) = action {
-                    return Err(GatingError::AlreadyTransformed {
+                let conflict = if transformed && dimension.transform.is_some() {
+                    Some(("transform", "transformed by `cytiq transform`"))
+                } else if transformed && applies_compensation {
+                    Some(("compensate", "transformed by `cytiq transform`"))
+                } else if compensated && applies_compensation {
+                    Some(("compensate", "compensated by `cytiq compensate`"))
+                } else {
+                    None
+                };
+                if let Some((action, state)) = conflict {
+                    return Err(GatingError::AlreadyProcessed {
                         gate: gate.id.clone(),
                         channel: channel.to_owned(),
                         action,
+                        state,
                     });
                 }
             }
@@ -439,7 +450,7 @@ impl<'a> Evaluator<'a> {
         if let Some(column) = self.raw.get(&parameter) {
             return Arc::clone(column);
         }
-        let column = Arc::new(preprocess_raw(self.dataset, parameter));
+        let column = Arc::new(cytiq_fcs::linear_values(self.dataset, parameter));
         self.raw.insert(parameter, Arc::clone(&column));
         column
     }
@@ -451,70 +462,4 @@ fn compensation_name(reference: &CompensationRef) -> String {
         CompensationRef::Fcs => "FCS".to_owned(),
         CompensationRef::Matrix(id) => id.clone(),
     }
-}
-
-/// Apply `$PnE` anti-log scaling, `$PnG` gain and `$TIMESTEP`, as `flowio` does.
-fn preprocess_raw(dataset: &FcsDataset, parameter_index: usize) -> Vec<f64> {
-    let parameter = &dataset.parameters[parameter_index];
-    let mut values = dataset
-        .data
-        .column(parameter_index)
-        .expect("every parameter has a data column")
-        .to_f64_vec();
-    let number = parameter.index;
-    let keyword_number = |suffix: &str| {
-        keyword(dataset, &format!("$P{number}{suffix}"))
-            .and_then(|value| value.trim().parse::<f64>().ok())
-    };
-
-    let is_time = parameter.name.eq_ignore_ascii_case("time");
-    if is_time
-        && let Some(step) =
-            keyword(dataset, "$TIMESTEP").and_then(|value| value.trim().parse::<f64>().ok())
-    {
-        for value in &mut values {
-            *value *= step;
-        }
-    }
-
-    let (decades, log_zero) = keyword(dataset, &format!("$P{number}E"))
-        .and_then(|value| {
-            let (decades, log_zero) = value.split_once(',')?;
-            Some((
-                decades.trim().parse::<f64>().ok()?,
-                log_zero.trim().parse::<f64>().ok()?,
-            ))
-        })
-        .unwrap_or((0.0, 0.0));
-    if decades > 0.0
-        && let Some(range) = keyword_number("R")
-    {
-        // The FCS standard says to use 1 for an invalid log(0) value of 0.
-        let log_zero = if log_zero > 0.0 { log_zero } else { 1.0 };
-        for value in &mut values {
-            *value = 10_f64.powf(decades * *value / range) * log_zero;
-        }
-    }
-
-    // flowio ignores gain on the time channel; a gain of 0 means "no gain".
-    let gain = if is_time {
-        None
-    } else {
-        keyword_number("G").filter(|gain| (*gain - 1.0).abs() > 0.0 && gain.abs() > 0.0)
-    };
-    if let Some(gain) = gain {
-        for value in &mut values {
-            *value /= gain;
-        }
-    }
-    values
-}
-
-fn keyword<'a>(dataset: &'a FcsDataset, key: &str) -> Option<&'a str> {
-    dataset.text.get(key).or_else(|| {
-        dataset
-            .text
-            .iter()
-            .find_map(|(candidate, value)| candidate.eq_ignore_ascii_case(key).then_some(value))
-    })
 }

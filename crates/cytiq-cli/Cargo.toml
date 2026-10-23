@@ -12,9 +12,11 @@ clap = { version = "4.5.38", features = ["derive"] }
 cytiq-autospectral = { path = "../cytiq-autospectral" }
 cytiq-autospill = { path = "../cytiq-autospill" }
 cytiq-clean = { path = "../cytiq-clean" }
+cytiq-compensate = { path = "../cytiq-compensate" }
 cytiq-cytoscan = { path = "../cytiq-cytoscan" }
 cytiq-flowsom = { path = "../cytiq-flowsom" }
 cytiq-gating = { path = "../cytiq-gating" }
+cytiq-mask = { path = "../cytiq-mask" }
 cytiq-meta = { path = "../cytiq-meta" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
 cytiq-transform = { path = "../cytiq-transform" }

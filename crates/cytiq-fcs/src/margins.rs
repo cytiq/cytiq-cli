@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::FcsError;
-use crate::signal::transform_state;
+use crate::signal::{compensation_state, transform_state};
 use crate::types::{FcsText, Parameter};
 
 pub const MARGINS_KEYWORD: &str = "CYTIQ_MARGINS";
@@ -101,24 +101,29 @@ pub fn encode_margin_bounds(bounds: &BTreeMap<String, MarginBounds>) -> String {
 
 /// Margin bounds of every parameter whose bounds are known in the space of
 /// its stored values: recorded by an earlier cytiq stage, or taken from raw
-/// acquisition keywords for channels no cytiq transform has touched. A
-/// transformed channel without recorded bounds is left out.
+/// acquisition keywords for channels no cytiq transform or compensation has
+/// touched. Such a channel without recorded bounds is left out.
 ///
 /// # Errors
 ///
-/// Returns an error when `CYTIQ_MARGINS` or `CYTIQ_TRANSFORM` is present but
-/// invalid.
+/// Returns an error when `CYTIQ_MARGINS`, `CYTIQ_TRANSFORM` or
+/// `CYTIQ_COMPENSATION` is present but invalid.
 pub fn dataset_margin_bounds(
     text: &FcsText,
     parameters: &[Parameter],
 ) -> Result<BTreeMap<String, MarginBounds>, FcsError> {
     let recorded = recorded_margin_bounds(text)?.unwrap_or_default();
     let transform = transform_state(text)?;
+    let compensation = compensation_state(text)?;
     // Files from older cytiq versions do not list their transformed channels.
+    // Compensation mixes channels, so raw bounds no longer describe them.
     let transformed = |name: &str| {
         transform
             .as_ref()
             .is_some_and(|state| state.channels.is_empty() || state.covers(name))
+            || compensation
+                .as_ref()
+                .is_some_and(|state| state.covers(name))
     };
 
     Ok(parameters

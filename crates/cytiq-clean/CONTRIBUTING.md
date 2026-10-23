@@ -15,7 +15,8 @@ this crate.
 - `src/viability.rs` — viability filter (`fasinh` axis, valley / control / threshold).
 - `src/filter.rs` — shared types: gate ids, `FilterStatus`, `FilterReport`,
   `FilterFit`, deterministic `sample_indices`.
-- `src/export.rs` — writes `masks.parquet`, `metrics.json`, `gates.gatingml.xml`.
+- `src/export.rs` — writes `masks.parquet` (through `cytiq-mask`),
+  `metrics.json`, `gates.gatingml.xml`.
 - `src/report.rs` — `report.html` (Plotly, at most 10,000 plotted events).
 - `src/error.rs` — `CleanError` (`thiserror`).
 

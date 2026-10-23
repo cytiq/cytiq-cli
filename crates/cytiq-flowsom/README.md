@@ -53,7 +53,7 @@ println!("{} metaclusters", result.summary.metrics.metaclusters);
 | Item | Purpose |
 | --- | --- |
 | `FlowSomRunner::run(input, output, &FlowSomConfig)` | Run the pipeline and write the assignment CSV |
-| `FlowSomConfig` | `channels`, optional `debug_dir`, optional `threads` |
+| `FlowSomConfig` | `channels`, optional `debug_dir`, optional `threads`, `masks` |
 | `FlowSomResult` | `summary`, per-event `assignments`, `nodes`, `metaclusters` |
 | `FlowSomSummary`, `FlowSomParameters`, `FlowSomMetrics`, `FlowSomScaleSummary` | Run summary, written as `summary.json` |
 | `FlowSomAssignment`, `FlowSomNode`, `FlowSomMetacluster` | Output rows |
@@ -63,18 +63,22 @@ println!("{} metaclusters", result.summary.metrics.metaclusters);
 
 ## Output rules
 
-- `output` is a CSV with one row per event: `event_index` (0-based row in the
-  input file), `flowsom_node` (1..=100) and `flowsom_metacluster` (1..=20).
-  The file is created or replaced.
+- `output` is a CSV with one row per clustered event: `event_index` (0-based
+  row in the input file), `source_event_id` (0-based row in the raw file, from
+  `Original_ID` when present), `flowsom_node` (1..=100) and
+  `flowsom_metacluster` (1..=20). The file is created or replaced.
+- With `masks` (CLI `--mask`), only events every mask keeps are scaled,
+  trained on, assigned and listed. A mask that keeps nothing is an error.
 - With `debug_dir`: `summary.json`, `nodes.csv` (grid position, metacluster,
   event count, codebook), `metaclusters.csv` and a Plotly `report.html`.
-- When the input is a PeacoQC output, map `event_index` back to the original
-  file through its `Original_ID` column (see the root README `## Meta`).
+- Join results from different stages on `source_event_id`, not on
+  `event_index`, which counts rows of this input only.
 - Empty inputs, missing channels and `threads = Some(0)` are errors.
 
 ## Dependencies
 
-- [`cytiq-fcs`](../cytiq-fcs) for reading
+- [`cytiq-fcs`](../cytiq-fcs) for reading and event lineage
+- [`cytiq-mask`](../cytiq-mask) for `--mask`
 - `rayon`, `csv`, `serde` / `serde_json`, `plotly`
 
 ## Tests

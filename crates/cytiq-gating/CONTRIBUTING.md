@@ -12,11 +12,12 @@ this crate.
 - `src/parse.rs` — Gating-ML 2.0 XML parser (`roxmltree`) and
   `build_strategy`: reference validation and topological ordering.
 - `src/write.rs` — `to_gatingml`, the inverse of the parser.
-- `src/evaluate.rs` — `gate_sample`, raw pre-processing, compensation and
-  transform caching, `GatingResults`.
+- `src/evaluate.rs` — `gate_sample` / `gate_sample_masked`, the signal-state
+  guard, compensation and transform caching, `GatingResults`.
 - `src/geometry.rs` — rectangle, polygon and ellipsoid membership predicates.
 - `src/transforms.rs` — `Transform` (`flin`, `flog`, `fasinh`, `logicle`, `hyperlog`).
-- `src/runner.rs` — `GatingRunner`: the `cytiq gate` command and CSV/JSON output.
+- `src/runner.rs` — `GatingRunner`: the `cytiq gate` command, event masks,
+  CSV/JSON counts and the membership Parquet.
 - `src/error.rs` — `GatingError` (`thiserror`).
 
 ## Invariants
@@ -31,7 +32,10 @@ this crate.
   document order. Construction (`parse_gatingml`, `GatingStrategy::new`) must
   reject duplicate ids, dangling references and cycles.
 - Raw pre-processing (`$PnE`, `$PnG`, `$TIMESTEP` on `Time`) happens before
-  compensation, as in FlowKit.
+  compensation, as in FlowKit. It lives in `cytiq_fcs::linear_values`, shared
+  with `cytiq-compensate`, so both compensate identically.
+- An event mask is ANDed into every gate's membership before the parent
+  intersection, so complements (`not`) never include masked events.
 - `to_gatingml` is deterministic (transforms and matrices sorted by id, gates
   in evaluation order) and uses shortest round-trip number formatting, so
   `parse_gatingml(to_gatingml(s))` yields the same strategy. `cytiq-clean`

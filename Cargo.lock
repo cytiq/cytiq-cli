@@ -504,13 +504,11 @@ dependencies = [
 name = "cytiq-clean"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "cytiq-density",
  "cytiq-fcs",
  "cytiq-gating",
+ "cytiq-mask",
  "log",
- "parquet",
  "plotly",
  "rayon",
  "serde",
@@ -528,10 +526,12 @@ dependencies = [
  "cytiq-autospectral",
  "cytiq-autospill",
  "cytiq-clean",
+ "cytiq-compensate",
  "cytiq-cytoscan",
  "cytiq-fcs",
  "cytiq-flowsom",
  "cytiq-gating",
+ "cytiq-mask",
  "cytiq-meta",
  "cytiq-peacoqc",
  "cytiq-transform",
@@ -539,6 +539,17 @@ dependencies = [
  "parquet",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "cytiq-compensate"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-fcs",
+ "cytiq-mask",
+ "log",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -582,6 +593,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "cytiq-fcs",
+ "cytiq-mask",
  "log",
  "plotly",
  "rayon",
@@ -596,12 +608,25 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "cytiq-fcs",
+ "cytiq-mask",
  "cytiq-transform",
  "log",
  "rayon",
  "roxmltree",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "cytiq-mask"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "cytiq-fcs",
+ "log",
+ "parquet",
  "thiserror 2.0.21",
 ]
 
@@ -621,13 +646,11 @@ dependencies = [
 name = "cytiq-peacoqc"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "csv",
  "cytiq-density",
  "cytiq-fcs",
+ "cytiq-mask",
  "log",
- "parquet",
  "plotly",
  "rayon",
  "serde",

@@ -38,6 +38,9 @@ pub struct FlowSomConfig {
     pub channels: Vec<String>,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
+    /// Event masks (`masks.parquet`); only events every mask keeps are
+    /// scaled, trained on and assigned.
+    pub masks: Vec<PathBuf>,
 }
 
 impl FlowSomConfig {
@@ -47,6 +50,7 @@ impl FlowSomConfig {
             channels,
             debug_dir: None,
             threads: None,
+            masks: Vec::new(),
         }
     }
 }
@@ -106,7 +110,10 @@ pub struct FlowSomScaleSummary {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FlowSomAssignment {
+    /// 0-based row in the input FCS.
     pub event_index: usize,
+    /// 0-based row in the raw acquisition (`Original_ID - 1` when present).
+    pub source_event_id: u64,
     pub flowsom_node: usize,
     pub flowsom_metacluster: usize,
 }
@@ -206,8 +213,9 @@ impl FlowSomRunner {
         config: &FlowSomConfig,
     ) -> Result<FlowSomResult, FlowSomError> {
         let dataset = load_dataset(input)?;
-        let events = event_count(&dataset);
-        let channels = resolve_channels(input, &dataset, &config.channels)?;
+        let rows = selected_rows(input, &dataset, &config.masks)?;
+        let events = rows.len();
+        let channels = resolve_channels(input, &dataset, &config.channels, &rows)?;
         let matrix = channel_matrix(&channels, events);
         let scaled = scale_matrix(matrix, &channels);
         info!(
@@ -219,7 +227,17 @@ impl FlowSomRunner {
 
         let trained = train_som(&scaled.values);
         let node_metaclusters = hierarchical_metaclusters(&trained.codebook, FLOWSOM_METACLUSTERS);
-        let assignments = build_assignments(&trained.assignments, &node_metaclusters);
+        let source_event_ids =
+            cytiq_fcs::source_event_ids(&dataset).map_err(|source| FlowSomError::FcsRead {
+                path: input.to_path_buf(),
+                source,
+            })?;
+        let assignments = build_assignments(
+            &trained.assignments,
+            &node_metaclusters,
+            &rows,
+            source_event_ids.as_deref(),
+        );
         let nodes = build_nodes(&trained.codebook, &trained.node_counts, &node_metaclusters);
         let metaclusters = build_metaclusters(&node_metaclusters, &trained.node_counts);
         let summary = build_summary(
@@ -314,10 +332,39 @@ fn load_dataset(path: &Path) -> Result<FcsDataset, FlowSomError> {
     Ok(dataset)
 }
 
+/// Input rows to cluster: every row, or those every event mask keeps.
+fn selected_rows(
+    path: &Path,
+    dataset: &FcsDataset,
+    masks: &[PathBuf],
+) -> Result<Vec<usize>, FlowSomError> {
+    let Some(mask) = cytiq_mask::read_combined(masks)? else {
+        return Ok((0..event_count(dataset)).collect());
+    };
+    let rows = mask
+        .keep_for(dataset)?
+        .iter()
+        .enumerate()
+        .filter_map(|(row, keep)| keep.then_some(row))
+        .collect::<Vec<_>>();
+    info!(
+        "flowsom: event mask keeps {} of {} event(s)",
+        rows.len(),
+        event_count(dataset)
+    );
+    if rows.is_empty() {
+        return Err(FlowSomError::NoMaskedEvents {
+            path: path.to_path_buf(),
+        });
+    }
+    Ok(rows)
+}
+
 fn resolve_channels(
     path: &Path,
     dataset: &FcsDataset,
     requested_channels: &[String],
+    rows: &[usize],
 ) -> Result<Vec<ResolvedChannel>, FlowSomError> {
     if requested_channels.is_empty() {
         return Err(FlowSomError::EmptyChannels);
@@ -339,12 +386,13 @@ fn resolve_channels(
                 });
             };
             let parameter = dataset.parameters[parameter_index].clone();
-            let values = column_to_f64(
+            let column = column_to_f64(
                 dataset
                     .data
                     .column(parameter_index)
                     .expect("parameter index should have a data column"),
             );
+            let values = rows.iter().map(|row| column[*row]).collect::<Vec<_>>();
             if values.iter().any(|value| !value.is_finite()) {
                 return Err(FlowSomError::NonFiniteChannel {
                     path: path.to_path_buf(),
@@ -664,12 +712,19 @@ fn node_pair_distances(codebook: &[Vec<f64>]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-fn build_assignments(assignments: &[usize], node_metaclusters: &[usize]) -> Vec<FlowSomAssignment> {
+/// `assignments[i]` is the node of input row `rows[i]`.
+fn build_assignments(
+    assignments: &[usize],
+    node_metaclusters: &[usize],
+    rows: &[usize],
+    source_event_ids: Option<&[u64]>,
+) -> Vec<FlowSomAssignment> {
     assignments
         .par_iter()
-        .enumerate()
-        .map(|(event_index, node)| FlowSomAssignment {
+        .zip(rows)
+        .map(|(node, &event_index)| FlowSomAssignment {
             event_index,
+            source_event_id: source_event_ids.map_or(event_index as u64, |ids| ids[event_index]),
             flowsom_node: node + 1,
             flowsom_metacluster: node_metaclusters[*node],
         })

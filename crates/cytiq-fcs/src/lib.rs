@@ -4,6 +4,7 @@ mod error;
 mod header;
 mod layout;
 mod lineage;
+mod linear;
 mod margins;
 mod signal;
 mod text;
@@ -28,12 +29,14 @@ pub use crate::compensation::{
 };
 pub use crate::error::FcsError as Error;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
+pub use crate::linear::linear_values;
 pub use crate::margins::{
     MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds,
     recorded_margin_bounds,
 };
 pub use crate::signal::{
-    SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD, TransformState, transform_state,
+    COMPENSATION_KEYWORD, CompensationState, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
+    TransformState, compensation_state, transform_state,
 };
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,

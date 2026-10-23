@@ -37,8 +37,8 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
   `io::ErrorKind::InvalidInput`. Do not `panic!` or call `process::exit` in a
   command arm.
 - `--overwrite` is passed through to the library, which enforces it
-  (`transform`, `meta`). `meta` maps `--output -` to stdout before building
-  `MetaConfig`.
+  (`transform`, `meta`, `compensate`, `mask combine`). `meta` maps
+  `--output -` to stdout before building `MetaConfig`.
 
 ## Adding a subcommand
 
@@ -48,7 +48,7 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
 2. Add the path dependency to this crate's `Cargo.toml`.
 3. Add a `Commands` variant with doc comments (they become `--help` text),
    reusing the shared parsers and the `--threads` / `--debug-dir` /
-   `--channels` + `--channel` conventions where they apply.
+   `--channels` + `--channel` / `--mask` conventions where they apply.
 4. Add a `run()` arm: `info!("starting <name>: ...")`, build the config, run,
    log a one-line result summary.
 5. Add `tests/<name>_cli.rs` covering success, a missing input and at least
@@ -71,8 +71,9 @@ cargo test -p cytiq-cli --test <command>_cli
 ```
 
 Test files: `autospill_cli.rs`, `autospectral_cli.rs`, `clean_cli.rs`,
-`cytoscan_cli.rs`, `flowsom_cli.rs`, `gate_cli.rs`, `meta_cli.rs`,
-`peacoqc_cli.rs`, `transform_cli.rs`. `main.rs` has no unit tests; logic worth
-unit-testing usually belongs in a library crate. `autospill_cli.rs` and
+`compensate_cli.rs`, `cytoscan_cli.rs`, `flowsom_cli.rs`, `gate_cli.rs`,
+`mask_cli.rs`, `meta_cli.rs`, `peacoqc_cli.rs`, `transform_cli.rs`.
+`main.rs` has no unit tests; logic worth unit-testing usually belongs in a
+library crate. `autospill_cli.rs` and
 `autospectral_cli.rs` include `crates/<crate>/tests/support.rs` via
 `#[path]`, so changes to those helpers affect both crates' tests.

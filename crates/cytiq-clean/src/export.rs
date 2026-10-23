@@ -1,13 +1,9 @@
-use std::fs::{self, File};
+use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 
-use arrow_array::{ArrayRef, BooleanArray, RecordBatch, UInt64Array};
-use arrow_schema::{DataType, Field, Schema};
 use cytiq_fcs::FcsDataset;
 use cytiq_gating::{GatingResults, GatingStrategy};
-use log::debug;
-use parquet::arrow::ArrowWriter;
+use cytiq_mask::EventMask;
 
 use crate::error::CleanError;
 use crate::filter::{LIVE_GATE, NON_DEBRIS_GATE, SINGLETS_GATE};
@@ -49,55 +45,20 @@ pub(crate) fn write_outputs(
 /// the filter was not assessed, so "not checked" is never confused with
 /// "passed".
 fn write_masks_parquet(path: &Path, masks: &CleanMasks) -> Result<(), CleanError> {
-    debug!("writing event masks to {}", path.display());
-    let parquet_error = |message: String| CleanError::ParquetWrite {
-        path: path.to_path_buf(),
-        message,
-    };
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("event_id", DataType::UInt64, false),
-        Field::new("source_event_id", DataType::UInt64, false),
-        Field::new(NON_DEBRIS_GATE, DataType::Boolean, true),
-        Field::new(SINGLETS_GATE, DataType::Boolean, true),
-        Field::new(LIVE_GATE, DataType::Boolean, true),
-        Field::new("keep", DataType::Boolean, false),
-    ]));
     let event_count = masks.keep.len();
-    let optional = |mask: &Option<Vec<bool>>| -> ArrayRef {
-        Arc::new(match mask {
-            Some(mask) => BooleanArray::from(mask.clone()),
-            None => BooleanArray::new_null(event_count),
-        })
+    let optional = |mask: &Option<Vec<bool>>| match mask {
+        Some(mask) => mask.iter().copied().map(Some).collect(),
+        None => vec![None; event_count],
     };
-    let event_ids = (0..event_count as u64).collect::<Vec<_>>();
-    let source_event_ids = masks
-        .source_event_ids
-        .clone()
-        .unwrap_or_else(|| event_ids.clone());
-    let columns: Vec<ArrayRef> = vec![
-        Arc::new(UInt64Array::from(event_ids)),
-        Arc::new(UInt64Array::from(source_event_ids)),
-        optional(&masks.non_debris),
-        optional(&masks.singlets),
-        optional(&masks.live),
-        Arc::new(BooleanArray::from(masks.keep.clone())),
-    ];
-    let batch = RecordBatch::try_new(Arc::clone(&schema), columns)
-        .map_err(|error| parquet_error(error.to_string()))?;
-
-    let file = File::create(path).map_err(|source| CleanError::OutputWrite {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let mut writer = ArrowWriter::try_new(file, schema, None)
-        .map_err(|error| parquet_error(error.to_string()))?;
-    writer
-        .write(&batch)
-        .map_err(|error| parquet_error(error.to_string()))?;
-    writer
-        .close()
-        .map_err(|error| parquet_error(error.to_string()))?;
-    Ok(())
+    EventMask::new(masks.keep.clone(), masks.source_event_ids.clone())
+        .with_filter(NON_DEBRIS_GATE, optional(&masks.non_debris))
+        .with_filter(SINGLETS_GATE, optional(&masks.singlets))
+        .with_filter(LIVE_GATE, optional(&masks.live))
+        .write_parquet(path)
+        .map_err(|error| CleanError::ParquetWrite {
+            path: path.to_path_buf(),
+            message: error.to_string(),
+        })
 }
 
 fn write_metrics_json(path: &Path, metrics: &CleanMetrics) -> Result<(), CleanError> {

@@ -20,6 +20,7 @@ use cytiq_clean::{
     DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, DEFAULT_VIABILITY_COFACTOR,
     DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, DebrisMode, FilterStatus, ViabilityConfig,
 };
+use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
 use cytiq_cytoscan::{
     CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
     parse_channel_list as parse_cytoscan_channel_list,
@@ -28,6 +29,7 @@ use cytiq_flowsom::{
     FlowSomConfig, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
+use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
 use cytiq_meta::{MetaConfig, MetaRunner};
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, parse_channel_list as parse_peacoqc_channel_list,
@@ -243,7 +245,17 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Event mask Parquet (`masks.parquet`) restricting the gated events;
+        /// repeat to combine several masks with AND.
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+        /// Optional Parquet path for per-event gate membership.
+        #[arg(long)]
+        membership: Option<PathBuf>,
     },
+    /// Work with per-event masks (`masks.parquet`) written by cytiq stages.
+    #[command(subcommand)]
+    Mask(MaskCommand),
     /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
     Meta {
         /// Input FCS file.
@@ -253,6 +265,26 @@ enum Commands {
         #[arg(long)]
         output: Option<PathBuf>,
         /// Replace an existing output file.
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Apply a spillover or compensation matrix to FCS events; also writes a
+    /// raw detector-margin mask next to the output.
+    Compensate {
+        /// Input FCS file with raw (uncompensated, untransformed) values.
+        #[arg(long)]
+        input: PathBuf,
+        /// Output FCS file; `<output stem>.masks.parquet` is written beside it.
+        #[arg(long)]
+        output: PathBuf,
+        /// Square matrix CSV/TSV as written by `cytiq autospill`; defaults to
+        /// the input's `$SPILLOVER` keyword.
+        #[arg(long, requires = "matrix_kind")]
+        matrix: Option<PathBuf>,
+        /// What `--matrix` holds.
+        #[arg(long, value_enum, requires = "matrix")]
+        matrix_kind: Option<CliMatrixKind>,
+        /// Replace existing output files.
         #[arg(long)]
         overwrite: bool,
     },
@@ -276,6 +308,36 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Event mask Parquet (`masks.parquet`); only kept events are
+        /// clustered. Repeat to combine several masks with AND.
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+    },
+}
+
+impl From<CliMatrixKind> for CompensateMatrixKind {
+    fn from(value: CliMatrixKind) -> Self {
+        match value {
+            CliMatrixKind::Spillover => Self::Spillover,
+            CliMatrixKind::Compensation => Self::Compensation,
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum MaskCommand {
+    /// Combine masks of one acquisition by `source_event_id`; an event is kept
+    /// only when every mask keeps it.
+    Combine {
+        /// Event mask Parquet file; repeat for each mask to combine.
+        #[arg(long = "mask", required = true)]
+        masks: Vec<PathBuf>,
+        /// Output Parquet path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Replace an existing output file.
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 
@@ -288,6 +350,10 @@ struct CleanArgs {
     /// and report.html.
     #[arg(long)]
     output: PathBuf,
+    /// Event mask Parquet from an earlier stage; filters are fitted on kept
+    /// events only and `keep` is false outside it. Repeat to combine masks.
+    #[arg(long = "mask")]
+    masks: Vec<PathBuf>,
     /// Re-apply these Gating-ML gates (e.g. an edited gates.gatingml.xml)
     /// instead of fitting new ones.
     #[arg(long)]
@@ -384,6 +450,7 @@ impl From<CleanArgs> for CleanConfig {
             gates: args.gates,
             max_fit_events: args.max_fit_events,
             threads: args.threads,
+            masks: args.masks,
         }
     }
 }
@@ -893,6 +960,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             output,
             format,
             threads,
+            masks,
+            membership,
         } => {
             info!(
                 "starting gate: input={}, gating_ml={}, output={}",
@@ -906,6 +975,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 format: format.into(),
                 threads,
+                masks,
+                membership,
             };
             let result = GatingRunner::run(&config)?;
             for gate in &result.gates {
@@ -919,6 +990,55 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.gates.len(),
                 result.event_count,
                 result.output.display()
+            );
+            Ok(())
+        }
+        Commands::Compensate {
+            input,
+            output,
+            matrix,
+            matrix_kind,
+            overwrite,
+        } => {
+            info!(
+                "starting compensate: input={}, output={}",
+                input.display(),
+                output.display()
+            );
+            let config = CompensateConfig {
+                input,
+                output,
+                matrix: matrix.zip(matrix_kind.map(CompensateMatrixKind::from)),
+                overwrite,
+            };
+            let result = CompensateRunner::run(&config)?;
+            info!(
+                "compensated {} channel(s) over {} event(s); {} on a raw detector margin; wrote {} and {}",
+                result.channels.len(),
+                result.event_count,
+                result.margin_event_count,
+                result.output.display(),
+                result.masks.display()
+            );
+            Ok(())
+        }
+        Commands::Mask(MaskCommand::Combine {
+            masks,
+            output,
+            overwrite,
+        }) => {
+            info!("starting mask combine: masks={}", masks.len());
+            let config = MaskCombineConfig {
+                masks,
+                output,
+                overwrite,
+            };
+            let combined = MaskCombineRunner::run(&config)?;
+            info!(
+                "mask combine kept {} of {} event(s); wrote {}",
+                combined.kept(),
+                combined.len(),
+                config.output.display()
             );
             Ok(())
         }
@@ -982,6 +1102,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             channel,
             debug_dir,
             threads,
+            masks,
         } => {
             info!(
                 "starting flowsom: input={}, output={}",
@@ -994,6 +1115,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 channels,
                 debug_dir,
                 threads,
+                masks,
             };
             let result = FlowSomRunner::run(&input, &output, &config)?;
             info!(

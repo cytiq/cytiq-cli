@@ -167,3 +167,117 @@ fn cli_refuses_to_transform_already_transformed_channels() {
 
     fs::remove_dir_all(directory).ok();
 }
+
+fn every_third_removed(events: usize) -> Vec<bool> {
+    (0..events).map(|row| row % 3 != 0).collect()
+}
+
+#[test]
+fn cli_gates_only_events_inside_the_mask() {
+    let directory = create_temp_dir("cytiq-cli-gate-mask");
+    let input = fixture("sample.fcs");
+    let dataset = cytiq_fcs::FcsReader::open(&input)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .expect("fixture should be readable");
+    let keep = every_third_removed(dataset.event_count());
+    let mask_path = directory.join("mask.parquet");
+    cytiq_mask::EventMask::new(keep.clone(), None)
+        .write_parquet(&mask_path)
+        .expect("mask should write");
+
+    // The same events as a physically filtered copy of the file.
+    let filtered = directory.join("filtered.fcs");
+    let parameters = dataset
+        .parameters
+        .iter()
+        .map(cytiq_fcs::FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    let columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(|column| {
+            column
+                .to_f64_vec()
+                .into_iter()
+                .zip(&keep)
+                .filter_map(|(value, kept)| kept.then_some(value))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    cytiq_fcs::write_fcs3_1_f64_with_options(
+        &filtered,
+        &parameters,
+        &columns,
+        &cytiq_fcs::FcsWriteOptions::new()
+            .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text)),
+    )
+    .expect("filtered copy should write");
+
+    let gates = fixture("gates.xml");
+    let counts = |input: &Path, extra: &[&str], name: &str| {
+        let output = directory.join(name);
+        let mut args = vec![
+            "gate",
+            "--input",
+            utf8(input),
+            "--gating-ml",
+            utf8(&gates),
+            "--output",
+            utf8(&output),
+            "--format",
+            "json",
+        ];
+        args.extend_from_slice(extra);
+        let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+            .args(&args)
+            .output()
+            .expect("command should run");
+        assert!(
+            result.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        fs::read_to_string(output).expect("counts should exist")
+    };
+
+    let membership_path = directory.join("membership.parquet");
+    let masked = counts(
+        &input,
+        &[
+            "--mask",
+            utf8(&mask_path),
+            "--membership",
+            utf8(&membership_path),
+        ],
+        "masked.json",
+    );
+    assert_eq!(masked, counts(&filtered, &[], "filtered.json"));
+
+    let strategy = cytiq_gating::parse_gatingml(
+        &fs::read_to_string(fixture("gates.xml")).expect("GatingML should be readable"),
+    )
+    .expect("GatingML should parse");
+    let expected = strategy
+        .gate_sample_masked(&dataset, Some(&keep))
+        .expect("gating should succeed");
+    let membership = cytiq_mask::EventMask::read_parquet(&membership_path)
+        .expect("membership should be a valid mask file");
+    assert_eq!(membership.keep, keep);
+    assert_eq!(
+        membership
+            .filters
+            .iter()
+            .map(|(id, _)| id.as_str())
+            .collect::<Vec<_>>(),
+        expected.gate_ids().collect::<Vec<_>>()
+    );
+    for (id, column) in &membership.filters {
+        let members = expected.membership(id).expect("gate should exist");
+        for ((value, member), kept) in column.iter().zip(members).zip(&keep) {
+            assert_eq!(*value, kept.then_some(*member), "gate {id}");
+        }
+    }
+
+    fs::remove_dir_all(directory).ok();
+}

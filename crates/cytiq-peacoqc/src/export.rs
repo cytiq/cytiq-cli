@@ -1,10 +1,7 @@
-use std::fs::{self, File};
+use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 
-use arrow_array::{ArrayRef, BooleanArray, RecordBatch, UInt64Array};
-use arrow_schema::{DataType, Field, Schema};
-use parquet::arrow::ArrowWriter;
+use cytiq_mask::EventMask;
 use plotly::common::{Mode, Title};
 use plotly::{Bar, Layout, Plot, Scatter};
 
@@ -41,22 +38,10 @@ pub(crate) fn write_masks_parquet(
     source_event_ids: Option<&[u64]>,
     margins_assessed: bool,
 ) -> Result<(), PeacoQcError> {
-    let parquet_error = |message: String| PeacoQcError::ParquetWrite {
-        path: path.to_path_buf(),
-        message,
-    };
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("event_id", DataType::UInt64, false),
-        Field::new("source_event_id", DataType::UInt64, false),
-        Field::new("margin_pass", DataType::Boolean, true),
-        Field::new("peacoqc_pass", DataType::Boolean, true),
-        Field::new("keep", DataType::Boolean, false),
-    ]));
-    let event_ids = (0..mask.len() as u64).collect::<Vec<_>>();
     let margin_pass = mask
         .iter()
         .map(|record| margins_assessed.then_some(!record.removed_by_margin))
-        .collect::<BooleanArray>();
+        .collect();
     let peacoqc_pass = mask
         .iter()
         .map(|record| {
@@ -66,36 +51,18 @@ pub(crate) fn write_masks_parquet(
                     || record.removed_by_consecutive_bins),
             )
         })
-        .collect::<BooleanArray>();
-    let columns: Vec<ArrayRef> = vec![
-        Arc::new(UInt64Array::from(event_ids.clone())),
-        Arc::new(UInt64Array::from(
-            source_event_ids.map_or(event_ids, <[u64]>::to_vec),
-        )),
-        Arc::new(margin_pass),
-        Arc::new(peacoqc_pass),
-        Arc::new(
-            mask.iter()
-                .map(|record| Some(record.is_good))
-                .collect::<BooleanArray>(),
-        ),
-    ];
-    let batch = RecordBatch::try_new(Arc::clone(&schema), columns)
-        .map_err(|error| parquet_error(error.to_string()))?;
-
-    let file = File::create(path).map_err(|source| PeacoQcError::MaskFileWrite {
+        .collect();
+    EventMask::new(
+        mask.iter().map(|record| record.is_good).collect(),
+        source_event_ids.map(<[u64]>::to_vec),
+    )
+    .with_filter("margin_pass", margin_pass)
+    .with_filter("peacoqc_pass", peacoqc_pass)
+    .write_parquet(path)
+    .map_err(|error| PeacoQcError::ParquetWrite {
         path: path.to_path_buf(),
-        source,
-    })?;
-    let mut writer = ArrowWriter::try_new(file, schema, None)
-        .map_err(|error| parquet_error(error.to_string()))?;
-    writer
-        .write(&batch)
-        .map_err(|error| parquet_error(error.to_string()))?;
-    writer
-        .close()
-        .map_err(|error| parquet_error(error.to_string()))?;
-    Ok(())
+        message: error.to_string(),
+    })
 }
 
 fn write_summary_json(path: &Path, summary: &PeacoQcSummary) -> Result<(), PeacoQcError> {

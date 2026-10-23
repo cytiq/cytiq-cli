@@ -28,15 +28,22 @@ pub enum GatingError {
     InvalidTransform { id: String, reason: String },
     #[error("invalid gate `{id}`: {reason}")]
     InvalidGate { id: String, reason: String },
+    #[error("event mask has {actual} rows but the FCS has {expected} events")]
+    MaskLength { expected: usize, actual: usize },
+    #[error("failed to read or write an event mask: {0}")]
+    Mask(#[from] cytiq_mask::MaskError),
+    #[error("gate id `{id}` clashes with a reserved membership column name")]
+    ReservedGateId { id: String },
     #[error("invalid signal state metadata: {0}")]
     SignalState(#[source] cytiq_fcs::Error),
     #[error(
-        "gate `{gate}` would {action} channel `{channel}` a second time: the FCS was already transformed by `cytiq transform`; gate the raw FCS or drop the step from the GatingML"
+        "gate `{gate}` would {action} channel `{channel}` a second time: the FCS was already {state}; gate the raw FCS or drop the step from the GatingML"
     )]
-    AlreadyTransformed {
+    AlreadyProcessed {
         gate: String,
         channel: String,
         action: &'static str,
+        state: &'static str,
     },
     #[error("compensation `{reference}` is invalid: {source}")]
     Compensation {

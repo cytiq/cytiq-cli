@@ -17,6 +17,7 @@ pub struct GatingResults {
     event_count: usize,
     gates: Vec<GateResult>,
     index: HashMap<String, usize>,
+    mask: Option<Vec<bool>>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,10 +44,16 @@ pub struct GateCount {
 }
 
 impl GatingResults {
-    /// Total number of events in the gated sample.
+    /// Number of events gated: all rows, or the rows inside the event mask.
     #[must_use]
     pub const fn event_count(&self) -> usize {
         self.event_count
+    }
+
+    /// The event mask the sample was gated with, one entry per row.
+    #[must_use]
+    pub fn event_mask(&self) -> Option<&[bool]> {
+        self.mask.as_deref()
     }
 
     /// Gate ids in evaluation order.
@@ -54,7 +61,8 @@ impl GatingResults {
         self.gates.iter().map(|gate| gate.id.as_str())
     }
 
-    /// Per-event membership of a gate (already intersected with its parent).
+    /// Per-event membership of a gate (already intersected with its parent
+    /// and the event mask).
     #[must_use]
     pub fn membership(&self, gate_id: &str) -> Option<&[bool]> {
         self.result(gate_id).map(|gate| gate.membership.as_slice())
@@ -123,6 +131,30 @@ impl GatingStrategy {
     /// compensation matrix is invalid or singular, or an ellipsoid covariance
     /// matrix cannot be inverted.
     pub fn gate_sample(&self, dataset: &FcsDataset) -> Result<GatingResults, GatingError> {
+        self.gate_sample_masked(dataset, None)
+    }
+
+    /// Evaluate every gate on the events of `dataset` inside `mask` (one entry
+    /// per row). Events outside the mask belong to no gate, and percentages of
+    /// the total use the masked event count.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Self::gate_sample`], and an error when the mask
+    /// length differs from the event count.
+    pub fn gate_sample_masked(
+        &self,
+        dataset: &FcsDataset,
+        mask: Option<&[bool]>,
+    ) -> Result<GatingResults, GatingError> {
+        if let Some(mask) = mask
+            && mask.len() != dataset.event_count()
+        {
+            return Err(GatingError::MaskLength {
+                expected: dataset.event_count(),
+                actual: mask.len(),
+            });
+        }
         self.ensure_single_processing(dataset)?;
         let mut evaluator = Evaluator::new(self, dataset);
         let mut gates: Vec<GateResult> = Vec::with_capacity(self.gates.len());
@@ -131,6 +163,12 @@ impl GatingStrategy {
         for gate in &self.gates {
             debug!("evaluating gate `{}`", gate.id);
             let mut membership = evaluator.evaluate(gate, |id| &gates[index[id]].membership)?;
+            // Also clears complements (`not`) of masked events.
+            if let Some(mask) = mask {
+                for (event, kept) in membership.iter_mut().zip(mask) {
+                    *event &= *kept;
+                }
+            }
             if let Some(parent) = &gate.parent_id {
                 let parent_membership = &gates[index[parent.as_str()]].membership;
                 for (event, parent_event) in membership.iter_mut().zip(parent_membership) {
@@ -150,22 +188,27 @@ impl GatingStrategy {
         }
 
         Ok(GatingResults {
-            event_count: dataset.event_count(),
+            event_count: mask.map_or(dataset.event_count(), |mask| {
+                mask.iter().filter(|kept| **kept).count()
+            }),
             gates,
             index,
+            mask: mask.map(<[bool]>::to_vec),
         })
     }
 
-    /// Refuse to transform or compensate channels that `cytiq transform`
-    /// already transformed. Its output keeps the source spillover matrix only
-    /// as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference is wrong
-    /// there even though `$SPILLOVER` is absent.
+    /// Refuse to transform or compensate channels that `cytiq transform` or
+    /// `cytiq compensate` already processed. Both keep the source spillover
+    /// matrix only as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference
+    /// is wrong there even though `$SPILLOVER` is absent.
     fn ensure_single_processing(&self, dataset: &FcsDataset) -> Result<(), GatingError> {
-        let Some(state) =
-            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?
-        else {
+        let transform =
+            cytiq_fcs::transform_state(&dataset.text).map_err(GatingError::SignalState)?;
+        let compensation =
+            cytiq_fcs::compensation_state(&dataset.text).map_err(GatingError::SignalState)?;
+        if transform.is_none() && compensation.is_none() {
             return Ok(());
-        };
+        }
         let had_spillover = dataset
             .text
             .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
@@ -178,23 +221,32 @@ impl GatingStrategy {
                         dataset.parameters[index].name.as_str()
                     });
                 // Files from older cytiq versions do not list their channels.
-                if !(state.channels.is_empty() || state.covers(channel)) {
-                    continue;
-                }
-                let action = if dimension.transform.is_some() {
-                    Some("transform")
-                } else {
-                    match &dimension.compensation {
-                        CompensationRef::Uncompensated => None,
-                        CompensationRef::Fcs => had_spillover.then_some("compensate"),
-                        CompensationRef::Matrix(_) => Some("compensate"),
-                    }
+                let transformed = transform
+                    .as_ref()
+                    .is_some_and(|state| state.channels.is_empty() || state.covers(channel));
+                let compensated = compensation
+                    .as_ref()
+                    .is_some_and(|state| state.covers(channel));
+                let applies_compensation = match &dimension.compensation {
+                    CompensationRef::Uncompensated => false,
+                    CompensationRef::Fcs => had_spillover,
+                    CompensationRef::Matrix(_) => true,
                 };
-                if let Some(action) = action {
-                    return Err(GatingError::AlreadyTransformed {
+                let conflict = if transformed && dimension.transform.is_some() {
+                    Some(("transform", "transformed by `cytiq transform`"))
+                } else if transformed && applies_compensation {
+                    Some(("compensate", "transformed by `cytiq transform`"))
+                } else if compensated && applies_compensation {
+                    Some(("compensate", "compensated by `cytiq compensate`"))
+                } else {
+                    None
+                };
+                if let Some((action, state)) = conflict {
+                    return Err(GatingError::AlreadyProcessed {
                         gate: gate.id.clone(),
                         channel: channel.to_owned(),
                         action,
+                        state,
                     });
                 }
             }
@@ -439,7 +491,7 @@ impl<'a> Evaluator<'a> {
         if let Some(column) = self.raw.get(&parameter) {
             return Arc::clone(column);
         }
-        let column = Arc::new(preprocess_raw(self.dataset, parameter));
+        let column = Arc::new(cytiq_fcs::linear_values(self.dataset, parameter));
         self.raw.insert(parameter, Arc::clone(&column));
         column
     }
@@ -451,70 +503,4 @@ fn compensation_name(reference: &CompensationRef) -> String {
         CompensationRef::Fcs => "FCS".to_owned(),
         CompensationRef::Matrix(id) => id.clone(),
     }
-}
-
-/// Apply `$PnE` anti-log scaling, `$PnG` gain and `$TIMESTEP`, as `flowio` does.
-fn preprocess_raw(dataset: &FcsDataset, parameter_index: usize) -> Vec<f64> {
-    let parameter = &dataset.parameters[parameter_index];
-    let mut values = dataset
-        .data
-        .column(parameter_index)
-        .expect("every parameter has a data column")
-        .to_f64_vec();
-    let number = parameter.index;
-    let keyword_number = |suffix: &str| {
-        keyword(dataset, &format!("$P{number}{suffix}"))
-            .and_then(|value| value.trim().parse::<f64>().ok())
-    };
-
-    let is_time = parameter.name.eq_ignore_ascii_case("time");
-    if is_time
-        && let Some(step) =
-            keyword(dataset, "$TIMESTEP").and_then(|value| value.trim().parse::<f64>().ok())
-    {
-        for value in &mut values {
-            *value *= step;
-        }
-    }
-
-    let (decades, log_zero) = keyword(dataset, &format!("$P{number}E"))
-        .and_then(|value| {
-            let (decades, log_zero) = value.split_once(',')?;
-            Some((
-                decades.trim().parse::<f64>().ok()?,
-                log_zero.trim().parse::<f64>().ok()?,
-            ))
-        })
-        .unwrap_or((0.0, 0.0));
-    if decades > 0.0
-        && let Some(range) = keyword_number("R")
-    {
-        // The FCS standard says to use 1 for an invalid log(0) value of 0.
-        let log_zero = if log_zero > 0.0 { log_zero } else { 1.0 };
-        for value in &mut values {
-            *value = 10_f64.powf(decades * *value / range) * log_zero;
-        }
-    }
-
-    // flowio ignores gain on the time channel; a gain of 0 means "no gain".
-    let gain = if is_time {
-        None
-    } else {
-        keyword_number("G").filter(|gain| (*gain - 1.0).abs() > 0.0 && gain.abs() > 0.0)
-    };
-    if let Some(gain) = gain {
-        for value in &mut values {
-            *value /= gain;
-        }
-    }
-    values
-}
-
-fn keyword<'a>(dataset: &'a FcsDataset, key: &str) -> Option<&'a str> {
-    dataset.text.get(key).or_else(|| {
-        dataset
-            .text
-            .iter()
-            .find_map(|(candidate, value)| candidate.eq_ignore_ascii_case(key).then_some(value))
-    })
 }

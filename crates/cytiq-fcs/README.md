@@ -79,8 +79,13 @@ write_fcs3_1_f32_with_options(
 | `FcsVersion` | `V3_0` / `V3_1` / `V3_2`, `as_str()` gives `FCS3.x` |
 | `find_parameter_index` | Match `$PnN`, then `$PnS`, then `"$PnN [$PnS]"` |
 | `write_fcs3_1_f32`, `..._with_options`, `..._to_writer`, `..._to_writer_with_options` | FCS 3.1 float32 writer |
-| `FcsWriteParameter`, `FcsWriteOptions` | Writer parameters and extra TEXT keywords |
-| `Spillover`, `invert_matrix`, `compensate` | Spillover parsing and compensation |
+| `write_fcs3_1_f64_with_options`, `write_fcs3_1_f64_to_writer_with_options` | FCS 3.1 float64 writer, for values f32 cannot hold exactly |
+| `FcsWriteParameter` (`from_source`, `with_range`, `with_keyword`), `FcsWriteOptions`, `carried_keywords` | Writer parameters, extra TEXT keywords, and source keywords a derived file can keep |
+| `Spillover`, `invert_matrix`, `compensate`, `is_spillover_keyword` | Spillover parsing and compensation |
+| `linear_values` | One parameter on a linear scale (`$PnE`, `$PnG`, `$TIMESTEP`), as FlowKit reads it |
+| `MarginBounds`, `dataset_margin_bounds`, `recorded_margin_bounds`, `encode_margin_bounds`, `MARGINS_KEYWORD` | Detector margin bounds (flowCore `minRange`/`maxRange`), recorded in `CYTIQ_MARGINS` |
+| `transform_state`, `compensation_state`, `TransformState`, `CompensationState`, `TRANSFORM_KEYWORD`, `COMPENSATION_KEYWORD`, `SOURCE_SPILLOVER_KEYWORD` | Signal state written by cytiq stages |
+| `source_event_ids`, `ORIGINAL_ID_PARAMETER` | Raw-file rows of a derived file's events, from `Original_ID` |
 | `Error` (`FcsError`) | Error type for every failure mode |
 
 ## Writer rules
@@ -88,13 +93,20 @@ write_fcs3_1_f32_with_options(
 - At least one parameter and one event; all columns the same length.
 - Every value must be finite; `NaN`/`inf` is an error.
 - Parameter names must be non-empty.
-- Extra TEXT keywords must not override generated keywords (`$P*`, `$PAR`,
+- Extra TEXT keywords must not override generated keywords (`$Pn*`, `$PAR`,
   `$TOT`, `$MODE`, `$DATATYPE`, `$BYTEORD`, segment offsets, `$NEXTDATA`).
-- Offsets must fit the fixed 8-digit HEADER fields (`99_999_999` bytes).
+  Dataset keywords that merely start with `$P` (`$PROJ`, `$PLATEID`) are fine.
+- Per-parameter extras (`$PnV`, `$PnG`, ...) go through
+  `FcsWriteParameter::keywords`; `$PnN`, `$PnS`, `$PnB`, `$PnE`, `$PnR` and
+  `$PnDATATYPE` are generated. `$PnR` comes from `range` when set, otherwise
+  from the column maximum.
+- `$BEGINDATA`/`$ENDDATA` are zero-padded to 20 digits in TEXT and the HEADER
+  DATA fields are 0, so DATA segments of any size are written. Only the TEXT
+  segment must end within the 8-digit HEADER field (`99_999_999` bytes).
 
 ## Dependencies
 
-`log` and `thiserror` only.
+`log`, `thiserror`, and `serde` / `serde_json` for the `CYTIQ_*` JSON keywords.
 
 ## Tests
 

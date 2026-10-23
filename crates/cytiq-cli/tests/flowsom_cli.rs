@@ -48,7 +48,13 @@ fn cli_runs_flowsom_with_debug_artifacts() {
     let mut reader = csv::Reader::from_path(&output_path).expect("output CSV should open");
     assert_eq!(
         reader.headers().expect("headers should parse"),
-        ["event_index", "flowsom_node", "flowsom_metacluster"].as_slice()
+        [
+            "event_index",
+            "source_event_id",
+            "flowsom_node",
+            "flowsom_metacluster"
+        ]
+        .as_slice()
     );
     let rows = reader
         .records()
@@ -222,6 +228,54 @@ fn cli_rejects_zero_threads_for_flowsom() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("thread count must be greater"));
+}
+
+#[test]
+fn cli_clusters_only_events_kept_by_the_mask() {
+    let directory = create_temp_dir("cytiq-cli-flowsom-mask");
+    let input = directory.join("sample.fcs");
+    let mask_path = directory.join("mask.parquet");
+    let output_path = directory.join("sample.flowsom.csv");
+    write_flowsom_fixture_fcs(&input);
+    cytiq_mask::EventMask::new((0..60).map(|row| row % 2 == 0).collect(), None)
+        .write_parquet(&mask_path)
+        .expect("mask should write");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "flowsom",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&output_path),
+            "--channels",
+            "FL1-A,FL2-A,FL3-A",
+            "--mask",
+            utf8(&mask_path),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut reader = csv::Reader::from_path(&output_path).expect("output CSV should open");
+    let rows = reader
+        .records()
+        .map(|record| {
+            let record = record.expect("row should parse");
+            (
+                record[0].parse::<u64>().expect("event_index"),
+                record[1].parse::<u64>().expect("source_event_id"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        (0..60).step_by(2).map(|row| (row, row)).collect::<Vec<_>>()
+    );
 }
 
 fn write_flowsom_fixture_fcs(path: &Path) {

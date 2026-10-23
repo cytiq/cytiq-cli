@@ -245,6 +245,13 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Event mask Parquet (`masks.parquet`) restricting the gated events;
+        /// repeat to combine several masks with AND.
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+        /// Optional Parquet path for per-event gate membership.
+        #[arg(long)]
+        membership: Option<PathBuf>,
     },
     /// Work with per-event masks (`masks.parquet`) written by cytiq stages.
     #[command(subcommand)]
@@ -301,6 +308,10 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
+        /// Event mask Parquet (`masks.parquet`); only kept events are
+        /// clustered. Repeat to combine several masks with AND.
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
     },
 }
 
@@ -339,6 +350,10 @@ struct CleanArgs {
     /// and report.html.
     #[arg(long)]
     output: PathBuf,
+    /// Event mask Parquet from an earlier stage; filters are fitted on kept
+    /// events only and `keep` is false outside it. Repeat to combine masks.
+    #[arg(long = "mask")]
+    masks: Vec<PathBuf>,
     /// Re-apply these Gating-ML gates (e.g. an edited gates.gatingml.xml)
     /// instead of fitting new ones.
     #[arg(long)]
@@ -435,6 +450,7 @@ impl From<CleanArgs> for CleanConfig {
             gates: args.gates,
             max_fit_events: args.max_fit_events,
             threads: args.threads,
+            masks: args.masks,
         }
     }
 }
@@ -944,6 +960,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             output,
             format,
             threads,
+            masks,
+            membership,
         } => {
             info!(
                 "starting gate: input={}, gating_ml={}, output={}",
@@ -957,6 +975,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 format: format.into(),
                 threads,
+                masks,
+                membership,
             };
             let result = GatingRunner::run(&config)?;
             for gate in &result.gates {
@@ -1082,6 +1102,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             channel,
             debug_dir,
             threads,
+            masks,
         } => {
             info!(
                 "starting flowsom: input={}, output={}",
@@ -1094,6 +1115,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 channels,
                 debug_dir,
                 threads,
+                masks,
             };
             let result = FlowSomRunner::run(&input, &output, &config)?;
             info!(

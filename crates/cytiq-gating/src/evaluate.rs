@@ -17,6 +17,7 @@ pub struct GatingResults {
     event_count: usize,
     gates: Vec<GateResult>,
     index: HashMap<String, usize>,
+    mask: Option<Vec<bool>>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,10 +44,16 @@ pub struct GateCount {
 }
 
 impl GatingResults {
-    /// Total number of events in the gated sample.
+    /// Number of events gated: all rows, or the rows inside the event mask.
     #[must_use]
     pub const fn event_count(&self) -> usize {
         self.event_count
+    }
+
+    /// The event mask the sample was gated with, one entry per row.
+    #[must_use]
+    pub fn event_mask(&self) -> Option<&[bool]> {
+        self.mask.as_deref()
     }
 
     /// Gate ids in evaluation order.
@@ -54,7 +61,8 @@ impl GatingResults {
         self.gates.iter().map(|gate| gate.id.as_str())
     }
 
-    /// Per-event membership of a gate (already intersected with its parent).
+    /// Per-event membership of a gate (already intersected with its parent
+    /// and the event mask).
     #[must_use]
     pub fn membership(&self, gate_id: &str) -> Option<&[bool]> {
         self.result(gate_id).map(|gate| gate.membership.as_slice())
@@ -123,6 +131,30 @@ impl GatingStrategy {
     /// compensation matrix is invalid or singular, or an ellipsoid covariance
     /// matrix cannot be inverted.
     pub fn gate_sample(&self, dataset: &FcsDataset) -> Result<GatingResults, GatingError> {
+        self.gate_sample_masked(dataset, None)
+    }
+
+    /// Evaluate every gate on the events of `dataset` inside `mask` (one entry
+    /// per row). Events outside the mask belong to no gate, and percentages of
+    /// the total use the masked event count.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Self::gate_sample`], and an error when the mask
+    /// length differs from the event count.
+    pub fn gate_sample_masked(
+        &self,
+        dataset: &FcsDataset,
+        mask: Option<&[bool]>,
+    ) -> Result<GatingResults, GatingError> {
+        if let Some(mask) = mask
+            && mask.len() != dataset.event_count()
+        {
+            return Err(GatingError::MaskLength {
+                expected: dataset.event_count(),
+                actual: mask.len(),
+            });
+        }
         self.ensure_single_processing(dataset)?;
         let mut evaluator = Evaluator::new(self, dataset);
         let mut gates: Vec<GateResult> = Vec::with_capacity(self.gates.len());
@@ -131,6 +163,12 @@ impl GatingStrategy {
         for gate in &self.gates {
             debug!("evaluating gate `{}`", gate.id);
             let mut membership = evaluator.evaluate(gate, |id| &gates[index[id]].membership)?;
+            // Also clears complements (`not`) of masked events.
+            if let Some(mask) = mask {
+                for (event, kept) in membership.iter_mut().zip(mask) {
+                    *event &= *kept;
+                }
+            }
             if let Some(parent) = &gate.parent_id {
                 let parent_membership = &gates[index[parent.as_str()]].membership;
                 for (event, parent_event) in membership.iter_mut().zip(parent_membership) {
@@ -150,9 +188,12 @@ impl GatingStrategy {
         }
 
         Ok(GatingResults {
-            event_count: dataset.event_count(),
+            event_count: mask.map_or(dataset.event_count(), |mask| {
+                mask.iter().filter(|kept| **kept).count()
+            }),
             gates,
             index,
+            mask: mask.map(<[bool]>::to_vec),
         })
     }
 

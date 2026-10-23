@@ -28,6 +28,12 @@ pub enum GatingError {
     InvalidTransform { id: String, reason: String },
     #[error("invalid gate `{id}`: {reason}")]
     InvalidGate { id: String, reason: String },
+    #[error("event mask has {actual} rows but the FCS has {expected} events")]
+    MaskLength { expected: usize, actual: usize },
+    #[error("failed to read or write an event mask: {0}")]
+    Mask(#[from] cytiq_mask::MaskError),
+    #[error("gate id `{id}` clashes with a reserved membership column name")]
+    ReservedGateId { id: String },
     #[error("invalid signal state metadata: {0}")]
     SignalState(#[source] cytiq_fcs::Error),
     #[error(

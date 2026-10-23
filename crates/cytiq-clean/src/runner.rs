@@ -46,6 +46,9 @@ pub struct CleanConfig {
     pub gates: Option<PathBuf>,
     pub max_fit_events: usize,
     pub threads: Option<usize>,
+    /// Event masks (`masks.parquet`) from earlier stages. Filters are fitted
+    /// on events every mask keeps, and `keep` is false for the others.
+    pub masks: Vec<PathBuf>,
 }
 
 impl CleanConfig {
@@ -68,6 +71,7 @@ impl CleanConfig {
             gates: None,
             max_fit_events: DEFAULT_MAX_FIT_EVENTS,
             threads: None,
+            masks: Vec::new(),
         }
     }
 }
@@ -108,6 +112,17 @@ pub struct CleanMetrics {
     pub filters: FilterReports,
     /// Removed events by the exact combination of filters that removed them.
     pub removal_overlap: BTreeMap<String, usize>,
+    /// Event masks the run was restricted to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_mask: Option<InputMaskReport>,
+}
+
+/// The `input_mask` section of `metrics.json`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct InputMaskReport {
+    pub paths: Vec<String>,
+    /// Events every input mask keeps; only these can have `keep = true`.
+    pub kept: usize,
 }
 
 /// Per-event filter results; `None` columns were not assessed.
@@ -214,6 +229,9 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         roles.viability_source
     );
 
+    let input_mask = cytiq_mask::read_combined(&config.masks)?
+        .map(|mask| mask.keep_for(&dataset))
+        .transpose()?;
     let Plan {
         strategy,
         mut reports,
@@ -221,10 +239,17 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         source,
     } = match &config.gates {
         Some(path) => supplied_plan(path)?,
-        None => fitted_plan(&dataset, &roles, config)?,
+        None => fitted_plan(&dataset, &roles, config, input_mask.as_deref())?,
     };
     let results = strategy.gate_sample(&dataset)?;
     let mut masks = collect_masks(&results, &reports);
+    // Filter columns stay evaluated on every event, so `cytiq gate` on the
+    // written GatingML still reproduces them; only `keep` honours the mask.
+    if let Some(input_mask) = &input_mask {
+        for (keep, kept) in masks.keep.iter_mut().zip(input_mask) {
+            *keep &= *kept;
+        }
+    }
     masks.source_event_ids =
         cytiq_fcs::source_event_ids(&dataset).map_err(|source| CleanError::FcsRead {
             path: config.input.clone(),
@@ -266,6 +291,14 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
         channels: roles,
         filters: reports,
         removal_overlap,
+        input_mask: input_mask.map(|mask| InputMaskReport {
+            paths: config
+                .masks
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+            kept: mask.iter().filter(|kept| **kept).count(),
+        }),
     };
     write_outputs(
         &config.output,
@@ -302,9 +335,11 @@ fn fitted_plan(
     dataset: &FcsDataset,
     roles: &ChannelRoles,
     config: &CleanConfig,
+    input_mask: Option<&[bool]>,
 ) -> Result<Plan, CleanError> {
     let limit = config.max_fit_events;
-    let mut eligible = vec![true; dataset.event_count()];
+    let mut eligible =
+        input_mask.map_or_else(|| vec![true; dataset.event_count()], <[bool]>::to_vec);
 
     let debris = debris::fit(
         dataset,

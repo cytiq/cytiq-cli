@@ -3,11 +3,12 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::FcsReader;
+use cytiq_mask::{EVENT_ID_COLUMN, EventMask, KEEP_COLUMN, SOURCE_EVENT_ID_COLUMN};
 use log::{debug, info};
 use rayon::ThreadPoolBuilder;
 
 use crate::error::GatingError;
-use crate::evaluate::GateCount;
+use crate::evaluate::{GateCount, GatingResults};
 use crate::parse::parse_gatingml;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -24,6 +25,11 @@ pub struct GatingConfig {
     pub output: PathBuf,
     pub format: OutputFormat,
     pub threads: Option<usize>,
+    /// Event masks (`masks.parquet`) restricting which events are gated;
+    /// several are combined with AND.
+    pub masks: Vec<PathBuf>,
+    /// Optional Parquet file for per-event gate membership.
+    pub membership: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,7 +86,17 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
             path: config.input.clone(),
             source,
         })?;
-    let results = strategy.gate_sample(&dataset)?;
+    let mask = cytiq_mask::read_combined(&config.masks)?
+        .map(|mask| mask.keep_for(&dataset))
+        .transpose()?;
+    if let Some(mask) = &mask {
+        info!(
+            "gating {} of {} event(s) inside the event mask",
+            mask.iter().filter(|kept| **kept).count(),
+            mask.len()
+        );
+    }
+    let results = strategy.gate_sample_masked(&dataset, mask.as_deref())?;
     let report = results.report();
 
     if let Some(parent) = config
@@ -97,12 +113,52 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
         OutputFormat::Csv => write_csv(&config.output, &report)?,
         OutputFormat::Json => write_json(&config.output, &report)?,
     }
+    if let Some(path) = &config.membership {
+        let source_event_ids =
+            cytiq_fcs::source_event_ids(&dataset).map_err(|source| GatingError::FcsRead {
+                path: config.input.clone(),
+                source,
+            })?;
+        write_membership(path, &results, dataset.event_count(), source_event_ids)?;
+    }
 
     Ok(GatingRunResult {
         event_count: results.event_count(),
         gates: report,
         output: config.output.clone(),
     })
+}
+
+/// One row per input event in the cytiq mask layout: a nullable Boolean
+/// column per gate in evaluation order (null outside the event mask), and
+/// `keep` marking events inside the event mask.
+fn write_membership(
+    path: &Path,
+    results: &GatingResults,
+    rows: usize,
+    source_event_ids: Option<Vec<u64>>,
+) -> Result<(), GatingError> {
+    let in_mask = results
+        .event_mask()
+        .map_or_else(|| vec![true; rows], <[bool]>::to_vec);
+    let mut mask = EventMask::new(in_mask.clone(), source_event_ids);
+    for id in results.gate_ids() {
+        if [EVENT_ID_COLUMN, SOURCE_EVENT_ID_COLUMN, KEEP_COLUMN].contains(&id) {
+            return Err(GatingError::ReservedGateId { id: id.to_owned() });
+        }
+        let membership = results
+            .membership(id)
+            .expect("gate ids come from the results");
+        let column = membership
+            .iter()
+            .zip(&in_mask)
+            .map(|(member, kept)| kept.then_some(*member))
+            .collect();
+        mask = mask.with_filter(id, column);
+    }
+    debug!("writing gate membership to {}", path.display());
+    mask.write_parquet(path)?;
+    Ok(())
 }
 
 fn write_csv(path: &Path, report: &[GateCount]) -> Result<(), GatingError> {

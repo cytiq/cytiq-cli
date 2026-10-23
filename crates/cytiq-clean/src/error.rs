@@ -10,6 +10,8 @@ pub enum CleanError {
         #[source]
         source: cytiq_fcs::Error,
     },
+    #[error("failed to read the event mask: {0}")]
+    Mask(#[from] cytiq_mask::MaskError),
     #[error("channel `{name}` was not found in `{path}`")]
     MissingChannel { name: String, path: PathBuf },
     #[error(

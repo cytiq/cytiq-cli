@@ -14,6 +14,10 @@ pub enum FlowSomError {
     },
     #[error("FCS input `{path}` has no events")]
     EmptyInput { path: PathBuf },
+    #[error("the event mask keeps no events of `{path}`")]
+    NoMaskedEvents { path: PathBuf },
+    #[error("failed to read the event mask: {0}")]
+    Mask(#[from] cytiq_mask::MaskError),
     #[error("`--channels` must include at least one channel")]
     EmptyChannels,
     #[error("duplicate channel `{channel}`")]

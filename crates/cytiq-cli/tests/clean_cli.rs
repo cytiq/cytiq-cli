@@ -436,3 +436,34 @@ fn fails_when_fixed_debris_has_no_thresholds() {
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("--debris-fsc-min"));
 }
+
+#[test]
+fn restricts_keep_and_fitting_to_the_input_mask() {
+    let directory = create_temp_dir("cytiq-cli-clean-mask");
+    let output = directory.join("clean");
+    let mask_path = directory.join("mask.parquet");
+    let input_mask = (0..10_000).map(|row| row % 2 == 0).collect::<Vec<_>>();
+    cytiq_mask::EventMask::new(input_mask.clone(), None)
+        .write_parquet(&mask_path)
+        .expect("mask should write");
+
+    run_clean("sample.fcs", &output, &["--mask", utf8(&mask_path)]);
+
+    let masks = Masks::read(&output);
+    let keep = masks.column("keep");
+    assert!(
+        keep.iter()
+            .zip(&input_mask)
+            .all(|(keep, kept)| *kept || *keep == Some(false)),
+        "events outside the input mask must not be kept"
+    );
+    assert!(keep.contains(&Some(true)));
+    // Filters are still evaluated on every event.
+    assert!(masks.column("singlets").iter().all(Option::is_some));
+    let metrics = metrics(&output);
+    assert_eq!(metrics["input_mask"]["kept"], 5_000);
+    assert_eq!(
+        metrics["input_mask"]["paths"][0],
+        mask_path.display().to_string()
+    );
+}

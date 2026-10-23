@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -275,6 +277,12 @@ fn cli_clusters_only_events_kept_by_the_mask() {
     assert_eq!(
         rows,
         (0..60).step_by(2).map(|row| (row, row)).collect::<Vec<_>>()
+    );
+    common::assert_provenance(
+        &directory.join("sample.flowsom.csv.provenance.json"),
+        "cytiq flowsom",
+        &[&input, &mask_path],
+        &[&output_path],
     );
 }
 

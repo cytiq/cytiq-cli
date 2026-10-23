@@ -482,7 +482,7 @@ fn build_parameters(
     reference_paths: &[PathBuf],
 ) -> CytoScanParameters {
     CytoScanParameters {
-        tool: "cytiq-cytoscan".to_owned(),
+        tool: "cytiq cytoscan".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         feature_method: config.feature_method,
         flag_method: config.flag_method,

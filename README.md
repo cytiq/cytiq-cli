@@ -16,6 +16,7 @@ Current workspace crates:
 - `cytiq-compensate`: apply a spillover or compensation matrix to sample events
 - `cytiq-mask`: per-event masks shared by stages (`masks.parquet`)
 - `cytiq-meta`: FCS metadata export as JSON
+- `cytiq-provenance`: per-run records of arguments, inputs and outputs with SHA-256
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -808,6 +809,30 @@ and `$DATATYPE` always describe the written float data. The
 input file, so per-event results computed on the cleaned file (for example
 FlowSOM `event_index`, which is 0-based over the cleaned rows) map back to the
 input through `Original_ID`, not through their own row number.
+
+## Provenance
+
+Every command that writes files, except `meta`, also writes a provenance
+record next to its output: `<output>.provenance.json` for a file output and
+`<dir>/provenance.json` for a directory output. It holds the tool and version,
+the exact command-line arguments, start and finish times, and the size and
+SHA-256 of every input and output file (debug directories are not listed):
+
+```json
+{
+  "schema_version": 1,
+  "tool": "cytiq gate",
+  "version": "0.1.0",
+  "arguments": ["gate", "--input", "s.t.fcs", "--gating-ml", "gates.xml", "--output", "counts.csv"],
+  "started_at_unix_ms": 1792790000000,
+  "finished_at_unix_ms": 1792790000120,
+  "inputs": [{ "path": "s.t.fcs", "bytes": 640905, "sha256": "…" }, { "path": "gates.xml", "…": "…" }],
+  "outputs": [{ "path": "counts.csv", "bytes": 214, "sha256": "…" }]
+}
+```
+
+Following the `inputs` of each record back to the outputs of earlier records
+reconstructs the whole chain from the raw FCS files.
 
 ## Algorithm Notes
 

@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,6 +45,15 @@ fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
     assert!(output_dir.join("cytoscan_features.csv").is_file());
     assert!(output_dir.join("cytoscan_config.json").is_file());
     assert!(debug_dir.join("pca_coordinates.csv").is_file());
+    common::assert_provenance(
+        &output_dir.join("provenance.json"),
+        "cytiq cytoscan",
+        &[
+            &input_dir.join("sample_00.fcs"),
+            &input_dir.join("sample_03.fcs"),
+        ],
+        &[&output_dir.join("cytoscan_summary.csv")],
+    );
     assert!(debug_dir.join("pca_loadings.csv").is_file());
     assert!(debug_dir.join("feature_heatmap.csv").is_file());
     assert!(debug_dir.join("boxplot_samples.csv").is_file());

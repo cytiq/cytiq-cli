@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -132,6 +134,15 @@ fn cli_peacoqc_output_preserves_source_metadata() {
     assert_eq!(dataset.text.get("$P4R"), Some("9001"));
     assert_eq!(dataset.text.get("$P4V"), Some("520"));
     assert!(dataset.text.get("CYTIQ_MARGINS").is_some());
+    common::assert_provenance(
+        &directory.join("sample.peacoqc.fcs.provenance.json"),
+        "cytiq peacoqc",
+        &[&input],
+        &[
+            &output_path,
+            &directory.join("sample.peacoqc.masks.parquet"),
+        ],
+    );
 }
 
 #[test]

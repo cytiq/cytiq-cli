@@ -44,6 +44,13 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
 - `--mask FILE` (repeatable) restricts `gate`, `flowsom` and `clean` to events
   every mask keeps; see [Masks](../../README.md#masks).
 
+## Provenance
+
+Each command arm finishes with `record_provenance`, which writes
+`<output>.provenance.json` (or `<dir>/provenance.json`) with the arguments and
+the SHA-256 of the command's input and output files; see
+[`cytiq-provenance`](../cytiq-provenance). `meta` writes none.
+
 ## Logging and output streams
 
 - Logs go to stderr as `[LEVEL] module::path: message`; stdout is reserved for

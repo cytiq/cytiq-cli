@@ -1,3 +1,4 @@
+mod common;
 #[path = "../../cytiq-autospectral/tests/support.rs"]
 mod support;
 
@@ -8,6 +9,7 @@ use std::process::Command;
 use cytiq_fcs::FcsReader;
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn cli_runs_autospectral() {
     let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral");
     let output_dir = directory.join("out");
@@ -84,6 +86,16 @@ fn cli_runs_autospectral() {
     .expect("run.json should be JSON");
     assert_eq!(run["solver_method"], "householder_qr");
     assert_eq!(run["control_gate"], "fsc_ssc_quantile_box");
+    common::assert_provenance(
+        &output_dir.join("provenance.json"),
+        "cytiq autospectral",
+        &[
+            &directory.join("controls.csv"),
+            &directory.join("samples.csv"),
+            &directory.join("sample.fcs"),
+        ],
+        &[&unmixed, &output_dir.join("diagnostics/run.json")],
+    );
 
     // Unmixed abundances have no detector margins.
     let peacoqc = Command::new(env!("CARGO_BIN_EXE_cytiq"))

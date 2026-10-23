@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -385,6 +387,12 @@ fn cli_transform_carries_metadata_and_moves_spillover() {
     // Bounds are rounded to f32 like the transformed values.
     assert!((upper - (262_143.0_f64 / 150.0).asinh()).abs() <= 1.0e-6);
     assert_eq!(margins["FSC-A"].upper, Some(262_143.0));
+    common::assert_provenance(
+        &directory.join("sample.transformed.fcs.provenance.json"),
+        "cytiq transform",
+        &[&input],
+        &[&output_path],
+    );
 }
 
 #[test]

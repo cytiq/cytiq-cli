@@ -50,7 +50,8 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
    reusing the shared parsers and the `--threads` / `--debug-dir` /
    `--channels` + `--channel` / `--mask` conventions where they apply.
 4. Add a `run()` arm: `info!("starting <name>: ...")`, build the config, run,
-   log a one-line result summary.
+   log a one-line result summary, and end with `record_provenance` listing the
+   command's input and output files. Add the command to `command_name`.
 5. Add `tests/<name>_cli.rs` covering success, a missing input and at least
    one invalid flag.
 6. Document the command in the root `README.md` (and its crate list) and in the

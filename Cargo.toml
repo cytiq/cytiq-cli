@@ -13,6 +13,7 @@ members = [
     "crates/cytiq-meta",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",
+    "crates/cytiq-provenance",
     "crates/cytiq-transform",
 ]
 resolver = "3"

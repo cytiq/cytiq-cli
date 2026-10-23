@@ -85,7 +85,7 @@ write_fcs3_1_f32_with_options(
 | `condition_number_1` | 1-norm condition number of a spillover matrix |
 | `linear_values` | One parameter on a linear scale (`$PnE`, `$PnG`, `$TIMESTEP`), as FlowKit reads it |
 | `MarginBounds`, `dataset_margin_bounds`, `recorded_margin_bounds`, `encode_margin_bounds`, `MARGINS_KEYWORD` | Detector margin bounds (flowCore `minRange`/`maxRange`), recorded in `CYTIQ_MARGINS` |
-| `raw_margin_pass` | Per-event pass flags for the raw detector margins of some channels (used before compensation and unmixing) |
+| `raw_margin_pass` | Per-event pass flags for the raw detector limits of some channels (used before compensation and unmixing; detector limits only, unlike the `PeacoQC` rule in `MarginBounds::thresholds`) |
 | `transform_state`, `compensation_state`, `unmixing_state`, `TransformState`, `CompensationState`, `UnmixingState`, `TRANSFORM_KEYWORD`, `COMPENSATION_KEYWORD`, `UNMIXING_KEYWORD`, `SOURCE_SPILLOVER_KEYWORD` | Signal state written by cytiq stages |
 | `source_event_ids`, `ORIGINAL_ID_PARAMETER` | Raw-file rows of a derived file's events, from `Original_ID` |
 | `Error` (`FcsError`) | Error type for every failure mode |

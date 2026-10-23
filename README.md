@@ -330,9 +330,13 @@ Rules:
   not compensate again. An input that `cytiq compensate` already compensated,
   or whose matrix channels `cytiq transform` transformed, is rejected
 - compensation mixes channels, so raw detector margins cannot be identified
-  afterwards. `margin_pass` in the mask is computed on the raw values with the
-  same bounds as `cytiq peacoqc --remove-margins`, and compensated channels
-  are dropped from `CYTIQ_MARGINS`. Pass the mask on with `--mask` (or combine
+  afterwards. `margin_pass` in the mask flags events at or beyond a detector
+  limit (`$PnR - 1`, or flowCore's low bound, −111 by default) on the raw
+  values, and compensated channels are dropped from `CYTIQ_MARGINS`. Unlike
+  `cytiq peacoqc --remove-margins`, which follows `PeacoQC::RemoveMargins` and
+  also removes every event equal to a channel's observed minimum or maximum,
+  only detector limits count, so discrete data (beads) keeps its extreme
+  levels. Pass the mask on with `--mask` (or combine
   it with `cytiq mask combine`) instead of removing margins after compensation
 - existing outputs are not replaced unless `--overwrite` is passed
 

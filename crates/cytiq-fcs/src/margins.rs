@@ -60,6 +60,16 @@ impl MarginBounds {
         )
     }
 
+    /// Detector-limit thresholds alone: events at or below `lower`, or at or
+    /// above `upper`, are on a margin. Unlike [`Self::thresholds`] (the
+    /// `PeacoQC::RemoveMargins` rule) the observed minimum and maximum play no
+    /// part, so a discrete channel does not lose its lowest and highest
+    /// levels.
+    #[must_use]
+    pub fn detector_thresholds(&self) -> (f64, f64) {
+        (self.lower, self.upper.unwrap_or(f64::INFINITY))
+    }
+
     /// Map the bounds through a monotonically increasing transform.
     #[must_use]
     pub fn map(&self, transform: impl Fn(f64) -> f64) -> Self {
@@ -139,10 +149,13 @@ pub fn dataset_margin_bounds(
         .collect())
 }
 
-/// Per-event pass flags for the detector margins of `indices`, judged on the
-/// stored values as `cytiq peacoqc --remove-margins` does: an event fails when
-/// it sits on the low or high margin of any listed channel. Compensation and
-/// unmixing mix channels, so this must run on raw values before them.
+/// Per-event pass flags for the detector margins of `indices`: an event
+/// fails when it sits at or beyond a detector limit (`$PnR - 1`, or the low
+/// bound) of any listed channel. Only detector limits count
+/// ([`MarginBounds::detector_thresholds`]); `cytiq peacoqc --remove-margins`
+/// keeps the upstream rule that also removes the observed extremes.
+/// Compensation and unmixing mix channels, so this must run on raw values
+/// before them.
 ///
 /// # Errors
 ///
@@ -165,9 +178,7 @@ pub fn raw_margin_pass(dataset: &FcsDataset, indices: &[usize]) -> Result<Vec<bo
             .column(*index)
             .expect("every parameter has a data column")
             .to_f64_vec();
-        let minimum = values.iter().copied().fold(f64::INFINITY, f64::min);
-        let maximum = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let (low, high) = bounds.thresholds(minimum, maximum);
+        let (low, high) = bounds.detector_thresholds();
         for (event, value) in pass.iter_mut().zip(&values) {
             *event &= *value > low && *value < high;
         }

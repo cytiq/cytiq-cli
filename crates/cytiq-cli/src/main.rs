@@ -37,13 +37,14 @@ use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, masks_path as peacoqc_masks_path,
     parse_channel_list as parse_peacoqc_channel_list,
 };
+use cytiq_preflight::{CheckStatus, PreflightConfig, PreflightRunner};
 use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir, record_path_for_file};
 use cytiq_transform::{
     BiexponentialParameters, LogicleParameters, TransformConfig, TransformFormat, TransformMethod,
     TransformParameters, TransformRunResult, TransformRunner,
     parse_channel_list as parse_transform_channel_list,
 };
-use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, info, warn};
+use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, error, info, warn};
 
 #[derive(Debug, Parser)]
 #[command(name = "cytiq")]
@@ -268,6 +269,19 @@ enum Commands {
     /// Work with per-event masks (`masks.parquet`) written by cytiq stages.
     #[command(subcommand)]
     Mask(MaskCommand),
+    /// Check a run manifest and its FCS files before any computation; exits
+    /// with 1 when a check fails.
+    Preflight {
+        /// Run manifest (`.yaml`, `.yml` or `.json`).
+        #[arg(long)]
+        manifest: PathBuf,
+        /// JSON report path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Replace an existing report.
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
     Meta {
         /// Input FCS file.
@@ -1194,6 +1208,53 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &record_path_for_file(&config.output),
             )
         }
+        Commands::Preflight {
+            manifest,
+            output,
+            overwrite,
+        } => {
+            info!(
+                "starting preflight: manifest={}, output={}",
+                manifest.display(),
+                output.display()
+            );
+            let config = PreflightConfig {
+                manifest,
+                output,
+                overwrite,
+            };
+            let report = PreflightRunner::run(&config)?;
+            for check in &report.checks {
+                match check.status {
+                    CheckStatus::Fail => {
+                        error!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                    CheckStatus::Warn => {
+                        warn!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                    CheckStatus::Pass => {
+                        debug!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                }
+            }
+            info!(
+                "preflight: {} passed, {} warning(s), {} failure(s); wrote {}",
+                report.passed,
+                report.warnings,
+                report.failures,
+                config.output.display()
+            );
+            let mut inputs = vec![config.manifest.clone()];
+            inputs.extend(report.files.iter().map(PathBuf::from));
+            record_provenance(
+                recorder,
+                &inputs,
+                std::slice::from_ref(&config.output),
+                &record_path_for_file(&config.output),
+            )?;
+            report.ensure_passed(&config.output)?;
+            Ok(())
+        }
         Commands::Meta {
             input,
             output,
@@ -1326,6 +1387,7 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Gate { .. } => "gate",
         Commands::Mask(MaskCommand::Combine { .. }) => "mask combine",
         Commands::Meta { .. } => "meta",
+        Commands::Preflight { .. } => "preflight",
         Commands::Compensate { .. } => "compensate",
         Commands::Clean(_) => "clean",
         Commands::Flowsom { .. } => "flowsom",

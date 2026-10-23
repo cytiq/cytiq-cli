@@ -17,6 +17,8 @@ Current workspace crates:
 - `cytiq-mask`: per-event masks shared by stages (`masks.parquet`)
 - `cytiq-meta`: FCS metadata export as JSON
 - `cytiq-provenance`: per-run records of arguments, inputs and outputs with SHA-256
+- `cytiq-manifest`: the run manifest (YAML/JSON): cytometry type, panel, samples, controls
+- `cytiq-preflight`: manifest and FCS checks before any computation
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -809,6 +811,44 @@ and `$DATATYPE` always describe the written float data. The
 input file, so per-event results computed on the cleaned file (for example
 FlowSOM `event_index`, which is 0-based over the cleaned rows) map back to the
 input through `Original_ID`, not through their own row number.
+
+## Preflight
+
+`cytiq preflight` checks a run before any computation. The run is described
+by one manifest, YAML or JSON:
+
+```yaml
+cytometry: conventional        # or spectral
+panel:
+  name: T-cell-8c
+  markers:
+    - { marker: CD3, channel: FL1-A }        # channel optional: matched by $PnS
+    - { marker: Live/Dead, required: false }  # required defaults to true
+samples:
+  - { id: S01, file: fcs/s01.fcs }            # relative to the manifest
+controls:
+  - { file: fcs/unstained.fcs, dye: Autofluorescence }
+  - { file: fcs/cd3_fitc.fcs, dye: FITC, primary_channel: FL1-A }
+```
+
+```bash
+cytiq preflight --manifest run.yaml --output preflight.json
+```
+
+Checks, each reported as `pass`, `warn` or `fail` (full table in
+[`cytiq-preflight`](crates/cytiq-preflight/README.md)):
+- every file parses, has events, and is raw: files already processed by
+  `cytiq transform`, `compensate` or `autospectral` fail
+- every required panel marker maps to exactly one channel of every sample
+  (`$PnS` or `$PnN`; a marker found on several channels fails)
+- all samples and controls share one detector set (`$PnN`); different `$PnV`
+  voltages warn
+- conventional samples carry a spillover matrix over existing channels that is
+  invertible; a 1-norm condition number above 100 warns
+- missing `$CYT`/`$DATE` warns
+
+The JSON report is always written; the command exits with `1` when any check
+fails, and logs every failure and warning.
 
 ## Provenance
 

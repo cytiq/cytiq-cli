@@ -211,6 +211,27 @@ pub fn invert_matrix(matrix: &[f64], size: usize) -> Result<Vec<f64>, FcsError> 
     Ok(inverse)
 }
 
+/// 1-norm condition number `‖A‖₁·‖A⁻¹‖₁` of a row-major `size × size`
+/// matrix: how much relative errors in raw values can grow through
+/// compensation.
+///
+/// # Errors
+///
+/// Returns [`FcsError::SingularMatrix`] when the matrix cannot be inverted.
+pub fn condition_number_1(matrix: &[f64], size: usize) -> Result<f64, FcsError> {
+    let inverse = invert_matrix(matrix, size)?;
+    let norm_1 = |values: &[f64]| {
+        (0..size)
+            .map(|column| {
+                (0..size)
+                    .map(|row| values[row * size + column].abs())
+                    .sum::<f64>()
+            })
+            .fold(0.0_f64, f64::max)
+    };
+    Ok(norm_1(matrix) * norm_1(&inverse))
+}
+
 /// Multiply event rows by a row-major compensation matrix.
 ///
 /// `columns[i][event]` is the raw value of channel `i`; the result has the same
@@ -315,6 +336,16 @@ mod tests {
         for (a, b) in left.iter().zip(right) {
             assert!((a - b).abs() < 1e-12, "{a} != {b}");
         }
+    }
+
+    #[test]
+    fn condition_number_of_identity_is_one_and_grows_with_spillover() {
+        let identity = [1.0, 0.0, 0.0, 1.0];
+        assert!((super::condition_number_1(&identity, 2).unwrap() - 1.0).abs() < 1e-12);
+        // [[1, 0.9], [0.9, 1]]: ‖A‖₁ = 1.9, ‖A⁻¹‖₁ = 1.9 / 0.19 = 10.
+        let spill = [1.0, 0.9, 0.9, 1.0];
+        assert!((super::condition_number_1(&spill, 2).unwrap() - 19.0).abs() < 1e-9);
+        assert!(super::condition_number_1(&[1.0, 1.0, 1.0, 1.0], 2).is_err());
     }
 
     #[test]

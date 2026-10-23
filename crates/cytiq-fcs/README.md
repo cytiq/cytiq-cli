@@ -82,6 +82,7 @@ write_fcs3_1_f32_with_options(
 | `write_fcs3_1_f64_with_options`, `write_fcs3_1_f64_to_writer_with_options` | FCS 3.1 float64 writer, for values f32 cannot hold exactly |
 | `FcsWriteParameter` (`from_source`, `with_range`, `with_keyword`), `FcsWriteOptions`, `carried_keywords` | Writer parameters, extra TEXT keywords, and source keywords a derived file can keep |
 | `Spillover`, `invert_matrix`, `compensate`, `is_spillover_keyword` | Spillover parsing and compensation |
+| `condition_number_1` | 1-norm condition number of a spillover matrix |
 | `linear_values` | One parameter on a linear scale (`$PnE`, `$PnG`, `$TIMESTEP`), as FlowKit reads it |
 | `MarginBounds`, `dataset_margin_bounds`, `recorded_margin_bounds`, `encode_margin_bounds`, `MARGINS_KEYWORD` | Detector margin bounds (flowCore `minRange`/`maxRange`), recorded in `CYTIQ_MARGINS` |
 | `raw_margin_pass` | Per-event pass flags for the raw detector margins of some channels (used before compensation and unmixing) |

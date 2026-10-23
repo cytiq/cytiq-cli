@@ -72,12 +72,6 @@ pub enum PeacoQcError {
     },
     #[error("failed to write event masks `{path}`: {message}")]
     ParquetWrite { path: PathBuf, message: String },
-    #[error("failed to write event masks `{path}`: {source}")]
-    MaskFileWrite {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("failed to write JSON debug output `{path}`: {source}")]
     JsonWrite {
         path: PathBuf,

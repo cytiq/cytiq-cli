@@ -504,13 +504,11 @@ dependencies = [
 name = "cytiq-clean"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "cytiq-density",
  "cytiq-fcs",
  "cytiq-gating",
+ "cytiq-mask",
  "log",
- "parquet",
  "plotly",
  "rayon",
  "serde",
@@ -606,6 +604,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-mask"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "cytiq-fcs",
+ "log",
+ "parquet",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cytiq-meta"
 version = "0.1.0"
 dependencies = [
@@ -621,13 +631,11 @@ dependencies = [
 name = "cytiq-peacoqc"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "csv",
  "cytiq-density",
  "cytiq-fcs",
+ "cytiq-mask",
  "log",
- "parquet",
  "plotly",
  "rayon",
  "serde",

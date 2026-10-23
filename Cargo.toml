@@ -8,6 +8,7 @@ members = [
     "crates/cytiq-density",
     "crates/cytiq-fcs",
     "crates/cytiq-gating",
+    "crates/cytiq-mask",
     "crates/cytiq-meta",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",

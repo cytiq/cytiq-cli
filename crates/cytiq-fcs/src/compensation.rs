@@ -5,6 +5,15 @@ use crate::types::{ColumnData, FcsDataset, Parameter};
 
 const SPILLOVER_KEYWORDS: [&str; 4] = ["$SPILL", "SPILL", "$SPILLOVER", "SPILLOVER"];
 
+/// Whether `key` holds a spillover matrix (`$SPILL`, `SPILL`, `$SPILLOVER`,
+/// `SPILLOVER`, any case).
+#[must_use]
+pub fn is_spillover_keyword(key: &str) -> bool {
+    SPILLOVER_KEYWORDS
+        .iter()
+        .any(|candidate| key.eq_ignore_ascii_case(candidate))
+}
+
 /// Square spillover matrix with the detector channels it applies to.
 ///
 /// `matrix` is stored row-major: entry `(row, column)` is the fraction of the
@@ -55,12 +64,7 @@ impl Spillover {
         dataset
             .text
             .iter()
-            .find_map(|(key, value)| {
-                SPILLOVER_KEYWORDS
-                    .iter()
-                    .any(|candidate| key.eq_ignore_ascii_case(candidate))
-                    .then_some(value)
-            })
+            .find_map(|(key, value)| is_spillover_keyword(key).then_some(value))
             .map(Self::parse_keyword)
             .transpose()
     }

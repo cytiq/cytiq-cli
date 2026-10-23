@@ -66,6 +66,7 @@ fn metrics(output: &Path) -> Value {
 
 struct Masks {
     event_id: Vec<u64>,
+    source_event_id: Vec<u64>,
     columns: Vec<(String, Vec<Option<bool>>)>,
 }
 
@@ -78,15 +79,20 @@ impl Masks {
             .unwrap();
         let mut masks = Self {
             event_id: Vec::new(),
+            source_event_id: Vec::new(),
             columns: Vec::new(),
         };
         for batch in reader {
             let batch = batch.unwrap();
             let schema = batch.schema();
             for (field, column) in schema.fields().iter().zip(batch.columns()) {
-                if field.name() == "event_id" {
+                if let Some(target) = match field.name().as_str() {
+                    "event_id" => Some(&mut masks.event_id),
+                    "source_event_id" => Some(&mut masks.source_event_id),
+                    _ => None,
+                } {
                     let ids = column.as_any().downcast_ref::<UInt64Array>().unwrap();
-                    masks.event_id.extend(ids.values().iter());
+                    target.extend(ids.values().iter());
                     continue;
                 }
                 let values = column.as_any().downcast_ref::<BooleanArray>().unwrap();
@@ -151,6 +157,7 @@ fn cli_writes_clean_outputs() {
     }
     let masks = Masks::read(&output);
     assert_eq!(masks.event_id, (0..10_000).collect::<Vec<u64>>());
+    assert_eq!(masks.source_event_id, masks.event_id);
     assert_eq!(
         masks
             .columns
@@ -171,6 +178,55 @@ fn cli_writes_clean_outputs() {
     for filter in ["debris", "singlets", "viability"] {
         assert_eq!(metrics["filters"][filter]["status"], "applied", "{filter}");
     }
+}
+
+#[test]
+fn emits_source_event_ids_from_original_id() {
+    let directory = create_temp_dir("cytiq-cli-clean-original-id");
+    let input = directory.join("sample.fcs");
+    let output = directory.join("clean");
+    // The fixture as if an earlier stage had kept every other raw event.
+    let dataset = cytiq_fcs::FcsReader::open(fixture("sample.fcs"))
+        .and_then(cytiq_fcs::FcsReader::read)
+        .expect("fixture should be readable");
+    let mut parameters = dataset
+        .parameters
+        .iter()
+        .map(cytiq_fcs::FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    let mut columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(|column| match column {
+            cytiq_fcs::ColumnData::F32(values) => values.clone(),
+            other => panic!("expected f32 fixture column, got {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    parameters.push(cytiq_fcs::FcsWriteParameter::new("Original_ID"));
+    columns.push(
+        (0..10_000_u16)
+            .map(|row| f32::from(row) * 2.0 + 1.0)
+            .collect(),
+    );
+    cytiq_fcs::write_fcs3_1_f32_with_options(
+        &input,
+        &parameters,
+        &columns,
+        &cytiq_fcs::FcsWriteOptions::new()
+            .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text)),
+    )
+    .expect("fixture should write");
+
+    run(&["clean", "--input", utf8(&input), "--output", utf8(&output)]);
+
+    let masks = Masks::read(&output);
+    assert_eq!(masks.event_id, (0..10_000).collect::<Vec<u64>>());
+    assert_eq!(
+        masks.source_event_id,
+        (0..10_000).map(|row| row * 2).collect::<Vec<u64>>()
+    );
+    assert!(metrics(&output)["source_event_id"].is_string());
 }
 
 #[test]

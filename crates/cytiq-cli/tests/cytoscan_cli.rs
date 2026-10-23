@@ -286,6 +286,47 @@ fn cli_fails_when_cytoscan_channel_is_missing() {
     assert!(stderr.contains("CD45"));
 }
 
+#[test]
+fn cli_rejects_transformed_cytoscan_input() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-transformed");
+    let input_dir = directory.join("test");
+    write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
+    let transformed = input_dir.join("sample_01.fcs");
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "transform",
+            "--input",
+            utf8(&transformed),
+            "--output",
+            utf8(&transformed),
+            "--overwrite",
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "cytoscan",
+            "--input",
+            utf8(&input_dir),
+            "--output",
+            utf8(&directory.join("out")),
+            "--channels",
+            "CD3,CD4",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pass the raw FCS"), "stderr: {stderr}");
+}
+
 fn write_cytoscan_fixture_set(directory: &Path, offsets: &[f32]) {
     fs::create_dir_all(directory).expect("fixture directory should be created");
     for (index, offset) in offsets.iter().enumerate() {

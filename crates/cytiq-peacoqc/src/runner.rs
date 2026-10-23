@@ -5,18 +5,19 @@
     clippy::too_many_lines
 )]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
-    ColumnData, FcsDataset, FcsReader, FcsWriteParameter, Parameter, ParameterDataType,
+    ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, MARGINS_KEYWORD,
+    MarginBounds, Parameter, ParameterDataType,
 };
 use log::{debug, info};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
 use crate::error::PeacoQcError;
-use crate::export::write_debug_artifacts;
+use crate::export::{write_debug_artifacts, write_masks_parquet};
 use crate::smooth_spline::smooth_spline_fitted;
 use cytiq_density::density;
 
@@ -231,7 +232,12 @@ impl PeacoQcRunner {
             channels.len(),
             input.display()
         );
-        let working = prepare_working_data(&channels, events_before, config.remove_margins);
+        let margin_bounds = if config.remove_margins {
+            Some(selected_margin_bounds(input, &dataset, &channels)?)
+        } else {
+            None
+        };
+        let working = prepare_working_data(&channels, events_before, margin_bounds.as_deref());
         if working.original_indices.is_empty() {
             return Err(PeacoQcError::AllEventsRemoved {
                 path: input.to_path_buf(),
@@ -323,7 +329,18 @@ impl PeacoQcRunner {
             &removed_by_it_working,
             &removed_by_consecutive_working,
         );
-        write_cleaned_fcs(output, &dataset, &mask)?;
+        let source_event_ids =
+            cytiq_fcs::source_event_ids(&dataset).map_err(|source| PeacoQcError::FcsRead {
+                path: input.to_path_buf(),
+                source,
+            })?;
+        write_cleaned_fcs(input, output, &dataset, &mask)?;
+        write_masks_parquet(
+            &masks_path(output),
+            &mask,
+            source_event_ids.as_deref(),
+            config.remove_margins,
+        )?;
 
         let summary = build_summary(
             input,
@@ -476,17 +493,48 @@ fn input_warnings(channels: &[ResolvedChannel], dataset: &FcsDataset) -> Vec<Str
     }
 }
 
+fn known_margin_bounds(
+    path: &Path,
+    dataset: &FcsDataset,
+) -> Result<BTreeMap<String, MarginBounds>, PeacoQcError> {
+    cytiq_fcs::dataset_margin_bounds(&dataset.text, &dataset.parameters).map_err(|source| {
+        PeacoQcError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        }
+    })
+}
+
+fn selected_margin_bounds(
+    path: &Path,
+    dataset: &FcsDataset,
+    channels: &[ResolvedChannel],
+) -> Result<Vec<MarginBounds>, PeacoQcError> {
+    let known = known_margin_bounds(path, dataset)?;
+    channels
+        .iter()
+        .map(|channel| {
+            known.get(&channel.parameter.name).copied().ok_or_else(|| {
+                PeacoQcError::UnknownMargins {
+                    path: path.to_path_buf(),
+                    channel: channel.display_name.clone(),
+                }
+            })
+        })
+        .collect()
+}
+
 fn prepare_working_data(
     channels: &[ResolvedChannel],
     event_count: usize,
-    remove_margins: bool,
+    margin_bounds: Option<&[MarginBounds]>,
 ) -> WorkingData {
     let mut margin_removed = vec![false; event_count];
     let mut margin_counts = Vec::new();
 
-    if remove_margins {
-        for channel in channels {
-            let (channel_removed, counts) = margin_events_for_channel(channel);
+    if let Some(margin_bounds) = margin_bounds {
+        for (channel, bounds) in channels.iter().zip(margin_bounds) {
+            let (channel_removed, counts) = margin_events_for_channel(channel, bounds);
             for (target, removed) in margin_removed.iter_mut().zip(channel_removed) {
                 *target = *target || removed;
             }
@@ -517,23 +565,19 @@ fn prepare_working_data(
     }
 }
 
-fn margin_events_for_channel(channel: &ResolvedChannel) -> (Vec<bool>, ChannelMarginCounts) {
+fn margin_events_for_channel(
+    channel: &ResolvedChannel,
+    bounds: &MarginBounds,
+) -> (Vec<bool>, ChannelMarginCounts) {
     let minimum = channel.values.iter().copied().fold(f64::INFINITY, f64::min);
     let maximum = channel
         .values
         .iter()
         .copied()
         .fold(f64::NEG_INFINITY, f64::max);
-    // flowCore: minRange = realMin = min($PnE zero value, max(-111, min(e)));
-    // maxRange = $PnR - 1. PeacoQC::RemoveMargins keeps
-    // e > max(min(minRange, 0), min(e)) and e < min(maxRange, max(e)).
-    let real_min = (-111.0_f64).max(minimum);
-    let min_range = parameter_min_range(&channel.parameter).unwrap_or_else(|| {
-        parameter_zero_value(&channel.parameter).map_or(real_min, |zero| zero.min(real_min))
-    });
-    let max_range = parameter_max_range(&channel.parameter).unwrap_or(maximum);
-    let min_threshold = min_range.min(0.0).max(minimum);
-    let max_threshold = max_range.min(maximum);
+    // PeacoQC::RemoveMargins keeps e > max(min(minRange, 0), min(e)) and
+    // e < min(maxRange, max(e)); see `MarginBounds::from_raw_parameter`.
+    let (min_threshold, max_threshold) = bounds.thresholds(minimum, maximum);
 
     let min_flags = channel
         .values
@@ -558,37 +602,6 @@ fn margin_events_for_channel(channel: &ResolvedChannel) -> (Vec<bool>, ChannelMa
     };
 
     (removed, counts)
-}
-
-fn parameter_min_range(parameter: &Parameter) -> Option<f64> {
-    keyword_value(parameter, "minRange")
-        .or_else(|| keyword_value(parameter, "min"))
-        .and_then(|value| value.trim().parse::<f64>().ok())
-}
-
-fn parameter_max_range(parameter: &Parameter) -> Option<f64> {
-    keyword_value(parameter, &format!("$P{}R", parameter.index))
-        .and_then(|value| value.trim().parse::<f64>().ok())
-        .map(|range| range - 1.0)
-        .or_else(|| {
-            keyword_value(parameter, "maxRange")
-                .or_else(|| keyword_value(parameter, "max"))
-                .and_then(|value| value.trim().parse::<f64>().ok())
-        })
-}
-
-/// Second field of `$PnE`, which flowCore uses as the channel's zero value.
-fn parameter_zero_value(parameter: &Parameter) -> Option<f64> {
-    keyword_value(parameter, &format!("$P{}E", parameter.index))
-        .and_then(|value| value.split(',').nth(1))
-        .and_then(|value| value.trim().parse::<f64>().ok())
-}
-
-fn keyword_value<'a>(parameter: &'a Parameter, key: &str) -> Option<&'a str> {
-    parameter
-        .keywords
-        .iter()
-        .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
 }
 
 fn find_events_per_bin(
@@ -1172,7 +1185,14 @@ fn primary_bin_ids(bins: &[Vec<usize>], event_count: usize) -> Vec<Option<usize>
     ids
 }
 
+/// `sample.peacoqc.fcs` -> `sample.peacoqc.masks.parquet`.
+#[must_use]
+pub fn masks_path(output: &Path) -> PathBuf {
+    output.with_extension("masks.parquet")
+}
+
 fn write_cleaned_fcs(
+    input: &Path,
     output: &Path,
     dataset: &FcsDataset,
     mask: &[EventMaskRecord],
@@ -1188,13 +1208,12 @@ fn write_cleaned_fcs(
         });
     }
 
+    // Values are written unchanged, so every source keyword, `$PnR` and the
+    // spillover matrix stay valid for the cleaned file.
     let mut parameters = dataset
         .parameters
         .iter()
-        .map(|parameter| match parameter.label.as_ref() {
-            Some(label) => FcsWriteParameter::with_label(parameter.name.clone(), label.clone()),
-            None => FcsWriteParameter::new(parameter.name.clone()),
-        })
+        .map(FcsWriteParameter::from_source)
         .collect::<Vec<_>>();
     let mut columns = dataset
         .data
@@ -1203,7 +1222,7 @@ fn write_cleaned_fcs(
         .map(|column| {
             retained
                 .iter()
-                .map(|&index| column_value_to_f32(column, index))
+                .map(|&index| column_value_to_f64(column, index))
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
@@ -1211,13 +1230,13 @@ fn write_cleaned_fcs(
     if !dataset
         .parameters
         .iter()
-        .any(|parameter| parameter.name == "Original_ID")
+        .any(|parameter| parameter.name == cytiq_fcs::ORIGINAL_ID_PARAMETER)
     {
-        parameters.push(FcsWriteParameter::new("Original_ID"));
+        parameters.push(FcsWriteParameter::new(cytiq_fcs::ORIGINAL_ID_PARAMETER));
         columns.push(
             retained
                 .iter()
-                .map(|&index| (index + 1) as f32)
+                .map(|&index| (index + 1) as f64)
                 .collect::<Vec<_>>(),
         );
     }
@@ -1231,11 +1250,32 @@ fn write_cleaned_fcs(
         });
     }
 
-    cytiq_fcs::write_fcs3_1_f32(output, &parameters, &columns).map_err(|source| {
-        PeacoQcError::FcsWrite {
-            path: output.to_path_buf(),
-            source,
-        }
+    let mut margin_bounds = known_margin_bounds(input, dataset)?;
+    margin_bounds.remove(cytiq_fcs::ORIGINAL_ID_PARAMETER);
+    let options = FcsWriteOptions::new()
+        .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text))
+        .with_text_keyword(
+            MARGINS_KEYWORD,
+            cytiq_fcs::encode_margin_bounds(&margin_bounds),
+        );
+    // Event identifiers above 2^24, 32-bit integer data and f64 data do not
+    // survive f32; write doubles only when a value would change.
+    let write_result = if columns
+        .iter()
+        .flatten()
+        .all(|value| f64::from(*value as f32).to_bits() == value.to_bits())
+    {
+        let columns = columns
+            .iter()
+            .map(|column| column.iter().map(|value| *value as f32).collect())
+            .collect::<Vec<Vec<f32>>>();
+        cytiq_fcs::write_fcs3_1_f32_with_options(output, &parameters, &columns, &options)
+    } else {
+        cytiq_fcs::write_fcs3_1_f64_with_options(output, &parameters, &columns, &options)
+    };
+    write_result.map_err(|source| PeacoQcError::FcsWrite {
+        path: output.to_path_buf(),
+        source,
     })
 }
 
@@ -1380,11 +1420,11 @@ fn column_to_f64(column: &ColumnData) -> Vec<f64> {
     }
 }
 
-fn column_value_to_f32(column: &ColumnData, index: usize) -> f32 {
+fn column_value_to_f64(column: &ColumnData, index: usize) -> f64 {
     match column {
-        ColumnData::UInt(values) => values[index] as f32,
-        ColumnData::F32(values) => values[index],
-        ColumnData::F64(values) => values[index] as f32,
+        ColumnData::UInt(values) => values[index] as f64,
+        ColumnData::F32(values) => f64::from(values[index]),
+        ColumnData::F64(values) => values[index],
     }
 }
 

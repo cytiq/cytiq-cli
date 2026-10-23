@@ -194,8 +194,8 @@ enum Commands {
         /// Logicle/hyperlog W parameter, width of linear region.
         #[arg(long, default_value_t = 0.5, value_parser = parse_non_negative_f64)]
         logicle_w: f64,
-        /// Logicle/hyperlog A parameter, additional negative decades.
-        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative_f64)]
+        /// Logicle/hyperlog A parameter, additional negative decades (-W <= A <= M - 2W).
+        #[arg(long, default_value_t = 0.0, value_parser = parse_finite_f64, allow_negative_numbers = true)]
         logicle_a: f64,
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
@@ -223,6 +223,9 @@ enum Commands {
         /// Optional directory for transformation metrics and Plotly report.
         #[arg(long)]
         debug_dir: Option<PathBuf>,
+        /// Transform inputs that `cytiq transform` already transformed.
+        #[arg(long)]
+        allow_retransform: bool,
     },
     /// Apply a Gating-ML 2.0 gating strategy to an FCS file and report per-gate counts.
     Gate {
@@ -838,6 +841,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             metadata_json,
             debug_dir,
+            allow_retransform,
         } => {
             info!(
                 "starting transform: inputs={}, output={}, method={:?}",
@@ -871,6 +875,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 metadata_json,
                 debug_dir,
                 threads,
+                allow_retransform,
             };
             let result = TransformRunner::run(&config)?;
             if result.dry_run {

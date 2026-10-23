@@ -647,6 +647,20 @@ fn load_processed_file(
             path: path.to_path_buf(),
         });
     }
+    // CytoScan compensates and arcsinh-transforms raw values itself; a file
+    // from `cytiq transform` would be scored on a different scale than raw
+    // files of the same cohort.
+    let transform =
+        cytiq_fcs::transform_state(&dataset.text).map_err(|source| CytoScanError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if let Some(transform) = transform {
+        return Err(CytoScanError::TransformedInput {
+            path: path.to_path_buf(),
+            method: transform.method,
+        });
+    }
     let channels = resolve_channels(path, &dataset, requested_channels)?;
     let spillover = parse_spillover(path, &dataset)?;
     let (matrix, warnings) = preprocess_matrix(path, &dataset, &channels, spillover.as_ref())?;

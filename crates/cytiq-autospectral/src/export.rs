@@ -30,11 +30,18 @@ pub fn write_outputs(
     )?;
     for sample in &result.samples {
         debug!("writing unmixed FCS to {}", sample.output_path.display());
-        cytiq_fcs::write_fcs3_1_f32(&sample.output_path, &sample.parameters, &sample.columns)
-            .map_err(|source| AutoSpectralError::FcsWrite {
-                path: sample.output_path.clone(),
-                source,
-            })?;
+        let options =
+            cytiq_fcs::FcsWriteOptions::new().with_text_keywords(sample.text_keywords.clone());
+        cytiq_fcs::write_fcs3_1_f32_with_options(
+            &sample.output_path,
+            &sample.parameters,
+            &sample.columns,
+            &options,
+        )
+        .map_err(|source| AutoSpectralError::FcsWrite {
+            path: sample.output_path.clone(),
+            source,
+        })?;
     }
     write_json(&diagnostics_dir.join("run.json"), &result.summary)?;
 

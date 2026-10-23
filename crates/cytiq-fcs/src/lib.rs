@@ -3,6 +3,9 @@ mod data;
 mod error;
 mod header;
 mod layout;
+mod lineage;
+mod margins;
+mod signal;
 mod text;
 mod types;
 mod writer;
@@ -20,15 +23,27 @@ use crate::layout::resolve_layout;
 use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
 
-pub use crate::compensation::{Spillover, compensate, find_parameter_index, invert_matrix};
+pub use crate::compensation::{
+    Spillover, compensate, find_parameter_index, invert_matrix, is_spillover_keyword,
+};
 pub use crate::error::FcsError as Error;
+pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
+pub use crate::margins::{
+    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds,
+    recorded_margin_bounds,
+};
+pub use crate::signal::{
+    SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD, TransformState, transform_state,
+};
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,
     ParameterDataType, ParameterWidth, TextSegment,
 };
 pub use crate::writer::{
-    FcsWriteOptions, FcsWriteParameter, write_fcs3_1_f32, write_fcs3_1_f32_to_writer,
-    write_fcs3_1_f32_to_writer_with_options, write_fcs3_1_f32_with_options,
+    FcsWriteOptions, FcsWriteParameter, carried_keywords, write_fcs3_1_f32,
+    write_fcs3_1_f32_to_writer, write_fcs3_1_f32_to_writer_with_options,
+    write_fcs3_1_f32_with_options, write_fcs3_1_f64_to_writer_with_options,
+    write_fcs3_1_f64_with_options,
 };
 
 #[derive(Debug)]

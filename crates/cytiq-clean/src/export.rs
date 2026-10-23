@@ -44,8 +44,10 @@ pub(crate) fn write_outputs(
     )
 }
 
-/// One row per input event. Filter columns are null when the filter was not
-/// assessed, so "not checked" is never confused with "passed".
+/// One row per input event. `source_event_id` is the raw-file row (equal to
+/// `event_id` unless the input has `Original_ID`). Filter columns are null when
+/// the filter was not assessed, so "not checked" is never confused with
+/// "passed".
 fn write_masks_parquet(path: &Path, masks: &CleanMasks) -> Result<(), CleanError> {
     debug!("writing event masks to {}", path.display());
     let parquet_error = |message: String| CleanError::ParquetWrite {
@@ -54,6 +56,7 @@ fn write_masks_parquet(path: &Path, masks: &CleanMasks) -> Result<(), CleanError
     };
     let schema = Arc::new(Schema::new(vec![
         Field::new("event_id", DataType::UInt64, false),
+        Field::new("source_event_id", DataType::UInt64, false),
         Field::new(NON_DEBRIS_GATE, DataType::Boolean, true),
         Field::new(SINGLETS_GATE, DataType::Boolean, true),
         Field::new(LIVE_GATE, DataType::Boolean, true),
@@ -66,8 +69,14 @@ fn write_masks_parquet(path: &Path, masks: &CleanMasks) -> Result<(), CleanError
             None => BooleanArray::new_null(event_count),
         })
     };
+    let event_ids = (0..event_count as u64).collect::<Vec<_>>();
+    let source_event_ids = masks
+        .source_event_ids
+        .clone()
+        .unwrap_or_else(|| event_ids.clone());
     let columns: Vec<ArrayRef> = vec![
-        Arc::new(UInt64Array::from_iter_values(0..event_count as u64)),
+        Arc::new(UInt64Array::from(event_ids)),
+        Arc::new(UInt64Array::from(source_event_ids)),
         optional(&masks.non_debris),
         optional(&masks.singlets),
         optional(&masks.live),

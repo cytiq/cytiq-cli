@@ -6,6 +6,10 @@ use thiserror::Error;
 pub enum CytoScanError {
     #[error("at least one `--input` value is required")]
     EmptyInputs,
+    #[error(
+        "FCS input `{path}` was transformed ({method}) by `cytiq transform`; CytoScan compensates and transforms raw files itself, so pass the raw FCS"
+    )]
+    TransformedInput { path: PathBuf, method: String },
     #[error("input path `{path}` does not exist")]
     MissingInput { path: PathBuf },
     #[error("input path `{path}` is not an FCS file")]

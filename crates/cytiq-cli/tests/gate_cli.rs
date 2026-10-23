@@ -127,3 +127,43 @@ fn cli_fails_when_gating_ml_is_missing() {
 
     fs::remove_dir_all(directory).ok();
 }
+
+#[test]
+fn cli_refuses_to_transform_already_transformed_channels() {
+    let directory = create_temp_dir("cytiq-cli-gate-transformed");
+    let transformed = directory.join("sample.transformed.fcs");
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "transform",
+            "--input",
+            utf8(&fixture("sample.fcs")),
+            "--output",
+            utf8(&transformed),
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "gate",
+            "--input",
+            utf8(&transformed),
+            "--gating-ml",
+            utf8(&fixture("gates.xml")),
+            "--output",
+            utf8(&directory.join("counts.csv")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("a second time"), "stderr: {stderr}");
+
+    fs::remove_dir_all(directory).ok();
+}

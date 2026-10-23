@@ -6,6 +6,7 @@ Usage: python compare.py <data_dir> <rust_out> <upstream_out> <metrics_json>
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -354,8 +355,166 @@ def compare_gating(data: Path, rust: Path) -> dict:
         for gate_id, expected in reference.items()
     }
     matching = sum(1 for gate in gates.values() if gate["flowkit"] == gate["rust"])
-    return {"gates": len(gates), "matching_counts": matching,
+    return {"gates": len(gates), "matching_counts": matching, "all_counts_match": matching == len(gates),
             "extra_rust_gates": sorted(set(rows) - set(reference)), "counts": gates}
+
+
+# --------------------------------------------------------------------------- pipeline
+PIPELINE_FLUOR = ["FL1-A", "FL2-A", "FL3-A", "FL4-A", "FL5-A", "FL6-A"]
+PIPELINE_FLAGS = ["debris", "doublet", "dead", "unstable", "margin"]
+PIPELINE_GATES = {"CD4T": "cd4_t", "CD8T": "cd8_t", "DNT": "dn_t", "B": "b", "NK": "nk", "Rare": "rare"}
+
+
+def _parquet_by_row(path: Path, rows: int) -> pd.DataFrame:
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(path).to_pandas().set_index("source_event_id")
+    return table.reindex(np.arange(rows))
+
+
+def _fcs_columns(path: Path, channels: list[str]) -> np.ndarray:
+    data, names = read_fcs(path)
+    return data[:, [names.index(channel) for channel in channels]]
+
+
+def _flowkit_membership(fcs: Path, xml: Path) -> dict[str, np.ndarray]:
+    import flowkit as fk
+
+    sample = fk.Sample(str(fcs))
+    strategy = fk.parse_gating_xml(str(xml))
+    results = strategy.gate_sample(sample)
+    return {gate_id: np.asarray(results.get_gate_membership(gate_id, gate_path), dtype=bool)
+            for gate_id, gate_path in strategy.get_gate_ids()}
+
+
+def _recall_loss(predicted: np.ndarray, truth: np.ndarray, good: np.ndarray) -> dict:
+    return {"recall": _r((predicted & truth).sum() / max(truth.sum(), 1), 4),
+            "good_loss": _r((predicted & good).sum() / max(good.sum(), 1), 4)}
+
+
+def compare_pipeline_dataset(data: Path, rust: Path, upstream: Path, dataset: str) -> dict:
+    d, r, u = data / dataset, rust / dataset, upstream / dataset
+    truth = pd.read_csv(d / "truth" / "events.csv")
+    rows = len(truth)
+    good = (truth[PIPELINE_FLAGS].sum(axis=1) == 0).to_numpy()
+    out: dict = {"events": rows}
+
+    # Values: cytiq stores f32, R works in double.
+    for stage, fcs, csv in [("compensated", "s.comp.fcs", "r_compensated.csv"),
+                            ("transformed", "s.t.fcs", "r_transformed.csv")]:
+        mine = _fcs_columns(r / fcs, PIPELINE_FLUOR)
+        theirs = pd.read_csv(u / csv).to_numpy()
+        scale = np.maximum(np.abs(theirs), 1.0)
+        out[f"{stage}_max_rel_delta"] = _r(float(np.max(np.abs(mine - theirs) / scale)))
+
+    raw = _fcs_columns(d / "sample.fcs", PIPELINE_FLUOR)
+    comp_mask = _parquet_by_row(r / "s.comp.masks.parquet", rows)
+    margin_removed = ~comp_mask["margin_pass"].astype(bool).to_numpy()
+    # Detector limits recomputed independently: `$PnR - 1` and flowCore's -111.
+    at_limit = ((raw >= 262_143) | (raw <= -111)).any(axis=1)
+    r_margins = pd.read_csv(u / "r_margins.csv")["removed"].to_numpy().astype(bool)
+    out["margins"] = {
+        "agreement_with_detector_limits": _r((margin_removed == at_limit).mean(), 6),
+        "agreement_with_RemoveMargins": _r((margin_removed == r_margins).mean(), 4),
+        "RemoveMargins_extra_removed": int((r_margins & ~margin_removed).sum()),
+        **_recall_loss(margin_removed, truth["margin"].to_numpy() == 1, good),
+    }
+
+    peacoqc_keep = _parquet_by_row(r / "s.peacoqc.masks.parquet", rows)["keep"].astype(bool).to_numpy()
+    r_peacoqc = pd.read_csv(u / "r_peacoqc.csv")["good"].to_numpy().astype(bool)
+    out["peacoqc"] = {"agreement": _r((peacoqc_keep == r_peacoqc).mean(), 6),
+                      **_recall_loss(~peacoqc_keep, truth["unstable"].to_numpy() == 1, good)}
+
+    clean = _parquet_by_row(r / "clean" / "masks.parquet", rows)
+    flowkit_clean = _flowkit_membership(d / "sample.fcs", r / "clean" / "gates.gatingml.xml")
+    out["clean"] = {}
+    for flag, column in [("debris", "non_debris"), ("doublet", "singlets"), ("dead", "live")]:
+        values = clean[column]
+        if values.isna().all():
+            out["clean"][column] = {"status": "not_assessed"}
+            continue
+        passed = values.fillna(False).astype(bool).to_numpy()
+        out["clean"][column] = {
+            "agreement_with_flowkit": _r((passed == flowkit_clean[column]).mean(), 6),
+            **_recall_loss(~passed, truth[flag].to_numpy() == 1, good),
+        }
+
+    keep = _parquet_by_row(r / "analysis.parquet", rows)["keep"].astype(bool).to_numpy()
+    both = (keep & good).sum()
+    out["final"] = {"bad_kept_fraction": _r((keep & ~good).sum() / max((~good).sum(), 1), 4),
+                    "f1": _r(2 * both / (keep.sum() + good.sum()), 4)}
+
+    if (d / "gates_raw.xml").exists() and (r / "membership.parquet").exists():
+        membership = _parquet_by_row(r / "membership.parquet", rows)
+        flowkit = _flowkit_membership(d / "sample.fcs", d / "gates_raw.xml")
+        out["gates"] = {}
+        for gate_id, population in PIPELINE_GATES.items():
+            mine = membership[gate_id].fillna(False).astype(bool).to_numpy()
+            theirs = flowkit[gate_id] & keep
+            truth_members = keep & (truth["population"].to_numpy() == population)
+            hits = (mine & truth_members).sum()
+            out["gates"][gate_id] = {
+                "count": int(mine.sum()), "truth": int(truth_members.sum()),
+                "flowkit_disagreement": int((mine != theirs).sum()),
+                "precision": _r(hits / max(mine.sum(), 1), 4),
+                "recall": _r(hits / max(truth_members.sum(), 1), 4),
+            }
+
+    if (u / "r_flowsom.csv").exists():
+        flowsom = pd.read_csv(r / "flowsom.csv").set_index("source_event_id")
+        theirs = pd.read_csv(u / "r_flowsom.csv").set_index("raw_row")
+        population = truth.set_index("raw_row")["population"]
+        common = flowsom.index.intersection(theirs.index)
+        out["flowsom"] = {
+            "rust_ari_vs_truth": _r(adjusted_rand_score(population[flowsom.index],
+                                                        flowsom["flowsom_metacluster"]), 4),
+            "upstream_ari_vs_truth": _r(adjusted_rand_score(population[theirs.index],
+                                                            theirs["metacluster"]), 4),
+            "rust_vs_upstream_ari": _r(adjusted_rand_score(flowsom.loc[common, "flowsom_metacluster"],
+                                                           theirs.loc[common, "metacluster"]), 4),
+            "events_compared": int(len(common)),
+        }
+    return out
+
+
+def compare_pipeline(data: Path, rust: Path, upstream: Path) -> dict:
+    return {dataset: compare_pipeline_dataset(data, rust, upstream, dataset)
+            for dataset in ("pipeline", "pipeline_beads")
+            if (data / dataset).exists() and (rust / dataset).exists() and (upstream / dataset).exists()}
+
+
+# --------------------------------------------------------------------------- tolerances
+def _resolve(node, path: list, prefix: tuple = ()):
+    if not path:
+        yield prefix, node
+        return
+    head, rest = path[0], path[1:]
+    if not isinstance(node, dict):
+        return
+    keys = node.keys() if head == "*" else ([head] if head in node else [])
+    for key in keys:
+        yield from _resolve(node[key], rest, (*prefix, key))
+
+
+def check_tolerances(metrics: dict, rules_path: Path) -> list[str]:
+    """Violations of the rules in `tolerances.json` (empty when all pass)."""
+    violations = []
+    for rule in json.loads(rules_path.read_text())["rules"]:
+        matches = list(_resolve(metrics, rule["path"]))
+        if not matches:
+            violations.append(f"{'.'.join(rule['path'])}: no metric matches")
+        for path, value in matches:
+            name = ".".join(map(str, path))
+            if "equals" in rule:
+                failed = value != rule["equals"]
+            elif not isinstance(value, (int, float)) or isinstance(value, bool) or value != value:
+                failed = True
+            else:
+                failed = ("min" in rule and value < rule["min"]) or ("max" in rule and value > rule["max"])
+            if failed:
+                bound = {key: rule[key] for key in ("min", "max", "equals") if key in rule}
+                violations.append(f"{name} = {value} violates {bound} ({rule['why']})")
+    return violations
 
 
 def main() -> None:
@@ -371,6 +530,7 @@ def main() -> None:
         "flowsom_hard": compare_flowsom(data, rust, upstream, "flowsom_hard"),
         "cytoscan": compare_cytoscan(data, rust, upstream),
         "gating": compare_gating(data, rust),
+        "pipeline": compare_pipeline(data, rust, upstream),
         "timing": {
             "autospill": {"rust": rust_time(rust, "autospill"), "upstream_seconds": up_t.get("autospill")},
             "peacoqc_all": {"rust": rust_time(rust, "peacoqc_all"), "upstream_seconds": up_t.get("peacoqc_all")},
@@ -383,6 +543,14 @@ def main() -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(metrics, indent=2))
     print(json.dumps(metrics, indent=2))
+    if os.environ.get("PARITY_SKIP_TOLERANCES"):
+        return
+    violations = check_tolerances(metrics, Path(__file__).parent / "tolerances.json")
+    for violation in violations:
+        print(f"TOLERANCE VIOLATION: {violation}", file=sys.stderr)
+    if violations:
+        sys.exit(1)
+    print("all tolerances hold", file=sys.stderr)
 
 
 if __name__ == "__main__":

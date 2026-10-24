@@ -2,7 +2,7 @@
 //! per-event truth (`data/fixtures/pipeline`, see its README):
 //!
 //! preflight → compensate → transform → peacoqc → clean (raw) → mask combine
-//! → gate --mask --membership → flowsom --mask
+//! → qc → gate --mask --membership → flowsom --mask
 //!
 //! Acceptance thresholds live in `data/fixtures/pipeline/thresholds.json`.
 
@@ -62,7 +62,7 @@ fn run_chain(directory: &Path) {
     let sample = fixture("sample.fcs");
     let gates = fixture("gates.xml");
     let manifest = fixture("run.yaml");
-    let steps: [&[&str]; 9] = [
+    let steps: [&[&str]; 10] = [
         &[
             "preflight",
             "--manifest",
@@ -99,6 +99,17 @@ fn run_chain(directory: &Path) {
             "clean/masks.parquet",
             "--output",
             "analysis.parquet",
+        ],
+        &[
+            "qc",
+            "--manifest",
+            utf8(&manifest),
+            "--sample",
+            "GOLDEN",
+            "--mask",
+            "analysis.parquet",
+            "--output",
+            "qc.json",
         ],
         &[
             "gate",
@@ -543,6 +554,16 @@ fn golden_chain_recovers_the_known_truth() {
         ),
         "rare population metacluster purity (20 metaclusters)",
     );
+
+    // The panel's QC policy accepts the final mask, and its counts are the
+    // mask's own.
+    let qc: Value =
+        serde_json::from_str(&fs::read_to_string(directory.join("qc.json")).expect("qc report"))
+            .expect("JSON");
+    assert_eq!(qc["failures"], 0, "{qc:#}");
+    let analysis = read_mask(&directory, "analysis.parquet");
+    assert_eq!(qc["metrics"]["events"], rows);
+    assert_eq!(qc["metrics"]["kept"], analysis.kept());
 
     // Every derived file and mask names the raw file as its acquisition.
     let acquisition = common::sha256_hex(&fixture("sample.fcs"));

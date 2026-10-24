@@ -1,7 +1,7 @@
 # cytiq-manifest
 
 The run manifest: one YAML (`.yaml`/`.yml`) or JSON (`.json`) file that
-describes an acquisition run. Read by `cytiq preflight`.
+describes an acquisition run. Read by `cytiq preflight` and `cytiq qc`.
 
 ```yaml
 cytometry: conventional        # or spectral
@@ -43,6 +43,7 @@ samples:
 | `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry`, `CompensationSource`, `MatrixKind` | The document; a single `panel` is read as one entry of `panels` |
 | `RunManifest::panel_of`, `controls_of`, `compensation_of` | A sample's panel, a panel's controls, a conventional panel's compensation source (`fcs` by default) |
 | `Panel::label` | `name`, or `panel` when unnamed |
+| `QcPolicy`, `FilterPolicy`, `Severity` | A panel's `qc` section, checked by [`cytiq qc`](../cytiq-qc) |
 | `ControlEntry::is_unstained` | `dye` is `Autofluorescence`, `AF` or `unstained` |
 | `ManifestError` | Error type |
 
@@ -59,6 +60,8 @@ samples:
 - `compensation` is for conventional runs only; `source: controls` needs
   single-stain controls in the panel.
 - Every spectral panel needs an unstained control.
+- QC fractions (`max_removed_fraction`) lie between 0 and 1; filter names
+  are not empty.
 - Files themselves are not opened here; `cytiq preflight` checks them.
 
 ## Dependencies

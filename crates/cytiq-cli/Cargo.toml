@@ -21,6 +21,7 @@ cytiq-meta = { path = "../cytiq-meta" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
 cytiq-preflight = { path = "../cytiq-preflight" }
 cytiq-provenance = { path = "../cytiq-provenance" }
+cytiq-qc = { path = "../cytiq-qc" }
 cytiq-transform = { path = "../cytiq-transform" }
 log = "0.4.30"
 

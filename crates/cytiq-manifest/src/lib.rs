@@ -33,7 +33,7 @@
 //!
 //! Relative file paths are resolved against the manifest's directory.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -122,6 +122,51 @@ pub struct Panel {
     /// `None` means the samples' own `$SPILLOVER` (`source: fcs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compensation: Option<CompensationSource>,
+    /// Acceptance rules `cytiq qc` applies to the panel's samples.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qc: Option<QcPolicy>,
+}
+
+/// Panel-level QC policy, checked by `cytiq qc` on a sample's final event
+/// mask.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QcPolicy {
+    /// Minimum events in the raw sample file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_events: Option<u64>,
+    /// Minimum events the final mask keeps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_kept_events: Option<u64>,
+    /// Maximum fraction of raw events the final mask removes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_removed_fraction: Option<f64>,
+    /// Rules per mask filter column (`margin_pass`, `peacoqc_pass`,
+    /// `non_debris`, `singlets`, `live`, gate ids, ...).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub filters: BTreeMap<String, FilterPolicy>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilterPolicy {
+    /// The filter must have assessed at least one event.
+    #[serde(default)]
+    pub required: bool,
+    /// Maximum fraction of the events it assessed that the filter removes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_removed_fraction: Option<f64>,
+    /// What a violated rule of this filter reports.
+    #[serde(default)]
+    pub severity: Severity,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    #[default]
+    Fail,
+    Warn,
 }
 
 impl Panel {
@@ -392,6 +437,9 @@ impl RunManifest {
                     panel.label()
                 ));
             }
+            if let Some(qc) = &panel.qc {
+                check_qc_policy(panel.label(), qc)?;
+            }
             let mut markers = HashSet::new();
             for marker in &panel.markers {
                 if marker.marker.trim().is_empty() {
@@ -443,6 +491,31 @@ impl RunManifest {
             _ => Ok(()),
         }
     }
+}
+
+fn check_qc_policy(panel: &str, qc: &QcPolicy) -> Result<(), String> {
+    let fractions = qc
+        .max_removed_fraction
+        .map(|value| ("max_removed_fraction".to_owned(), value))
+        .into_iter()
+        .chain(qc.filters.iter().filter_map(|(name, filter)| {
+            filter
+                .max_removed_fraction
+                .map(|value| (format!("filters.{name}.max_removed_fraction"), value))
+        }));
+    for (key, value) in fractions {
+        if !(0.0..=1.0).contains(&value) {
+            return Err(format!(
+                "panel `{panel}`: qc `{key}` must be between 0 and 1, got {value}"
+            ));
+        }
+    }
+    if qc.filters.keys().any(|name| name.trim().is_empty()) {
+        return Err(format!(
+            "panel `{panel}`: qc filter names must not be empty"
+        ));
+    }
+    Ok(())
 }
 
 fn resolve(base: &Path, file: &Path) -> PathBuf {
@@ -642,5 +715,23 @@ controls:
                 .contains("more than one file in panel `T`"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn reads_a_qc_policy() {
+        let with_qc = YAML.replace(
+            "  name: T cells\n",
+            "  name: T cells\n  qc:\n    min_events: 1000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n      live: { max_removed_fraction: 0.4, severity: warn }\n",
+        );
+        let manifest = RunManifest::load(&write("qc.yaml", &with_qc)).unwrap();
+        let qc = manifest.panels[0].qc.as_ref().unwrap();
+        assert_eq!(qc.min_events, Some(1000));
+        assert!(qc.filters["peacoqc_pass"].required);
+        assert_eq!(qc.filters["peacoqc_pass"].severity, Severity::Fail);
+        assert_eq!(qc.filters["live"].severity, Severity::Warn);
+
+        let out_of_range = with_qc.replace("max_removed_fraction: 0.5", "max_removed_fraction: 50");
+        let error = RunManifest::load(&write("qc-range.yaml", &out_of_range)).unwrap_err();
+        assert!(error.to_string().contains("between 0 and 1"), "{error}");
     }
 }

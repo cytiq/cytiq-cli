@@ -78,6 +78,9 @@ println!("kept {}", result.summary.metrics.events_after);
 - Channels match `$PnN`, then `$PnS`, then `$PnN [$PnS]`.
 - With `debug_dir`, writes `summary.json`, `mask.csv` and `report.html`
   (Plotly from the CDN).
+- `summary.json` `status` is `WARN` when `warnings` is not empty, otherwise
+  `PASS`. It does not judge how much was removed; panel thresholds are
+  checked by `cytiq qc`.
 - `threads: Some(n)` runs in a local rayon pool.
 
 ## Dependencies

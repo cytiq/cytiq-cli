@@ -17,8 +17,9 @@ Current workspace crates:
 - `cytiq-mask`: per-event masks shared by stages (`masks.parquet`)
 - `cytiq-meta`: FCS metadata export as JSON
 - `cytiq-provenance`: per-run records of arguments, inputs and outputs with SHA-256
-- `cytiq-manifest`: the run manifest (YAML/JSON): cytometry type, panel, samples, controls
+- `cytiq-manifest`: the run manifest (YAML/JSON): cytometry type, panels, samples, controls, QC policy
 - `cytiq-preflight`: manifest and FCS checks before any computation
+- `cytiq-qc`: panel QC policy checked on a sample's final event mask
 - `cytiq-cli`: command-line entry point
 
 ## AutoSpill
@@ -417,6 +418,7 @@ cytiq peacoqc    --input sample.t.fcs --output sample.peacoqc.fcs --channels CD3
 cytiq clean      --input sample.fcs --output clean/     # raw scatter and viability
 cytiq mask combine --mask sample.comp.masks.parquet --mask sample.peacoqc.masks.parquet \
   --mask clean/masks.parquet --output sample.analysis.parquet
+cytiq qc         --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json
 cytiq gate       --input sample.t.fcs --gating-ml gates.xml --output counts.csv \
   --mask sample.analysis.parquet --membership membership.parquet
 cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD8 \
@@ -942,6 +944,52 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
 
 The JSON report is always written; the command exits with `1` when any check
 fails, and logs every failure and warning.
+
+## QC
+
+`cytiq qc` checks one sample's final event mask against the QC policy of its
+panel in the run manifest. It reads the mask, not each stage's report: the
+combined mask already holds every filter column (`margin_pass`,
+`peacoqc_pass`, `non_debris`, `singlets`, `live`, ...) and `keep`.
+
+```yaml
+panel:
+  name: T-cell-8c
+  markers: [...]
+  qc:
+    min_events: 10000             # raw events in the sample file
+    min_kept_events: 3000         # events the final mask keeps
+    max_removed_fraction: 0.6     # 1 - kept / raw events
+    filters:                      # key = mask filter column
+      margin_pass:  { required: true, max_removed_fraction: 0.05 }
+      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }
+      non_debris:   { required: true }
+      singlets:     { required: true }
+      live:         { required: false, max_removed_fraction: 0.5, severity: warn }
+```
+
+```bash
+cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json
+```
+
+Rules:
+- the mask must belong to the sample's raw acquisition and cover every raw
+  event (`cytiq mask combine` follows the rows of its first mask, so put the
+  `compensate` or `clean` mask first); otherwise the check fails and no
+  metrics are computed
+- a filter counts as removing an event when any of its columns is `false`;
+  `2.margin_pass` and `margin_pass` (the names `cytiq mask combine` gives a
+  repeated filter) are one filter. Its removed fraction is relative to the
+  events it assessed (non-null)
+- `required: true` fails when the filter is missing or assessed nothing (a
+  `not_assessed` clean filter); `severity: warn` turns that filter's failures
+  into warnings. `min_events`, `min_kept_events` and `max_removed_fraction`
+  always fail
+- a panel without `qc` passes with a note
+- `qc.json` holds `metrics` (raw and kept events, removed fraction, per
+  filter: columns, assessed, removed, removed fraction) and `checks`
+  (`scope`, `check`, `status`, `message`, `value`, `limit`). It is always
+  written; the command exits with `1` when any check fails
 
 ## Provenance
 

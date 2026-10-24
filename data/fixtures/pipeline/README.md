@@ -18,7 +18,8 @@ Golden data for the end-to-end test of the whole cytiq chain
   150) with `uncompensated` dimensions. `gates_raw.xml`: the same gates on the
   raw file, compensated through `FCS` with the equivalent `fasinh`, as FlowKit
   applies them.
-- `run.yaml`: the run manifest for `cytiq preflight`.
+- `run.yaml`: the run manifest for `cytiq preflight`, with the `qc` policy
+  `cytiq qc` checks the final mask against.
 - `thresholds.json`: acceptance thresholds of the end-to-end test.
 
 ## Measured on this fixture

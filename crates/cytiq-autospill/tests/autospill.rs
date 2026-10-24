@@ -169,6 +169,43 @@ fn runner_reports_duplicate_inferred_primary_channels() {
 }
 
 #[test]
+fn runner_caps_values_above_the_channel_range() {
+    // autospill reads controls with `flowCore::read.FCS`, whose default
+    // `truncate_max_range = TRUE` caps every value above `$PnR` at `$PnR`.
+    let run = |label: &str, limit: Option<bool>| {
+        let directory = support::create_temp_dir(label);
+        let manifest_path =
+            support::write_two_control_fixture(&directory, [[1.0, 0.2], [0.1, 1.0]]);
+        if let Some(cap_data) = limit {
+            for file in ["control_a.fcs", "control_b.fcs"] {
+                for parameter in [3, 4] {
+                    support::limit_parameter(&directory.join(file), parameter, 20_000, cap_data);
+                }
+            }
+        }
+        let manifest = read_controls_manifest(&manifest_path).expect("manifest should load");
+        AutospillRunner::run(&manifest, &directory, &AutospillConfig::default())
+            .expect("autospill should succeed")
+            .spillover_matrix
+    };
+    let unlimited = run("autospill-range-unlimited", None);
+    let by_range = run("autospill-range-pnr", Some(false));
+    let by_data = run("autospill-range-capped", Some(true));
+
+    for (range_row, data_row) in by_range.iter().zip(&by_data) {
+        for (range_value, data_value) in range_row.iter().zip(data_row) {
+            assert_close(*range_value, *data_value, 1e-12);
+        }
+    }
+    assert!(
+        (by_range[0][1] - unlimited[0][1]).abs() > 1e-6,
+        "capping should change the fit: {} vs {}",
+        by_range[0][1],
+        unlimited[0][1]
+    );
+}
+
+#[test]
 fn runner_reports_singular_matrix() {
     let directory = support::create_temp_dir("autospill-singular");
     let manifest_path = support::write_two_control_fixture(&directory, [[1.0, 1.0], [1.0, 1.0]]);

@@ -29,6 +29,10 @@ pub enum CleanError {
         "viability channel `{channel}` was transformed by `cytiq transform`; run `cytiq clean` on the raw FCS (or pass --no-viability) and combine its masks with `cytiq mask combine`"
     )]
     TransformedViability { channel: String },
+    #[error(
+        "scatter channel `{channel}` was transformed by `cytiq transform`; debris and singlet filters need raw linear scatter, so run `cytiq clean` on the raw FCS and combine its masks with `cytiq mask combine`"
+    )]
+    TransformedScatter { channel: String },
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
     #[error(transparent)]

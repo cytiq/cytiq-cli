@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cytiq_fcs::{
-    ColumnData, FcsDataset, FcsReader, FcsWriteParameter, MARGINS_KEYWORD, Parameter,
+    ColumnData, FcsDataset, FcsReader, FcsWriteParameter, MARGINS_KEYWORD, Parameter, SignalState,
     UNMIXING_KEYWORD, UnmixingState,
 };
 use cytiq_mask::EventMask;
@@ -355,6 +355,18 @@ fn load_dataset(path: &Path) -> Result<FcsDataset, AutoSpectralError> {
     if event_count(&dataset) == 0 {
         return Err(AutoSpectralError::EmptyFcs {
             path: path.to_path_buf(),
+        });
+    }
+    // Unmixing fits raw detector values, and the output keeps no earlier
+    // `CYTIQ_*` state, so a processed file would lose its history silently.
+    let state = SignalState::of(&dataset.text).map_err(|source| AutoSpectralError::FcsRead {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if !state.is_raw() {
+        return Err(AutoSpectralError::ProcessedInput {
+            path: path.to_path_buf(),
+            state: state.to_string(),
         });
     }
 

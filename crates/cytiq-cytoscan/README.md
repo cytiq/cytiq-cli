@@ -94,6 +94,9 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
   `feature_heatmap.csv`, `boxplot_samples.csv` and a Plotly `report.html`.
 - `strict` (CLI `--strict`) turns the "no spillover metadata" and "channel
   not in the spillover matrix" warnings into errors.
+- Inputs must be raw: a file another cytiq stage compensated, unmixed or
+  transformed is `ProcessedInput`, because it would be scored on a different
+  scale than the raw files of the cohort.
 - `novelty` and `both` require reference inputs; `threads = Some(0)` is
   rejected.
 

@@ -13,9 +13,9 @@ pub enum CytoScanError {
     #[error("selected channel `{channel}` of `{path}` is not in its spillover matrix (--strict)")]
     ChannelNotCompensated { path: PathBuf, channel: String },
     #[error(
-        "FCS input `{path}` was transformed ({method}) by `cytiq transform`; CytoScan compensates and transforms raw files itself, so pass the raw FCS"
+        "FCS input `{path}` was {state}; CytoScan compensates and transforms raw files itself, so pass the raw FCS"
     )]
-    TransformedInput { path: PathBuf, method: String },
+    ProcessedInput { path: PathBuf, state: String },
     #[error("input path `{path}` does not exist")]
     MissingInput { path: PathBuf },
     #[error("input path `{path}` is not an FCS file")]

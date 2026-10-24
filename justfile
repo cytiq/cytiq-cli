@@ -10,7 +10,12 @@ CLI_PACKAGE := env("CLI_PACKAGE", "cytiq-cli")
 DOCKER_IMAGE := env("DOCKER_IMAGE", "cytiq:dev")
 DOCKERFILE := env("DOCKERFILE", "docker/Dockerfile")
 
-# ---- Validation against upstream tools (needs parity/setup_env.sh once)
+# ---- Install the pinned upstream R/Python tools into parity/.env
+[group('validation')]
+parity-setup:
+    parity/setup_env.sh
+
+# ---- Validation against upstream tools (needs `just parity-setup` once)
 [group('validation')]
 parity:
     parity/run_all.sh

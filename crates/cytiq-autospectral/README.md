@@ -85,6 +85,10 @@ Manifest formats are documented in the root
 - `fluorophore` and `channel` are accepted as aliases for `dye` and
   `primary_channel`; an empty `primary_channel` means "infer".
 - Channel matching ignores case and a trailing `-A` / `-H` / `-W`.
+- Controls and samples must be raw acquisition files: a file with
+  `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` or `CYTIQ_TRANSFORM` is
+  `ProcessedInput`, since unmixing fits raw detector values and the output
+  keeps no earlier `CYTIQ_*` state.
 
 ## Outputs
 

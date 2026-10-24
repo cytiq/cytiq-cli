@@ -137,6 +137,7 @@ fn cli_refuses_to_transform_already_transformed_channels() {
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "transform",
+            "--allow-uncompensated",
             "--input",
             utf8(&fixture("sample.fcs")),
             "--output",

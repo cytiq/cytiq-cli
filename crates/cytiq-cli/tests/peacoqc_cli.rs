@@ -154,6 +154,7 @@ fn cli_margins_on_transformed_input_match_raw_margins() {
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "transform",
+            "--allow-uncompensated",
             "--input",
             utf8(&raw),
             "--output",
@@ -369,6 +370,46 @@ fn write_margin_fixture_fcs(path: &Path) {
 /// Repeats of the fixture rows: `PeacoQC` needs at least `consecutive_bins`
 /// (5) bins of `min_cells` events, otherwise every bin is a short region.
 const PEACOQC_FIXTURE_REPEATS: u16 = 50;
+
+#[test]
+fn warns_on_untransformed_input() {
+    let directory = create_temp_dir("cytiq-cli-peacoqc-untransformed");
+    let input = directory.join("sample.fcs");
+    let debug_dir = directory.join("debug");
+    write_peacoqc_fixture_fcs(&input);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "peacoqc",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&directory.join("sample.peacoqc.fcs")),
+            "--channel",
+            "355_378/28_uH-A [CD3 BUV395]",
+            "--debug-dir",
+            utf8(&debug_dir),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(debug_dir.join("summary.json")).expect("summary should exist"),
+    )
+    .expect("summary should be JSON");
+    let warnings = summary["warnings"].as_array().expect("warnings");
+    assert!(
+        warnings.iter().any(|warning| warning
+            .as_str()
+            .is_some_and(|text| text.contains("were not transformed"))),
+        "{warnings:?}"
+    );
+}
 
 fn write_peacoqc_fixture_fcs(path: &Path) {
     let base = read_peacoqc_fixture_columns();

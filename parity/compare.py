@@ -24,11 +24,24 @@ def _r(value: float, digits: int = 6) -> float:
     return float(f"{value:.{digits}g}")
 
 
+def parse_time(text: str) -> tuple[float, float]:
+    """Wall-clock seconds and peak RSS in MiB from `/usr/bin/time -l` (BSD,
+    bytes) or `/usr/bin/time -v` (GNU, kilobytes) output."""
+    bsd = re.search(r"([\d.]+) real", text)
+    if bsd:
+        rss = int(re.search(r"(\d+)\s+maximum resident set size", text).group(1))
+        return float(bsd.group(1)), rss / 2**20
+    clock = re.search(r"Elapsed \(wall clock\) time.*?: ([\d:.]+)", text).group(1)
+    seconds = 0.0
+    for part in clock.split(":"):
+        seconds = seconds * 60 + float(part)
+    rss_kb = int(re.search(r"Maximum resident set size \(kbytes\): (\d+)", text).group(1))
+    return seconds, rss_kb / 2**10
+
+
 def rust_time(rust: Path, name: str) -> dict:
-    text = (rust / f"{name}.time").read_text()
-    real = float(re.search(r"([\d.]+) real", text).group(1))
-    rss = int(re.search(r"(\d+)\s+maximum resident set size", text).group(1))
-    return {"seconds": real, "max_rss_mb": _r(rss / 2**20, 4)}
+    seconds, rss_mb = parse_time((rust / f"{name}.time").read_text())
+    return {"seconds": seconds, "max_rss_mb": _r(rss_mb, 4)}
 
 
 def upstream_times(upstream: Path) -> dict:

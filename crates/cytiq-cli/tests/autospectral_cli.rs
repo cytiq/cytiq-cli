@@ -238,6 +238,38 @@ fn preserves_large_original_ids_exactly() {
     assert_eq!(mask.source_event_ids[0], 16_777_216);
 }
 
+#[test]
+fn cli_rejects_processed_autospectral_controls() {
+    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-processed");
+    common::add_keyword(
+        &directory.join("fitc.fcs"),
+        cytiq_fcs::TRANSFORM_KEYWORD,
+        &common::transform_keyword(&[]),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospectral",
+            "--controls",
+            utf8(&directory.join("controls.csv")),
+            "--samples",
+            utf8(&directory.join("samples.csv")),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("out")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("fitc.fcs") && stderr.contains("unmixes raw acquisition files"),
+        "stderr: {stderr}"
+    );
+}
+
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
 }

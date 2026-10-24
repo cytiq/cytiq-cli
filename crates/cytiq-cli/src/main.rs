@@ -248,6 +248,10 @@ enum Commands {
         /// Transform inputs that `cytiq transform` already transformed.
         #[arg(long)]
         allow_retransform: bool,
+        /// Transform channels whose `$SPILLOVER` matrix was not applied yet
+        /// (normally `cytiq compensate` runs first).
+        #[arg(long)]
+        allow_uncompensated: bool,
     },
     /// Apply a Gating-ML 2.0 gating strategy to an FCS file and report per-gate counts.
     Gate {
@@ -1089,6 +1093,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             metadata_json,
             debug_dir,
             allow_retransform,
+            allow_uncompensated,
         } => {
             info!(
                 "starting transform: inputs={}, output={}, method={:?}",
@@ -1123,6 +1128,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 debug_dir,
                 threads,
                 allow_retransform,
+                allow_uncompensated,
             };
             if !config.dry_run {
                 recorder.snapshot_inputs("input", &TransformRunner::input_files(&config)?)?;

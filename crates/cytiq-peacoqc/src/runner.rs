@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
     ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, MARGINS_KEYWORD,
-    MarginBounds, Parameter, ParameterDataType,
+    MarginBounds, Parameter, SignalState,
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
@@ -258,7 +258,10 @@ impl PeacoQcRunner {
         let dataset = load_dataset(input)?;
         let events_before = event_count(&dataset);
         let channels = resolve_channels(input, &dataset, &config.channels)?;
-        let mut warnings = input_warnings(&channels, &dataset);
+        let mut warnings = input_warnings(input, &channels, &dataset)?;
+        for warning in &warnings {
+            warn!("peacoqc: {warning}");
+        }
 
         info!(
             "peacoqc pipeline: loaded {} events and {} selected channels from {}",
@@ -512,21 +515,39 @@ fn resolve_channels(
     Ok(channels)
 }
 
-fn input_warnings(channels: &[ResolvedChannel], dataset: &FcsDataset) -> Vec<String> {
-    let has_spill_keyword = dataset
+/// `PeacoQC` expects compensated, transformed signal. Other input still runs,
+/// so it is reported, not refused.
+fn input_warnings(
+    path: &Path,
+    channels: &[ResolvedChannel],
+    dataset: &FcsDataset,
+) -> Result<Vec<String>, PeacoQcError> {
+    let state = SignalState::of(&dataset.text).map_err(|source| PeacoQcError::FcsRead {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let mut warnings = Vec::new();
+    let pending_spillover = dataset
         .text
         .iter()
-        .any(|(key, _)| key.eq_ignore_ascii_case("$SPILL") || key.eq_ignore_ascii_case("SPILL"));
-    let integer_selected = channels
-        .iter()
-        .any(|channel| channel.parameter.data_type == ParameterDataType::Integer);
-    if has_spill_keyword && integer_selected {
-        vec![
-            "Selected channels look like integer-scale FCS data with spillover metadata; PeacoQC expects compensated/transformed input".to_owned(),
-        ]
-    } else {
-        Vec::new()
+        .any(|(key, _)| cytiq_fcs::is_spillover_keyword(key));
+    if pending_spillover {
+        warnings.push(
+            "the file's spillover matrix was not applied; PeacoQC expects compensated input (run `cytiq compensate` first)".to_owned(),
+        );
     }
+    let untransformed = channels
+        .iter()
+        .filter(|channel| !state.transformed(&channel.parameter.name))
+        .map(|channel| channel.display_name.as_str())
+        .collect::<Vec<_>>();
+    if !untransformed.is_empty() {
+        warnings.push(format!(
+            "channels {} were not transformed by `cytiq transform`; PeacoQC expects transformed input",
+            untransformed.join(", ")
+        ));
+    }
+    Ok(warnings)
 }
 
 fn known_margin_bounds(

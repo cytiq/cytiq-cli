@@ -55,6 +55,39 @@ pub fn acquisition_of(path: &Path) -> String {
     cytiq_fcs::acquisition_id(path, &dataset.text).expect("acquisition should resolve")
 }
 
+/// Rewrite `path` with an extra TEXT keyword, for example a `CYTIQ_*` signal
+/// state as if a cytiq stage had produced the file.
+pub fn add_keyword(path: &Path, key: &str, value: &str) {
+    let dataset = cytiq_fcs::FcsReader::open(path)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    let parameters = dataset
+        .parameters
+        .iter()
+        .map(cytiq_fcs::FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    let columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(cytiq_fcs::ColumnData::to_f64_vec)
+        .collect::<Vec<_>>();
+    cytiq_fcs::write_fcs3_1_exact_with_options(
+        path,
+        &parameters,
+        &columns,
+        &cytiq_fcs::FcsWriteOptions::new()
+            .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text))
+            .with_text_keyword(key, value),
+    )
+    .expect("rewritten FCS should write");
+}
+
+/// A `CYTIQ_TRANSFORM` value covering `channels`.
+pub fn transform_keyword(channels: &[&str]) -> String {
+    serde_json::json!({ "method": "arcsinh", "files": [{ "channels": channels }] }).to_string()
+}
+
 /// Copy `source` to `target` with an `Original_ID` column beyond f32
 /// precision (from 2^24 + 1), as `PeacoQC` writes for large acquisitions.
 /// Returns the identifiers.

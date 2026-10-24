@@ -677,18 +677,19 @@ fn load_processed_file(
             path: path.to_path_buf(),
         });
     }
-    // CytoScan compensates and arcsinh-transforms raw values itself; a file
-    // from `cytiq transform` would be scored on a different scale than raw
-    // files of the same cohort.
-    let transform =
-        cytiq_fcs::transform_state(&dataset.text).map_err(|source| CytoScanError::FcsRead {
+    // CytoScan compensates and arcsinh-transforms raw values itself. A file
+    // a cytiq stage already compensated, unmixed or transformed has no
+    // spillover left and would be scored on a different scale than raw files
+    // of the same cohort.
+    let state =
+        cytiq_fcs::SignalState::of(&dataset.text).map_err(|source| CytoScanError::FcsRead {
             path: path.to_path_buf(),
             source,
         })?;
-    if let Some(transform) = transform {
-        return Err(CytoScanError::TransformedInput {
+    if !state.is_raw() {
+        return Err(CytoScanError::ProcessedInput {
             path: path.to_path_buf(),
-            method: transform.method,
+            state: state.to_string(),
         });
     }
     let channels = resolve_channels(path, &dataset, requested_channels)?;

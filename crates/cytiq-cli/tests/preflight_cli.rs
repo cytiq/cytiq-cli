@@ -429,3 +429,38 @@ fn checks_each_sample_against_its_own_panel() {
     assert_eq!(panels[1]["samples"][0], "S02");
     assert!(panels[1]["controls"].as_array().is_some_and(Vec::is_empty));
 }
+
+#[test]
+fn declared_compensated_samples_must_not_keep_their_spillover() {
+    let directory = create_temp_dir("cytiq-cli-preflight-compensated");
+    let stripped = directory.join("sample.nospill.fcs");
+    without_spillover(&fixture("sample.fcs"), &stripped);
+    let declared = |samples: &str| {
+        manifest(samples, MARKERS).replace(
+            "  name: test\n",
+            "  name: test\n  signal_state: compensated\n",
+        )
+    };
+
+    // Stages would apply the file's `$SPILLOVER` to values already compensated.
+    let (output, report, _) = preflight(
+        &directory,
+        "kept.yaml",
+        &declared(&sample("S01", &fixture("sample.fcs"))),
+    );
+    assert!(!output.status.success());
+    assert_eq!(failed_checks(&report), [r#""sample S01" "signal_state""#]);
+
+    let (output, report, _) = preflight(
+        &directory,
+        "stripped.yaml",
+        &declared(&sample("S01", &stripped)),
+    );
+    assert!(output.status.success(), "{:?}", failed_checks(&report));
+    assert!(
+        checks_named(&report, "spillover").is_empty(),
+        "compensated samples need no matrix"
+    );
+    assert_eq!(report["panels"][0]["signal_state"], "compensated");
+    assert_eq!(report["panels"][0]["compensation"], Value::Null);
+}

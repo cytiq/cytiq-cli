@@ -31,6 +31,9 @@
 //!   - { id: S01-B, file: s01_b.fcs, panel: B, specimen: S01 }
 //! ```
 //!
+//! A panel whose files other software already compensated or unmixed says so
+//! with `signal_state: compensated` or `unmixed` (`raw` by default).
+//!
 //! Relative file paths are resolved against the manifest's directory.
 
 use std::collections::{BTreeMap, HashSet};
@@ -118,6 +121,10 @@ pub struct Panel {
     #[serde(default)]
     pub name: Option<String>,
     pub markers: Vec<Marker>,
+    /// What the stored values of the panel's sample files are. Controls are
+    /// always raw.
+    #[serde(default)]
+    pub signal_state: SignalState,
     /// Where the compensation matrix of a conventional panel comes from;
     /// `None` means the samples' own `$SPILLOVER` (`source: fcs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,6 +174,22 @@ pub enum Severity {
     #[default]
     Fail,
     Warn,
+}
+
+/// The signal a panel's sample files hold. FCS files have no standard
+/// keyword for it, and cytiq stages only recognise their own processing
+/// (`CYTIQ_*` keywords), so files exported from other software must say so
+/// here.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalState {
+    /// Detector values as acquired; cytiq compensates or unmixes them.
+    #[default]
+    Raw,
+    /// Compensated by other software (a conventional panel).
+    Compensated,
+    /// Unmixed by other software (a spectral panel).
+    Unmixed,
 }
 
 impl Panel {
@@ -305,13 +328,17 @@ impl RunManifest {
         })
     }
 
-    /// The compensation source of a conventional panel (`fcs` by default).
+    /// The compensation source of a conventional panel of raw files (`fcs`
+    /// by default); `None` for spectral panels and for samples declared
+    /// already compensated.
     #[must_use]
     pub fn compensation_of<'a>(&self, panel: &'a Panel) -> Option<&'a CompensationSource> {
         const FCS: &CompensationSource = &CompensationSource::Fcs;
-        match self.cytometry {
-            Cytometry::Conventional => Some(panel.compensation.as_ref().unwrap_or(FCS)),
-            Cytometry::Spectral => None,
+        match (self.cytometry, panel.signal_state) {
+            (Cytometry::Conventional, SignalState::Raw) => {
+                Some(panel.compensation.as_ref().unwrap_or(FCS))
+            }
+            _ => None,
         }
     }
 
@@ -342,7 +369,9 @@ impl RunManifest {
     /// non-empty sample ids, panel names and marker names; every sample and
     /// control linked to an existing panel; non-empty paths; compensation
     /// only for conventional panels, with controls when it comes from them;
-    /// an unstained control for every spectral panel.
+    /// an unstained control for every spectral panel of raw files; a
+    /// `signal_state` that fits the cytometry, and no `compensation` for
+    /// compensated samples.
     ///
     /// # Errors
     ///
@@ -459,12 +488,32 @@ impl RunManifest {
 
     fn check_calibration(&self, panel: &Panel) -> Result<(), String> {
         let label = panel.label();
+        match (self.cytometry, panel.signal_state) {
+            (Cytometry::Conventional, SignalState::Unmixed) => {
+                return Err(format!(
+                    "panel `{label}`: `signal_state: unmixed` applies to spectral runs"
+                ));
+            }
+            (Cytometry::Spectral, SignalState::Compensated) => {
+                return Err(format!(
+                    "panel `{label}`: `signal_state: compensated` applies to conventional runs; spectral exports are `unmixed`"
+                ));
+            }
+            (Cytometry::Conventional, SignalState::Compensated) if panel.compensation.is_some() => {
+                return Err(format!(
+                    "panel `{label}`: samples declared `compensated` are not compensated again; remove `compensation`"
+                ));
+            }
+            _ => {}
+        }
         match (self.cytometry, &panel.compensation) {
             (Cytometry::Spectral, Some(_)) => Err(format!(
                 "panel `{label}`: `compensation` applies to conventional runs; spectral runs are unmixed from their controls"
             )),
             (Cytometry::Spectral, None) => {
-                if self.controls_of(panel).any(ControlEntry::is_unstained) {
+                if panel.signal_state == SignalState::Unmixed
+                    || self.controls_of(panel).any(ControlEntry::is_unstained)
+                {
                     Ok(())
                 } else {
                     Err(format!(
@@ -713,6 +762,61 @@ controls:
             error
                 .to_string()
                 .contains("more than one file in panel `T`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn compensated_samples_need_no_compensation_source() {
+        let manifest = RunManifest::load(&write("raw.yaml", YAML)).unwrap();
+        assert_eq!(manifest.panels[0].signal_state, SignalState::Raw);
+
+        let compensated = YAML.replace(
+            "  name: T cells\n",
+            "  name: T cells\n  signal_state: compensated\n",
+        );
+        let manifest = RunManifest::load(&write("compensated.yaml", &compensated)).unwrap();
+        assert_eq!(manifest.panels[0].signal_state, SignalState::Compensated);
+        assert_eq!(manifest.compensation_of(&manifest.panels[0]), None);
+
+        let twice = compensated.replace(
+            "  signal_state: compensated\n",
+            "  signal_state: compensated\n  compensation: { source: fcs }\n",
+        );
+        let error = RunManifest::load(&write("twice.yaml", &twice)).unwrap_err();
+        assert!(
+            error.to_string().contains("not compensated again"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn signal_state_fits_the_cytometry() {
+        let unmixed = YAML
+            .replace("cytometry: conventional", "cytometry: spectral")
+            .replace("dye: Autofluorescence", "dye: FITC")
+            .replace(
+                "  name: T cells\n",
+                "  name: T cells\n  signal_state: unmixed\n",
+            );
+        let manifest = RunManifest::load(&write("unmixed.yaml", &unmixed)).unwrap();
+        assert_eq!(
+            manifest.panels[0].signal_state,
+            SignalState::Unmixed,
+            "unmixed samples need no unstained control"
+        );
+
+        let conventional = unmixed.replace("cytometry: spectral", "cytometry: conventional");
+        let error = RunManifest::load(&write("unmixed-conv.yaml", &conventional)).unwrap_err();
+        assert!(
+            error.to_string().contains("applies to spectral runs"),
+            "{error}"
+        );
+
+        let spectral = unmixed.replace("signal_state: unmixed", "signal_state: compensated");
+        let error = RunManifest::load(&write("comp-spectral.yaml", &spectral)).unwrap_err();
+        assert!(
+            error.to_string().contains("exports are `unmixed`"),
             "{error}"
         );
     }

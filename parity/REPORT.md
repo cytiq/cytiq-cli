@@ -521,7 +521,7 @@ warnings`, `cargo test --workspace` — all green.
 ## 5. Reproducing
 
 ```bash
-parity/setup_env.sh        # once: R library and uv venv in parity/.env (git-ignored)
+parity/setup_env.sh        # once (also `just parity-setup`): R library and uv venv in parity/.env (git-ignored)
 parity/run_all.sh main     # synthetic data → Rust (branch + main) → R → parity/results/*.json; fails on a tolerance violation
 parity/real/run_real.sh    # real acquisitions → parity/results/metrics_real.json (also `just parity-real`)
 just parity-ci-fixture     # regenerate data/fixtures/pipeline (byte-identical)
@@ -531,11 +531,10 @@ R_LIBS_USER=parity/.env/Rlib Rscript parity/make_fixtures.R   # regenerate R ref
 A full run takes about 3 minutes. Raw outputs are in `parity/.out/`, data in
 `parity/.data/`.
 
-The same suites run in CI every night, on demand and on pull requests that
-change `parity/` (`.github/workflows/parity.yml`, on Linux). A violated
-tolerance fails the job; `parity/results/`, `parity/versions.txt` and the
-raw logs are uploaded as the `parity-results` artifact of each run.
-`setup_env.sh` pins the Bioconductor release, the git commits of autospill,
-AutoSpectral and CytoScan, and the Python packages (`parity/requirements.txt`);
-CRAN packages come from `PARITY_CRAN`, and the installed versions are
-recorded in `versions.txt`.
+The suites run locally, not in CI: the R environment takes too long to
+install on hosted runners. A violated tolerance exits non-zero, and the
+timing wrappers read both BSD (macOS) and GNU `time`. `setup_env.sh`
+(`just parity-setup`) pins the Bioconductor release, the git commits of
+autospill, AutoSpectral and CytoScan, and the Python packages
+(`parity/requirements.txt`); CRAN packages come from `PARITY_CRAN`, and the
+installed versions are recorded in `versions.txt`.

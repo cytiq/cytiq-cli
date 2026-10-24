@@ -15,10 +15,17 @@ else
 fi
 mkdir -p "$OUT"
 
+# BSD time (macOS) reports resources with -l, GNU time (Linux CI) with -v.
+if /usr/bin/time -l true >/dev/null 2>&1; then
+  TIME_FLAG=-l
+else
+  TIME_FLAG=-v
+fi
+
 timed() {
   local name="$1"
   shift
-  /usr/bin/time -l "$@" 2>"$OUT/$name.time" >"$OUT/$name.log" || {
+  /usr/bin/time "$TIME_FLAG" "$@" 2>"$OUT/$name.time" >"$OUT/$name.log" || {
     cat "$OUT/$name.time" >&2
     exit 1
   }

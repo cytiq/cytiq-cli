@@ -530,3 +530,12 @@ R_LIBS_USER=parity/.env/Rlib Rscript parity/make_fixtures.R   # regenerate R ref
 
 A full run takes about 3 minutes. Raw outputs are in `parity/.out/`, data in
 `parity/.data/`.
+
+The same suites run in CI every night, on demand and on pull requests that
+change `parity/` (`.github/workflows/parity.yml`, on Linux). A violated
+tolerance fails the job; `parity/results/`, `parity/versions.txt` and the
+raw logs are uploaded as the `parity-results` artifact of each run.
+`setup_env.sh` pins the Bioconductor release, the git commits of autospill,
+AutoSpectral and CytoScan, and the Python packages (`parity/requirements.txt`);
+CRAN packages come from `PARITY_CRAN`, and the installed versions are
+recorded in `versions.txt`.

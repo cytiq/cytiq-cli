@@ -28,7 +28,9 @@ Use `just` as the primary command runner. The recipes wrap the same Cargo comman
 - `just verify` runs the standard local quality gate.
 - `just docker-build` verifies container changes.
 
-Before opening a pull request, run `just verify`. CI enforces the equivalent checks with `cargo check --workspace --locked`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --locked`.
+Before opening a pull request, run `just verify`. CI enforces the equivalent checks with `cargo check --workspace --locked`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --locked`, and builds the Docker image.
+
+The parity suites against the upstream R/Python tools (`just parity`, `just parity-real`) run nightly in `.github/workflows/parity.yml`, and on pull requests that change `parity/`. Run them locally after `parity/setup_env.sh` when a change can move results, and keep `parity/tolerances.json` and `parity/real/tolerances.json` honest: every rule states why its bound holds.
 
 ## Coding Style
 

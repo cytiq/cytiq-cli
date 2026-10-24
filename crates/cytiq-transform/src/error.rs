@@ -51,6 +51,10 @@ pub enum TransformError {
         "FCS input `{path}` was already transformed ({method}) by `cytiq transform`; pass `--allow-retransform` to transform it again"
     )]
     AlreadyTransformed { path: PathBuf, method: String },
+    #[error(
+        "channel `{channel}` of `{path}` is in the file's spillover matrix but was not compensated; run `cytiq compensate` first, or pass `--allow-uncompensated` to transform it anyway"
+    )]
+    UncompensatedInput { path: PathBuf, channel: String },
     #[error("failed to read FCS input `{path}`: {source}")]
     FcsRead {
         path: PathBuf,

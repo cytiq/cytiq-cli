@@ -363,7 +363,12 @@ fn cli_transform_carries_metadata_and_moves_spillover() {
     cytiq_fcs::write_fcs3_1_f32_with_options(&input, &parameters, &columns, &options)
         .expect("fixture FCS should write");
 
-    let output = run_transform(&[utf8(&input), "--output", utf8(&output_path)]);
+    let output = run_transform(&[
+        utf8(&input),
+        "--output",
+        utf8(&output_path),
+        "--allow-uncompensated",
+    ]);
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -560,6 +565,42 @@ fn in_place_transform_records_the_original_input_hash() {
     assert_eq!(record["outputs"][0]["sha256"], after.as_str());
     // The rewritten file still names the original as its acquisition.
     assert_eq!(common::acquisition_of(&file), before);
+}
+
+#[test]
+fn transform_requires_compensation_first() {
+    let directory = create_temp_dir("cytiq-cli-transform-uncompensated");
+    let raw =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/gating/sample.fcs");
+    let output_path = directory.join("sample.t.fcs");
+
+    let refused = run_transform(&[utf8(&raw), "--output", utf8(&output_path)]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        stderr.contains("run `cytiq compensate` first") && stderr.contains("--allow-uncompensated"),
+        "stderr: {stderr}"
+    );
+    assert!(!output_path.exists());
+
+    let compensated = directory.join("sample.comp.fcs");
+    let compensate = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "compensate",
+            "--input",
+            utf8(&raw),
+            "--output",
+            utf8(&compensated),
+        ])
+        .output()
+        .expect("command should run");
+    assert!(compensate.status.success());
+    let output = run_transform(&[utf8(&compensated), "--output", utf8(&output_path)]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn run_transform(args: &[&str]) -> std::process::Output {

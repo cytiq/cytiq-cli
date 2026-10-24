@@ -570,6 +570,7 @@ fn rejects_a_transformed_viability_channel_early() {
     let transformed = directory.join("sample.t.fcs");
     run(&[
         "transform",
+        "--allow-uncompensated",
         "--input",
         utf8(&fixture("sample.fcs")),
         "--output",
@@ -631,4 +632,31 @@ fn fails_when_mask_belongs_to_another_file() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("was computed on acquisition"), "{stderr}");
     assert!(!output.join("masks.parquet").exists());
+}
+
+#[test]
+fn rejects_transformed_scatter() {
+    let directory = create_temp_dir("cytiq-cli-clean-transformed-scatter");
+    let input = directory.join("sample.fcs");
+    fs::copy(fixture("sample.fcs"), &input).expect("fixture should copy");
+    common::add_keyword(
+        &input,
+        cytiq_fcs::TRANSFORM_KEYWORD,
+        &common::transform_keyword(&["FSC-A"]),
+    );
+
+    let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "clean",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&directory.join("clean")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("scatter channel `FSC-A`"), "{stderr}");
 }

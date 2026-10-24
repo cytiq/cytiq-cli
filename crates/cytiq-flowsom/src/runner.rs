@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
-use log::{debug, info};
+use log::{debug, info, warn};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
@@ -253,6 +253,7 @@ impl FlowSomRunner {
         let rows = selected_rows(input, &dataset, &config.masks)?;
         let events = rows.len();
         let channels = resolve_channels(input, &dataset, &config.channels, &rows)?;
+        warn_untransformed(input, &dataset, &channels)?;
         let matrix = channel_matrix(&channels, events);
         let scaled = scale_matrix(matrix, &channels, config.scale);
         info!(
@@ -414,6 +415,33 @@ fn training_rows(events: usize, config: &FlowSomConfig) -> Option<Vec<usize>> {
     rows.truncate(target);
     rows.sort_unstable();
     Some(rows)
+}
+
+/// `FlowSOM` distances assume transformed (arcsinh/logicle) marker values; on
+/// linear values a few bright events dominate the SOM. Reported, not refused.
+fn warn_untransformed(
+    path: &Path,
+    dataset: &FcsDataset,
+    channels: &[ResolvedChannel],
+) -> Result<(), FlowSomError> {
+    let state =
+        cytiq_fcs::SignalState::of(&dataset.text).map_err(|source| FlowSomError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let untransformed = channels
+        .iter()
+        .filter(|channel| !state.transformed(&channel.parameter_name))
+        .map(|channel| channel.display_name.as_str())
+        .collect::<Vec<_>>();
+    if !untransformed.is_empty() {
+        warn!(
+            "flowsom: channels {} of {} were not transformed by `cytiq transform`; FlowSOM expects transformed input",
+            untransformed.join(", "),
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Input rows to cluster: every row, or those every event mask keeps.

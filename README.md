@@ -351,13 +351,15 @@ Rules:
   that `cytiq autospectral` unmixed, or whose matrix channels `cytiq
   transform` transformed, is rejected
 - compensation mixes channels, so raw detector margins cannot be identified
-  afterwards. `margin_pass` in the mask flags events at or beyond a detector
-  limit (`$PnR - 1`, or flowCore's low bound, −111 by default) on the raw
-  values, and compensated channels are dropped from `CYTIQ_MARGINS`. Unlike
-  `cytiq peacoqc --remove-margins`, which follows `PeacoQC::RemoveMargins` and
-  also removes every event equal to a channel's observed minimum or maximum,
-  only detector limits count, so discrete data (beads) keeps its extreme
-  levels. Pass the mask on with `--mask` (or combine
+  afterwards. `margin_pass` in the mask flags events at or above the detector
+  limit (`$PnR - 1`) on the raw values, and compensated channels are dropped
+  from `CYTIQ_MARGINS`. Unlike `cytiq peacoqc --remove-margins`, which follows
+  `PeacoQC::RemoveMargins` and also removes every event equal to a channel's
+  observed minimum or maximum and every value at or below flowCore's low
+  bound (−111), only the detector limit counts: discrete data (beads) keeps
+  its extreme levels, and float data keeps the noise of negative populations,
+  which on a real FACSDiva sample is 31% of events below −111. Pass the mask
+  on with `--mask` (or combine
   it with `cytiq mask combine`) instead of removing margins after compensation
 - existing outputs are not replaced unless `--overwrite` is passed
 
@@ -726,7 +728,10 @@ Rules:
   identifiers like `$PnN [$PnS]`
 - `--method` can be `all`, `mad`, `it`, or `peaks-only`
 - `--remove-margins` removes detector-boundary events before PeacoQC, using
-  flowCore's raw-detector bounds (`$PnR - 1` and the low bound). On files from
+  flowCore's raw-detector bounds (`$PnR - 1` and the low bound, −111) as
+  `PeacoQC::RemoveMargins` does. On float data
+  the low bound flags ordinary noise around zero; the `margin_pass` mask of
+  `cytiq compensate` uses the upper limit only. On files from
   `cytiq transform` the bounds come from `CYTIQ_MARGINS`, already mapped
   through the transform, so the same events are removed as on the raw file.
   A transformed file without `CYTIQ_MARGINS` (written by an older cytiq) is

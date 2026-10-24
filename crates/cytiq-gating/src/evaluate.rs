@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use cytiq_fcs::{FcsDataset, Spillover, compensate, invert_matrix};
+use cytiq_fcs::{FcsDataset, SignalState, Spillover, compensate, invert_matrix};
 use log::debug;
 use serde::Serialize;
 
@@ -202,7 +202,7 @@ impl GatingStrategy {
     /// matrix only as `CYTIQ_SOURCE_SPILL`, so an `FCS` compensation reference
     /// is wrong there even though `$SPILLOVER` is absent.
     fn ensure_single_processing(&self, dataset: &FcsDataset) -> Result<(), GatingError> {
-        let states = SignalStates::of(dataset)?;
+        let states = signal_state(dataset)?;
         if states.is_raw() {
             return Ok(());
         }
@@ -243,39 +243,27 @@ impl GatingStrategy {
                 reference: reference.clone(),
             });
         }
-        SignalStates::of(dataset)?.check(dataset, &dimension.name, dimension)?;
+        signal_state(dataset)?.check(dataset, &dimension.name, dimension)?;
         let column = Evaluator::new(self, dataset).column(dimension)?;
         Ok(Arc::try_unwrap(column).unwrap_or_else(|shared| shared.as_ref().clone()))
     }
 }
 
-/// What `cytiq transform` and `cytiq compensate` recorded about a dataset.
-struct SignalStates {
-    transform: Option<cytiq_fcs::TransformState>,
-    compensation: Option<cytiq_fcs::CompensationState>,
-    unmixing: Option<cytiq_fcs::UnmixingState>,
-    had_spillover: bool,
+fn signal_state(dataset: &FcsDataset) -> Result<SignalState, GatingError> {
+    SignalState::of(&dataset.text).map_err(GatingError::SignalState)
 }
 
-impl SignalStates {
-    fn of(dataset: &FcsDataset) -> Result<Self, GatingError> {
-        Ok(Self {
-            transform: cytiq_fcs::transform_state(&dataset.text)
-                .map_err(GatingError::SignalState)?,
-            compensation: cytiq_fcs::compensation_state(&dataset.text)
-                .map_err(GatingError::SignalState)?,
-            unmixing: cytiq_fcs::unmixing_state(&dataset.text).map_err(GatingError::SignalState)?,
-            had_spillover: dataset
-                .text
-                .get(cytiq_fcs::SOURCE_SPILLOVER_KEYWORD)
-                .is_some(),
-        })
-    }
+/// Single-processing rules over what earlier cytiq stages recorded.
+trait SingleProcessing {
+    fn check(
+        &self,
+        dataset: &FcsDataset,
+        gate: &str,
+        dimension: &Dimension,
+    ) -> Result<(), GatingError>;
+}
 
-    const fn is_raw(&self) -> bool {
-        self.transform.is_none() && self.compensation.is_none() && self.unmixing.is_none()
-    }
-
+impl SingleProcessing for SignalState {
     /// Fail when `dimension` would transform or compensate a channel again.
     fn check(
         &self,
@@ -288,22 +276,12 @@ impl SignalStates {
             .map_or(dimension.name.as_str(), |index| {
                 dataset.parameters[index].name.as_str()
             });
-        // Files from older cytiq versions do not list their channels.
-        let transformed = self
-            .transform
-            .as_ref()
-            .is_some_and(|state| state.channels.is_empty() || state.covers(channel));
-        let compensated = self
-            .compensation
-            .as_ref()
-            .is_some_and(|state| state.covers(channel));
-        let unmixed = self
-            .unmixing
-            .as_ref()
-            .is_some_and(|state| state.covers(channel));
+        let transformed = self.transformed(channel);
+        let compensated = self.compensated(channel);
+        let unmixed = self.unmixed(channel);
         let applies_compensation = match &dimension.compensation {
             CompensationRef::Uncompensated => false,
-            CompensationRef::Fcs => self.had_spillover,
+            CompensationRef::Fcs => self.source_spillover,
             CompensationRef::Matrix(_) => true,
         };
         let conflict = if transformed && dimension.transform.is_some() {

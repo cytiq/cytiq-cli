@@ -581,14 +581,21 @@ fn peacoqc_mask_applies_after_transform() {
     let sample = fixture("sample.fcs");
     for step in [
         &[
-            "peacoqc",
+            "compensate",
             "--input",
             utf8(&sample),
+            "--output",
+            "s.comp.fcs",
+        ][..],
+        &[
+            "peacoqc",
+            "--input",
+            "s.comp.fcs",
             "--output",
             "s.peacoqc.fcs",
             "--channels",
             FLUORESCENCE,
-        ][..],
+        ],
         &[
             "transform",
             "--input",

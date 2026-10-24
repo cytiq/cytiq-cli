@@ -50,6 +50,8 @@ pub enum AutoSpectralError {
     DuplicateDye { value: String },
     #[error("duplicate detector channel `{value}` in detectors manifest")]
     DuplicateDetectorChannel { value: String },
+    #[error("`{path}` was {state}; autospectral unmixes raw acquisition files")]
+    ProcessedInput { path: PathBuf, state: String },
     #[error("`{value}` is the event lineage column, not a detector")]
     ReservedDetectorChannel { value: String },
     #[error("controls manifest must contain exactly one `dye=Autofluorescence` row")]

@@ -306,6 +306,7 @@ fn cli_rejects_transformed_cytoscan_input() {
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "transform",
+            "--allow-uncompensated",
             "--input",
             utf8(&transformed),
             "--output",
@@ -336,6 +337,40 @@ fn cli_rejects_transformed_cytoscan_input() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pass the raw FCS"), "stderr: {stderr}");
+}
+
+#[test]
+fn cli_rejects_compensated_cytoscan_input() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-compensated");
+    let input_dir = directory.join("test");
+    write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
+    // A `cytiq compensate` output: no spillover left, linear values.
+    common::add_keyword(
+        &input_dir.join("sample_01.fcs"),
+        cytiq_fcs::COMPENSATION_KEYWORD,
+        r#"{"source":"fcs","channels":["FL1-A","FL2-A"]}"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "cytoscan",
+            "--input",
+            utf8(&input_dir),
+            "--output",
+            utf8(&directory.join("out")),
+            "--channels",
+            "CD3,CD4",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("was compensated by `cytiq compensate`")
+            && stderr.contains("pass the raw FCS"),
+        "stderr: {stderr}"
+    );
 }
 
 /// Rewrite `path` without its spillover keyword.

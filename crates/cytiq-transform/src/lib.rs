@@ -134,6 +134,7 @@ impl TransformFormat {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TransformConfig {
     pub inputs: Vec<PathBuf>,
     pub output: PathBuf,
@@ -152,6 +153,8 @@ pub struct TransformConfig {
     pub threads: Option<usize>,
     /// Transform files that an earlier `cytiq transform` already transformed.
     pub allow_retransform: bool,
+    /// Transform channels whose spillover matrix was not applied yet.
+    pub allow_uncompensated: bool,
 }
 
 impl TransformConfig {
@@ -173,6 +176,7 @@ impl TransformConfig {
             debug_dir: None,
             threads: None,
             allow_retransform: false,
+            allow_uncompensated: false,
         }
     }
 }
@@ -558,6 +562,7 @@ fn transform_one(
     ensure_not_transformed(&plan.input, &dataset, config)?;
     let events = event_count(&dataset);
     let selection = resolve_channel_selection(&plan.input, &dataset, config)?;
+    ensure_compensated(&plan.input, &dataset, &selection.channels, config)?;
     let mut result = TransformFileResult {
         input_path: plan.input.clone(),
         output_path: plan.output.clone(),
@@ -623,6 +628,43 @@ fn ensure_not_transformed(
             method: state.method,
         }),
         _ => Ok(()),
+    }
+}
+
+/// Compensation must come first: `cytiq compensate` refuses transformed
+/// channels, so a channel transformed while the file's spillover matrix is
+/// still pending can never be compensated correctly.
+fn ensure_compensated(
+    path: &Path,
+    dataset: &FcsDataset,
+    channels: &[ResolvedChannel],
+    config: &TransformConfig,
+) -> Result<(), TransformError> {
+    if config.allow_uncompensated {
+        return Ok(());
+    }
+    let spillover =
+        cytiq_fcs::Spillover::from_dataset(dataset).map_err(|source| TransformError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let Some(spillover) = spillover else {
+        return Ok(());
+    };
+    let pending = spillover
+        .channels()
+        .iter()
+        .filter_map(|channel| dataset.find_parameter(channel))
+        .collect::<HashSet<_>>();
+    match channels
+        .iter()
+        .find(|channel| pending.contains(&channel.index))
+    {
+        Some(channel) => Err(TransformError::UncompensatedInput {
+            path: path.to_path_buf(),
+            channel: channel.name.clone(),
+        }),
+        None => Ok(()),
     }
 }
 
@@ -1339,6 +1381,7 @@ mod tests {
                 debug_dir: None,
                 threads: None,
                 allow_retransform: false,
+                allow_uncompensated: false,
             })
             .expect("valid parameters")
             .apply(value);

@@ -271,7 +271,7 @@ struct Plan {
 fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
     let dataset = read_fcs(&config.input)?;
     let roles = ChannelRoles::resolve(&dataset, &config.channels, &config.input)?;
-    ensure_raw_viability(config, &dataset, &roles)?;
+    ensure_raw_roles(config, &dataset, &roles)?;
     info!(
         "clean: {} event(s); FSC-A={}, FSC-H={:?}, FSC-W={:?}, SSC-A={:?}, viability={:?} ({})",
         dataset.event_count(),
@@ -372,27 +372,37 @@ fn run_inner(config: &CleanConfig) -> Result<CleanResult, CleanError> {
     })
 }
 
-/// The viability axis compensates and arcsinh-scales the dye itself, so a
-/// channel `cytiq transform` already transformed cannot be fitted.
-fn ensure_raw_viability(
+/// Scatter filters are fitted on raw linear scatter, and the viability axis
+/// compensates and arcsinh-scales the dye itself, so channels `cytiq
+/// transform` already transformed cannot be fitted.
+fn ensure_raw_roles(
     config: &CleanConfig,
     dataset: &FcsDataset,
     roles: &ChannelRoles,
 ) -> Result<(), CleanError> {
-    let Some(channel) = &roles.viability else {
-        return Ok(());
-    };
-    let transform =
-        cytiq_fcs::transform_state(&dataset.text).map_err(|source| CleanError::FcsRead {
+    let state =
+        cytiq_fcs::SignalState::of(&dataset.text).map_err(|source| CleanError::FcsRead {
             path: config.input.clone(),
             source,
         })?;
-    if transform.is_some_and(|state| state.channels.is_empty() || state.covers(channel)) {
-        return Err(CleanError::TransformedViability {
+    let scatter = std::iter::once(&roles.fsc_a)
+        .chain(roles.fsc_h.iter())
+        .chain(roles.fsc_w.iter())
+        .chain(roles.ssc_a.iter());
+    if let Some(channel) = scatter
+        .into_iter()
+        .find(|channel| state.transformed(channel))
+    {
+        return Err(CleanError::TransformedScatter {
             channel: channel.clone(),
         });
     }
-    Ok(())
+    match &roles.viability {
+        Some(channel) if state.transformed(channel) => Err(CleanError::TransformedViability {
+            channel: channel.clone(),
+        }),
+        _ => Ok(()),
+    }
 }
 
 /// `--require`: fail before any output is written when a required filter

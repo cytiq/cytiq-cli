@@ -209,6 +209,36 @@ fn cli_writes_autospread_csv_tsv_and_parquet_outputs() {
     assert_eq!(&parquet[..4], b"PAR1");
 }
 
+#[test]
+fn cli_rejects_processed_controls() {
+    let directory = support::copy_autospill_fixture_set("cytiq-cli-processed-control");
+    common::add_keyword(
+        &directory.join("control_a.fcs"),
+        cytiq_fcs::TRANSFORM_KEYWORD,
+        &common::transform_keyword(&["FL1-A", "FL2-A"]),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospill",
+            "--controls",
+            utf8(&directory.join("controls.csv")),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("matrix.csv")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("transformed (arcsinh)") && stderr.contains("must be raw"),
+        "stderr: {stderr}"
+    );
+}
+
 fn run_success(manifest_path: &Path, input_dir: &Path, output_path: &Path) {
     let status = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([

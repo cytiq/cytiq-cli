@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::FcsError;
-use crate::signal::{compensation_state, transform_state, unmixing_state};
+use crate::signal::SignalState;
 use crate::types::{FcsDataset, FcsText, Parameter};
 
 pub const MARGINS_KEYWORD: &str = "CYTIQ_MARGINS";
@@ -123,20 +123,11 @@ pub fn dataset_margin_bounds(
     parameters: &[Parameter],
 ) -> Result<BTreeMap<String, MarginBounds>, FcsError> {
     let recorded = recorded_margin_bounds(text)?.unwrap_or_default();
-    let transform = transform_state(text)?;
-    let compensation = compensation_state(text)?;
-    let unmixing = unmixing_state(text)?;
-    // Files from older cytiq versions do not list their transformed channels.
-    // Compensation mixes channels, so raw bounds no longer describe them.
-    let transformed = |name: &str| {
-        transform
-            .as_ref()
-            .is_some_and(|state| state.channels.is_empty() || state.covers(name))
-            || compensation
-                .as_ref()
-                .is_some_and(|state| state.covers(name))
-            || unmixing.as_ref().is_some_and(|state| state.covers(name))
-    };
+    let state = SignalState::of(text)?;
+    // Compensation and unmixing mix channels, so raw bounds no longer
+    // describe them either.
+    let transformed =
+        |name: &str| state.transformed(name) || state.compensated(name) || state.unmixed(name);
 
     Ok(parameters
         .iter()

@@ -75,7 +75,8 @@ report.html         each gate drawn on its own dimensions (Plotly)
   when a listed filter is not `applied`.
 - Singlet bands use `cytiq_density::robust_spread`, so a zero MAD falls back
   to `IQR / 1.349` or a relative spread (`spread_source` in `metrics.json`).
-- A viability channel transformed by `cytiq transform` is rejected up front.
+- A viability or scatter channel transformed by `cytiq transform` is rejected
+  up front (`TransformedViability`, `TransformedScatter`).
 - Without a viability dye, viability is `not_assessed`; it never marks every
   event as live.
 - Fitting uses at most `max_fit_events` (default 50,000) evenly spaced events,

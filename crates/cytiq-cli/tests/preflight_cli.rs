@@ -156,6 +156,7 @@ fn fails_on_mismatched_detectors_and_processed_files() {
     let transform = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "transform",
+            "--allow-uncompensated",
             "--input",
             utf8(&fixture("sample.fcs")),
             "--output",

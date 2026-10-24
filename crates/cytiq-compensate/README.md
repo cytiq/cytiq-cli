@@ -43,8 +43,9 @@ println!("{} events on a raw detector margin", result.margin_event_count);
   `$PnG` and get a `$PnR` from their new values. Unchanged channels keep every
   keyword.
 - The output records `CYTIQ_COMPENSATION` (`{source, channels}`) and keeps the
-  source matrix only as `CYTIQ_SOURCE_SPILL`. Already compensated input, and
-  input whose matrix channels were transformed, are rejected.
+  source matrix only as `CYTIQ_SOURCE_SPILL`. Already compensated input,
+  unmixed input (`CYTIQ_UNMIXING`) and input whose matrix channels were
+  transformed are rejected.
 - `<output>.masks.parquet` holds `margin_pass` per event: whether the raw
   values of the matrix channels stay inside the detector limits
   (`cytiq_fcs::raw_margin_pass`, `MarginBounds::detector_thresholds`). Unlike

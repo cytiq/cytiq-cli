@@ -75,6 +75,10 @@ Performance:
 - parallel execution uses Rayon defaults, which normally use all available logical CPUs
 - use `--threads N` to cap worker threads for `autospill`, `autospread`, `autospectral`, `peacoqc`, or `flowsom`
 
+Controls must be raw acquisition files. `autospill` and `autospread` apply
+their own transforms, so a control another cytiq stage compensated, unmixed
+or transformed is rejected.
+
 ### Controls Manifest
 
 The controls manifest is a CSV with the following columns:
@@ -177,6 +181,8 @@ samples/sample_02.fcs
 Rules:
 - manifest `filename` values are relative to `--input-dir`
 - exactly one `dye=Autofluorescence` control is required
+- controls and samples must be raw acquisition files: a file another cytiq
+  stage compensated, unmixed or transformed is rejected
 - single-stain `primary_channel` can be provided explicitly; otherwise it is inferred from FCS `$PnN` first, then `$PnS`
 - AutoSpectral-style `fluorophore` and `channel` headers are accepted as aliases for `dye` and `primary_channel`
 - if `--detectors` is omitted, spectral detectors are inferred as shared non-scatter, non-time channels
@@ -282,6 +288,11 @@ Rules:
   can also be written as a sidecar JSON file
 - an input that already has `CYTIQ_TRANSFORM` is rejected, so values are never
   transformed twice by accident; `--allow-retransform` transforms it anyway
+- compensation comes first: a selected channel that is in the file's
+  `$SPILLOVER`/`$SPILL` matrix (not yet applied) is rejected, because `cytiq
+  compensate` refuses transformed channels afterwards. Run `cytiq compensate`
+  first, or pass `--allow-uncompensated` for files that should not be
+  compensated
 - the output keeps the source keywords (`$CYT`, `$DATE`, `$PnV`, `$PnG`, ...)
   and the original `$PnR` of untransformed channels; transformed channels get
   a `$PnR` from their new values
@@ -336,7 +347,8 @@ Rules:
 - the output records `CYTIQ_COMPENSATION` (matrix source and channels) and
   keeps the source matrix only as `CYTIQ_SOURCE_SPILL`, so later stages do
   not compensate again. An input that `cytiq compensate` already compensated,
-  or whose matrix channels `cytiq transform` transformed, is rejected
+  that `cytiq autospectral` unmixed, or whose matrix channels `cytiq
+  transform` transformed, is rejected
 - compensation mixes channels, so raw detector margins cannot be identified
   afterwards. `margin_pass` in the mask flags events at or beyond a detector
   limit (`$PnR - 1`, or flowCore's low bound, −111 by default) on the raw
@@ -411,6 +423,19 @@ cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD
   --mask sample.analysis.parquet
 ```
 
+Each stage reads the `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` and
+`CYTIQ_TRANSFORM` keywords earlier stages wrote and checks its input:
+
+| Stage | Expects | Otherwise |
+| --- | --- | --- |
+| `autospill`, `autospread`, `autospectral`, `cytoscan`, `preflight` | raw files | error |
+| `compensate` | raw matrix channels | error when already compensated, unmixed, or a matrix channel is transformed |
+| `transform` | compensated or unmixed channels | error when a selected channel's spillover is still pending (`--allow-uncompensated`), or the file is already transformed (`--allow-retransform`) |
+| `clean` | raw scatter and viability channels | error |
+| `peacoqc` | compensated, transformed channels | warning |
+| `flowsom` | transformed channels | warning |
+| `gate` | what the Gating-ML dimensions say | error when a dimension would compensate or transform a channel again |
+
 Gating-ML strategies applied to `sample.t.fcs` must use `uncompensated`
 dimensions without `transformation-ref` on the compensated and transformed
 channels. Otherwise apply the strategy to the raw `sample.fcs`, which `cytiq
@@ -481,7 +506,8 @@ Rules:
   fixed seed, so outputs are reproducible but not bit-identical to R (see
   `parity/REPORT.md`)
 - inputs must be raw FCS: CytoScan compensates with the file's spillover and
-  arcsinh-transforms itself, so files from `cytiq transform` are rejected
+  arcsinh-transforms itself, so files from `cytiq compensate`, `cytiq
+  autospectral` or `cytiq transform` are rejected
 - a file without spillover metadata, or a selected channel missing from it,
   is scored on raw values with a warning (logged and in the `warnings`
   column). `--strict` makes both an error, so no file in the cohort is scored
@@ -633,8 +659,9 @@ Rules:
 - `--require debris,singlets,viability` fails the run, before anything is
   written, when a listed filter is not `applied`. Without it a
   `not_assessed` filter simply does not contribute to `keep`.
-- the viability axis compensates and arcsinh-scales the dye itself, so an
-  input whose viability channel `cytiq transform` transformed is rejected at
+- the viability axis compensates and arcsinh-scales the dye itself, and the
+  debris and singlet filters need raw linear scatter, so an input whose
+  viability or scatter channel `cytiq transform` transformed is rejected at
   once. Run clean on the raw file (or pass `--no-viability`) and combine the
   masks.
 - singlets are fitted on non-debris events, and viability on non-debris
@@ -688,6 +715,9 @@ cytiq peacoqc \
 
 Rules:
 - input and output are FCS files for the MVP
+- PeacoQC expects compensated, transformed input. A file whose spillover
+  matrix was not applied, or selected channels `cytiq transform` did not
+  transform, still runs, with a warning in the log and in `summary.json`
 - pass channels either as repeated `--channel` values or as one compact
   comma-separated `--channels` value
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display
@@ -759,6 +789,8 @@ Rules:
 - `--mask` (repeatable, see [Masks](#masks)) clusters only events every mask
   keeps: scaling, training and assignment use those rows, and only they are
   listed in the output
+- selected channels that `cytiq transform` did not transform are clustered as
+  given, with a warning: FlowSOM distances assume transformed values
 - pass channels either as repeated `--channel` values or as one compact
   comma-separated `--channels` value
 - channel values match `$PnN` first, `$PnS` labels as a fallback, and display

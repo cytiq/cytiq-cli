@@ -700,6 +700,7 @@ dependencies = [
 name = "cytiq-preflight"
 version = "0.1.0"
 dependencies = [
+ "cytiq-compensate",
  "cytiq-fcs",
  "cytiq-manifest",
  "log",

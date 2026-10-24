@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+cytiq-compensate = { path = "../cytiq-compensate" }
 cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-manifest = { path = "../cytiq-manifest" }
 log = "0.4.30"

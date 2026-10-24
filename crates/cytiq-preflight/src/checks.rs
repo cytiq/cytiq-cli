@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use cytiq_fcs::{FcsDataset, FcsReader, Parameter, Spillover};
-use cytiq_manifest::Panel;
+use cytiq_manifest::{ControlEntry, Marker, MatrixKind, Panel};
 use serde::Serialize;
 
 /// Warn when the 1-norm condition number of the spillover matrix exceeds
@@ -160,21 +160,35 @@ fn signal_state(scope: &str, dataset: &FcsDataset) -> Check {
     }
 }
 
+/// Scope of panel-level checks: `panel T`, or `panel` for an unnamed one.
+pub(crate) fn panel_scope(panel: &Panel) -> String {
+    panel
+        .name
+        .as_ref()
+        .map_or_else(|| "panel".to_owned(), |name| format!("panel {name}"))
+}
+
+/// Parameters of `dataset` that carry `marker`: its `channel`, or those whose
+/// `$PnS`/`$PnN` match its name.
+fn marker_candidates(dataset: &FcsDataset, marker: &Marker) -> Vec<usize> {
+    match &marker.channel {
+        Some(channel) => dataset.find_parameter(channel).into_iter().collect(),
+        None => dataset
+            .parameters
+            .iter()
+            .enumerate()
+            .filter(|(_, parameter)| matches_marker(parameter, marker.marker.trim()))
+            .map(|(index, _)| index)
+            .collect(),
+    }
+}
+
 /// Every panel marker maps to exactly one channel of the sample.
 pub(crate) fn check_markers(scope: &str, dataset: &FcsDataset, panel: &Panel) -> Vec<Check> {
     let mut checks = Vec::new();
     for marker in &panel.markers {
         let name = marker.marker.trim();
-        let candidates = match &marker.channel {
-            Some(channel) => dataset.find_parameter(channel).into_iter().collect(),
-            None => dataset
-                .parameters
-                .iter()
-                .enumerate()
-                .filter(|(_, parameter)| matches_marker(parameter, name))
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>(),
-        };
+        let candidates = marker_candidates(dataset, marker);
         let check = match candidates.as_slice() {
             [] => Check::new(
                 scope,
@@ -340,9 +354,9 @@ pub(crate) fn check_spillover(scope: &str, dataset: &FcsDataset) -> Check {
     }
 }
 
-/// Every file has the same detector channels as the first sample, at the
-/// same voltages.
-pub(crate) fn check_detectors(files: &[LoadedFile]) -> Vec<Check> {
+/// Every file of a panel has the same detector channels as its first sample,
+/// at the same voltages.
+pub(crate) fn check_detectors(files: &[&LoadedFile]) -> Vec<Check> {
     let datasets = files
         .iter()
         .filter_map(|file| file.dataset.as_ref().map(|dataset| (file, dataset)))
@@ -452,5 +466,297 @@ pub(crate) fn check_primary_channel(scope: &str, dataset: &FcsDataset, channel: 
             CheckStatus::Fail,
             format!("primary channel `{channel}` is not in the file"),
         )
+    }
+}
+
+/// A panel's external compensation matrix (`source: matrix`) is readable,
+/// square, invertible and reasonably conditioned, and every sample has its
+/// channels. The samples' own `$SPILLOVER` is then not needed.
+pub(crate) fn check_matrix(
+    scope: &str,
+    path: &Path,
+    kind: MatrixKind,
+    samples: &[&LoadedFile],
+) -> Vec<Check> {
+    let kind = match kind {
+        MatrixKind::Spillover => cytiq_compensate::MatrixKind::Spillover,
+        MatrixKind::Compensation => cytiq_compensate::MatrixKind::Compensation,
+    };
+    let matrix = match cytiq_compensate::read_matrix_file(path, kind) {
+        Ok(matrix) => matrix,
+        Err(error) => {
+            return vec![Check::new(
+                scope,
+                "compensation_matrix",
+                CheckStatus::Fail,
+                error.to_string(),
+            )];
+        }
+    };
+    let size = matrix.channels.len();
+    // A matrix and its inverse have the same condition number, so this holds
+    // for spillover and compensation files alike.
+    let mut checks = vec![match cytiq_fcs::condition_number_1(&matrix.values, size) {
+        Err(_) => Check::new(
+            scope,
+            "compensation_matrix",
+            CheckStatus::Fail,
+            format!("`{}` is singular", path.display()),
+        ),
+        Ok(condition) if condition > SPILLOVER_CONDITION_WARN => Check::new(
+            scope,
+            "compensation_matrix",
+            CheckStatus::Warn,
+            format!(
+                "`{}`: {size} channel(s); condition number {condition:.1} exceeds {SPILLOVER_CONDITION_WARN}: compensation will amplify noise",
+                path.display()
+            ),
+        ),
+        Ok(condition) => Check::new(
+            scope,
+            "compensation_matrix",
+            CheckStatus::Pass,
+            format!(
+                "`{}`: {size} channel(s); condition number {condition:.1}",
+                path.display()
+            ),
+        ),
+    }];
+    for sample in samples {
+        let Some(dataset) = &sample.dataset else {
+            continue;
+        };
+        let missing = matrix
+            .channels
+            .iter()
+            .filter(|channel| dataset.find_parameter(channel).is_none())
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        checks.push(if missing.is_empty() {
+            let embedded = matches!(Spillover::from_dataset(dataset), Ok(Some(_)));
+            Check::new(
+                &sample.scope,
+                "compensation_channels",
+                CheckStatus::Pass,
+                format!(
+                    "every channel of `{}` is present{}",
+                    path.display(),
+                    if embedded {
+                        "; the file's own `$SPILLOVER` is not used"
+                    } else {
+                        ""
+                    }
+                ),
+            )
+        } else {
+            Check::new(
+                &sample.scope,
+                "compensation_channels",
+                CheckStatus::Fail,
+                format!(
+                    "channels of `{}` not in the file: {}",
+                    path.display(),
+                    missing.join(", ")
+                ),
+            )
+        });
+    }
+    checks
+}
+
+/// A panel's controls have distinct dyes.
+pub(crate) fn check_control_dyes(
+    scope: &str,
+    controls: &[(&ControlEntry, &LoadedFile)],
+) -> Vec<Check> {
+    let mut seen = BTreeSet::new();
+    let duplicates = controls
+        .iter()
+        .map(|(control, _)| control.dye.trim().to_ascii_lowercase())
+        .filter(|dye| !seen.insert(dye.clone()))
+        .collect::<BTreeSet<_>>();
+    if duplicates.is_empty() {
+        Vec::new()
+    } else {
+        vec![Check::new(
+            scope,
+            "control_dyes",
+            CheckStatus::Fail,
+            format!(
+                "dye(s) with more than one control: {}",
+                duplicates.into_iter().collect::<Vec<_>>().join(", ")
+            ),
+        )]
+    }
+}
+
+/// Every marker channel of a panel has a single-stain control with that
+/// `primary_channel`, as `cytiq autospill` (`source: controls`) and
+/// `cytiq autospectral` need. Markers are resolved on the panel's first
+/// readable sample; unresolved markers are reported by `panel_marker`.
+pub(crate) fn check_control_coverage(
+    scope: &str,
+    panel: &Panel,
+    controls: &[(&ControlEntry, &LoadedFile)],
+    sample: Option<&FcsDataset>,
+    uncovered: CheckStatus,
+) -> Check {
+    let single_stains = controls
+        .iter()
+        .map(|(control, _)| *control)
+        .filter(|control| !control.is_unstained())
+        .collect::<Vec<_>>();
+    let same_channel = |left: &str, right: &str| match sample {
+        Some(dataset) => match (dataset.find_parameter(left), dataset.find_parameter(right)) {
+            (Some(left), Some(right)) => left == right,
+            _ => left == right,
+        },
+        None => left == right,
+    };
+    let channels = panel
+        .markers
+        .iter()
+        .filter_map(|marker| match (&marker.channel, sample) {
+            (Some(channel), _) => Some((marker.marker.as_str(), channel.clone())),
+            (None, Some(dataset)) => match marker_candidates(dataset, marker).as_slice() {
+                [index] => Some((
+                    marker.marker.as_str(),
+                    dataset.parameters[*index].name.clone(),
+                )),
+                _ => None,
+            },
+            (None, None) => None,
+        })
+        .collect::<Vec<_>>();
+    let missing = channels
+        .iter()
+        .filter(|(_, channel)| {
+            !single_stains.iter().any(|control| {
+                control
+                    .primary_channel
+                    .as_deref()
+                    .is_some_and(|primary| same_channel(primary, channel))
+            })
+        })
+        .map(|(marker, channel)| format!("{marker} ({channel})"))
+        .collect::<Vec<_>>();
+    let unknown = single_stains
+        .iter()
+        .filter(|control| control.primary_channel.is_none())
+        .map(|control| control.dye.as_str())
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Check::new(
+            scope,
+            "control_coverage",
+            CheckStatus::Pass,
+            format!(
+                "{} marker channel(s) have a single-stain control",
+                channels.len()
+            ),
+        )
+    } else if unknown.is_empty() {
+        Check::new(
+            scope,
+            "control_coverage",
+            uncovered,
+            format!("no single-stain control for {}", missing.join(", ")),
+        )
+    } else {
+        Check::new(
+            scope,
+            "control_coverage",
+            CheckStatus::Warn,
+            format!(
+                "cannot confirm controls for {}: set `primary_channel` on {}",
+                missing.join(", "),
+                unknown.join(", ")
+            ),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use cytiq_fcs::{FcsWriteOptions, FcsWriteParameter};
+
+    use super::*;
+
+    fn dataset(parameters: &[FcsWriteParameter]) -> FcsDataset {
+        let columns = vec![vec![1.0_f32, 2.0]; parameters.len()];
+        let mut bytes = Vec::new();
+        cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
+            &mut bytes,
+            parameters,
+            &columns,
+            &FcsWriteOptions::new(),
+        )
+        .unwrap();
+        FcsReader::new(std::io::Cursor::new(bytes)).read().unwrap()
+    }
+
+    fn loaded(scope: &str, dataset: FcsDataset) -> LoadedFile {
+        LoadedFile {
+            scope: scope.to_owned(),
+            dataset: Some(dataset),
+        }
+    }
+
+    #[test]
+    fn warns_on_a_label_shared_by_two_channels() {
+        let sample = dataset(&[
+            FcsWriteParameter::with_label("FL1-A", "CD3"),
+            FcsWriteParameter::with_label("FL2-A", "cd3 "),
+        ]);
+        let panel: Panel =
+            serde_json::from_str(r#"{"markers":[{"marker":"CD4","required":false}]}"#).unwrap();
+        let checks = check_markers("sample S01", &sample, &panel);
+        let shared = checks
+            .iter()
+            .find(|check| check.check == "unique_labels")
+            .expect("unique_labels check");
+        assert_eq!(shared.status, CheckStatus::Warn);
+        assert!(
+            shared.message.contains("FL1-A, FL2-A"),
+            "{}",
+            shared.message
+        );
+    }
+
+    #[test]
+    fn warns_on_a_voltage_change() {
+        let first = loaded(
+            "sample S01",
+            dataset(&[FcsWriteParameter::new("FL1-A").with_keyword("V", "450")]),
+        );
+        let second = loaded(
+            "sample S02",
+            dataset(&[FcsWriteParameter::new("FL1-A").with_keyword("V", "500")]),
+        );
+        let checks = check_detectors(&[&first, &second]);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, CheckStatus::Warn);
+        assert!(checks[0].message.contains("FL1-A"), "{}", checks[0].message);
+    }
+
+    #[test]
+    fn fails_on_two_controls_of_one_dye() {
+        let control = |dye: &str| ControlEntry {
+            file: PathBuf::from(format!("{dye}.fcs")),
+            dye: dye.to_owned(),
+            primary_channel: None,
+            panel: None,
+        };
+        let file = LoadedFile {
+            scope: "control".to_owned(),
+            dataset: None,
+        };
+        let (fitc, again, pe) = (control("FITC"), control("fitc"), control("PE"));
+        let checks = check_control_dyes("panel", &[(&fitc, &file), (&again, &file), (&pe, &file)]);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, CheckStatus::Fail);
+        assert!(checks[0].message.contains("fitc"), "{}", checks[0].message);
     }
 }

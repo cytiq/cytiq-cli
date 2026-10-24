@@ -1,5 +1,5 @@
 {
-  "_comment": "Pass/fail thresholds for parity/results/metrics.json, checked by compare.py. A rule's path may use '*' for any key; a rule that matches no metric is a violation. 'why' explains each bound.",
+  "_comment": "Pass/fail thresholds for parity/results/metrics.json, checked by compare.py. A rule's path may use '*' for any key; a rule that matches no metric is a violation unless it is 'optional' (for datasets that may be skipped). 'why' explains each bound.",
   "rules": [
     {"path": ["transform", "arcsinh", "references", "*", "max_abs_diff_rel_to_range"], "max": 1e-6,
      "why": "arcsinh equals flowCore up to f32 output rounding"},

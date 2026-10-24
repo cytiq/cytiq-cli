@@ -24,6 +24,10 @@
     {"path": ["real", "*", "margins", "agreement_with_detector_limits"], "min": 1.0,
      "why": "the margin mask flags exactly the events at a detector limit"},
     {"path": ["real", "*", "peacoqc", "agreement"], "min": 1.0,
-     "why": "PeacoQC equals R PeacoQC on real compensated, transformed data"}
+     "why": "PeacoQC equals R PeacoQC on real compensated, transformed data"},
+    {"path": ["real", "*", "autospill", "rust_vs_upstream", "max_abs"], "max": 1e-9, "optional": true,
+     "why": "the spillover matrix equals R autospill to round-off on real single-stain controls, values above $PnR capped as flowCore::read.FCS does"},
+    {"path": ["real", "*", "autospill", "gates", "*", "delta"], "equals": 0, "optional": true,
+     "why": "the FSC/SSC gate keeps the same number of events as R autospill on every control"}
   ]
 }

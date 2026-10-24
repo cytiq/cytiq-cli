@@ -2,7 +2,8 @@
 
 Date: 2026-10-22 · branch `parity-fixes` · baseline `main` (`0f4c72a`)
 Updated 2026-10-24 (Stage 3): end-to-end chain (§2.9), real acquisitions (§2.10)
-and pass/fail tolerances (§1, step 5).
+and pass/fail tolerances (§1, step 5); real single-stain controls from a
+FACSCelesta and a FACSymphony (§2.10).
 
 ## TL;DR
 
@@ -20,13 +21,15 @@ and pass/fail tolerances (§1, step 5).
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 | `gate` | FlowKit 1.3.0 `GatingStrategy.gate_sample` | — (new command) | ✅ identical per-event membership for all 11 gates; identical counts at 1M events, ~13× faster than FlowKit |
 | whole chain (§2.9) | flowCore + PeacoQC + FlowKit + FlowSOM, same steps | — (new) | ✅ every stage equals upstream per event on 200,000 golden events (values Δ ≤ 1e-7, masks and gates identical, FlowSOM ARI vs R 0.998); against the truth: final mask F1 0.967, every population incl. a 0.2% rare one found with precision ≥ 0.999 |
-| real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels | — (new) | ✅ compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect) |
+| real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels, autospill | — (new) | ✅ compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect); AutoSpill on FACSCelesta (11 colours) and FACSymphony (24 colours) controls: max \|Δ\| 5e-13, gates identical |
 
 **44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
 two performance defects (section 2.6). The Stage 3 chain validation found two
 more defects, both fixed: raw margin masks removed every event at a channel's
 observed extremes (half of a bead sample), and FCS output lacked HEADER DATA
-offsets, so strict readers such as FlowKit rejected it. All key
+offsets, so strict readers such as FlowKit rejected it. Real FACSDiva
+controls found a third: `cytiq autospill` did not cap values above `$PnR` as
+`flowCore::read.FCS` does, which moved one row of a real matrix by 1.3e-4. All key
 ports (`stats::density`, `smooth.spline`, logicle, hyperlog, `flowjo_biexp`)
 are pinned by unit tests against reference values produced by R.
 
@@ -449,8 +452,10 @@ limits only.
 
 ### 2.10 Real acquisitions
 
-`parity/real/run_real.sh` runs on real samples that ship with the R packages
-(no download) and on any files in `CYTIQ_REAL_DATA` (`parity/real/README.md`).
+`parity/real/run_real.sh` runs on the datasets of `parity/real/datasets.json`:
+samples that ship with the R packages, and public acquisitions from BD
+instruments downloaded from Zenodo (checked by SHA-256), plus any files in
+`CYTIQ_REAL_DATA` (`parity/real/README.md`).
 
 | Dataset | Check | Result |
 |---|---|---|
@@ -461,6 +466,11 @@ limits only.
 | PeacoQC `111.fcs` (10,000 events, 13 detectors) | compensate, logicle | Δ 5.9e-08, 7.9e-08 |
 | | PeacoQC vs R | 100% agreement (12.5% removed) |
 | | margins | detector limits 100%; `RemoveMargins` removes 334 vs 328 (observed extremes) |
+| FACSCelesta, 11 single-stain controls (5,000 events each; Zenodo 21384789) | `cytiq autospill` vs R autospill | spillover max \|Δ\| 4.9e-13, ‖ΔC‖_F 4.1e-12; gates identical on all 11 controls |
+| FACSCelesta `Myeloid SP_042.fcs` (56,458 events, 11 detectors, FACSDiva compensation) | compensate, logicle | Δ 6.0e-08, 7.9e-08 |
+| | PeacoQC vs R | 100% agreement (1.3% removed) |
+| | margins | detector limits 100%; 17,736 events (31%), 17,700 of them below flowCore's -111 floor; `RemoveMargins` 17,737 |
+| FACSymphony A3/A5, 24 single-stain controls of a 24-colour OMIP (27,000–60,000 events each; Zenodo 22994607) | `cytiq autospill` vs R autospill | spillover max \|Δ\| 5.0e-13, ‖ΔC‖_F 1.7e-11; gates identical on all 24 controls (713,549 events); cytiq 31 s, R 34 min (25 min on 12 cores) |
 
 Running FlowKit on cytiq's compensated output found the second Stage 3 defect:
 the FCS writer left the HEADER DATA offsets at zero, which strict readers
@@ -468,6 +478,16 @@ reject; it now writes them whenever they fit. The NK T difference is
 FlowJo's: its workspace counts 535 events, its exported Gating-ML gives 487 in
 both cytiq and FlowKit, because FlowJo evaluates that gate at
 `gateResolution="256"` on biex axes under a parent drawn on biex axes.
+
+The FACSCelesta controls found the third defect. FACSDiva writes float data,
+and 8 events of the PE control lie above `$PnR` (262,144) in PE, PE-Texas Red
+and PerCP-Cy5.5. Upstream reads controls with `read.FCS(transformation =
+NULL)`, whose default `truncate_max_range = TRUE` caps them at `$PnR`;
+`cytiq autospill` read them as they are. The R trace already differed at
+refinement iteration 0 (δ 0.00073397 vs 0.00073478), and the final PE →
+PE-Texas Red coefficient by 1.3e-4; every other entry agreed to 1e-6.
+`cytiq autospill` now caps control values at `$PnR`, and the synthetic
+generator, which clips at `$PnR - 1`, could not have shown it.
 
 ## 3. Known remaining differences
 
@@ -492,6 +512,7 @@ both cytiq and FlowKit, because FlowJo evaluates that gate at
 | margins | `compensate`/`autospectral` masks flag detector limits only; `peacoqc --remove-margins` keeps `PeacoQC::RemoveMargins`, which also removes each channel's observed extremes | identical on continuous data (§2.9); on discrete data RemoveMargins removes far more | — |
 | PeacoQC | on small files (15,000 events) the bins are coarse, so ~10% of good events around an artefact are removed (5.6% at 200,000) | same as R | prefer whole acquisitions |
 | real data | FlowRepository (AutoSpill datasets) serves an expired certificate (March 2023) | not fetched automatically | download by hand into `CYTIQ_REAL_DATA` |
+| margins | the lower detector limit is flowCore's fixed -111; FACSDiva float data has ordinary noise below it | identical to `RemoveMargins`, but 31% of a real FACSCelesta sample is flagged, almost all below -111 | decide whether float data should use the upper limit only, and set QC policies (`margin_pass`) with this in mind |
 
 ## 4. Changed files
 

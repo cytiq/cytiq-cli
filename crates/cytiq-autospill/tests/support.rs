@@ -248,6 +248,51 @@ pub fn write_control_file(
     .expect("control should be written");
 }
 
+/// Edits a control written by these builders in place. Parameter `number`
+/// (1-based) gets `$PnR = range`; with `cap_data` it keeps its `$PnR` and its
+/// values above `range` become `range` instead. `range` has five digits like
+/// the builders' `65535`, so every offset stays valid.
+pub fn limit_parameter(path: &Path, number: usize, range: u16, cap_data: bool) {
+    let mut bytes = fs::read(path).expect("control should be readable");
+    let offset = |start: usize| -> usize {
+        std::str::from_utf8(&bytes[start..start + 8])
+            .expect("header offsets are ASCII")
+            .trim()
+            .parse()
+            .expect("header offsets are numbers")
+    };
+    let (data_start, data_end) = (offset(26), offset(34));
+    if cap_data {
+        let text = String::from_utf8_lossy(&bytes[58..data_start]).into_owned();
+        let fields = text.split(char::from(DELIMITER)).collect::<Vec<_>>();
+        let parameters = fields
+            .iter()
+            .position(|field| *field == "$PAR")
+            .map(|index| {
+                fields[index + 1]
+                    .parse::<usize>()
+                    .expect("$PAR is a number")
+            })
+            .expect("controls carry $PAR");
+        let first = data_start + 2 * (number - 1);
+        for at in (first..data_end).step_by(2 * parameters) {
+            if u16::from_le_bytes([bytes[at], bytes[at + 1]]) > range {
+                bytes[at..at + 2].copy_from_slice(&range.to_le_bytes());
+            }
+        }
+    } else {
+        let delimiter = char::from(DELIMITER);
+        let from = format!("{delimiter}$P{number}R{delimiter}65535{delimiter}");
+        let to = format!("{delimiter}$P{number}R{delimiter}{range:05}{delimiter}");
+        let at = bytes
+            .windows(from.len())
+            .position(|window| window == from.as_bytes())
+            .expect("controls carry $PnR = 65535");
+        bytes[at..at + to.len()].copy_from_slice(to.as_bytes());
+    }
+    fs::write(path, bytes).expect("control should be written");
+}
+
 pub fn write_text(path: &Path, contents: &str) {
     fs::write(path, contents).expect("text fixture should be written");
 }

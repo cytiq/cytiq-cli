@@ -19,7 +19,11 @@ from sklearn.metrics import adjusted_rand_score
 
 PARITY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PARITY))
-from compare import check_tolerances  # noqa: E402
+from compare import _offdiag, check_tolerances  # noqa: E402
+
+# autospill's `marker.forbidden.char`, each replaced by `-` in its matrix and
+# gate names.
+AUTOSPILL_FORBIDDEN = " !\"#$%&'()*,/:;?@[\\]^{|}~"
 
 
 def _r(value: float, digits: int = 6) -> float:
@@ -128,6 +132,31 @@ def compare_qc_chain(directory: Path) -> dict:
     }
 
 
+def autospill_name(channel: str) -> str:
+    return "".join("-" if char in AUTOSPILL_FORBIDDEN else char for char in channel)
+
+
+def compare_autospill_chain(directory: Path) -> dict:
+    mine = pd.read_csv(directory / "autospill_spillover.csv", index_col=0)
+    mine.index = mine.columns = [autospill_name(name) for name in mine.columns]
+    theirs = pd.read_csv(directory / "r_autospill_spillover.csv", index_col=0)
+    order = list(theirs.index)
+    a, b = mine.loc[order, order].to_numpy(), theirs.loc[order, order].to_numpy()
+    summary = json.loads((directory / "autospill_debug" / "summary.json").read_text())
+    rust_gated = {autospill_name(g["dye"]): g["gated_events"] for g in summary["gate_stats"]}
+    r_gated = pd.read_csv(directory / "r_autospill_gates.csv")["sample"].value_counts()
+    return {
+        "controls": len(order),
+        "rust_vs_upstream": {
+            "max_abs": _r(float(np.max(np.abs(_offdiag(a - b))))),
+            "compensation_frobenius": _r(float(np.linalg.norm(np.linalg.inv(a) - np.linalg.inv(b)))),
+        },
+        "max_offdiag_spillover": _r(float(np.max(_offdiag(b)))),
+        "gates": {dye: {"rust": int(rust_gated[dye]), "upstream": int(r_gated.get(dye, 0)),
+                        "delta": int(rust_gated[dye] - r_gated.get(dye, 0))} for dye in order},
+    }
+
+
 def main() -> None:
     out_dir, target = Path(sys.argv[1]), Path(sys.argv[2])
     metrics: dict = {"real": {}}
@@ -136,6 +165,8 @@ def main() -> None:
     for directory in sorted(out_dir.iterdir()):
         if (directory / "channels.txt").exists():
             metrics["real"][directory.name] = compare_qc_chain(directory)
+        if (directory / "controls_full.csv").exists():
+            metrics["real"][directory.name] = {"autospill": compare_autospill_chain(directory)}
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(metrics, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))

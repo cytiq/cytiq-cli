@@ -1042,7 +1042,10 @@ reconstructs the whole chain from the raw FCS files.
 
 `cytiq-autospill` follows the published AutoSpill workflow and upstream R
 reference closely for the implemented scope (the spillover matrix matches
-`autospill` to about 1e-13 on the parity datasets, `parity/REPORT.md`):
+`autospill` to about 1e-13 on the synthetic parity datasets and on real
+FACSCelesta and FACSymphony controls, `parity/REPORT.md`):
+- controls read as `flowCore::read.FCS` reads them: values above `$PnR` are
+  capped at `$PnR`
 - FSC/SSC auto-gating
 - robust spillover estimation
 - iterative matrix refinement

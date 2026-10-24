@@ -105,6 +105,89 @@
         "rust_vs_upstream_minus_seed_band": 0.0344
       }
     },
+    "celesta_mdsc_controls": {
+      "autospill": {
+        "controls": 11,
+        "rust_vs_upstream": {
+          "max_abs": 4.9458e-13,
+          "compensation_frobenius": 4.1372e-12
+        },
+        "max_offdiag_spillover": 0.990241,
+        "gates": {
+          "Alexa-Fluor-700-A": {
+            "rust": 1052,
+            "upstream": 1052,
+            "delta": 0
+          },
+          "APC-A": {
+            "rust": 1020,
+            "upstream": 1020,
+            "delta": 0
+          },
+          "APC-Cy7-A": {
+            "rust": 959,
+            "upstream": 959,
+            "delta": 0
+          },
+          "BV421-A": {
+            "rust": 1027,
+            "upstream": 1027,
+            "delta": 0
+          },
+          "BV510-A": {
+            "rust": 1034,
+            "upstream": 1034,
+            "delta": 0
+          },
+          "BV605-A": {
+            "rust": 925,
+            "upstream": 925,
+            "delta": 0
+          },
+          "BV786-A": {
+            "rust": 967,
+            "upstream": 967,
+            "delta": 0
+          },
+          "FITC-A": {
+            "rust": 913,
+            "upstream": 913,
+            "delta": 0
+          },
+          "PE-A": {
+            "rust": 1032,
+            "upstream": 1032,
+            "delta": 0
+          },
+          "PE-Texas-Red-A": {
+            "rust": 1057,
+            "upstream": 1057,
+            "delta": 0
+          },
+          "PerCP-Cy5-5-A": {
+            "rust": 1090,
+            "upstream": 1090,
+            "delta": 0
+          }
+        }
+      }
+    },
+    "celesta_mdsc_sample": {
+      "events": 56458,
+      "channels": 11,
+      "compensated_max_rel_delta": 5.95449e-08,
+      "transformed_max_rel_delta": 7.90272e-08,
+      "margins": {
+        "agreement_with_detector_limits": 1.0,
+        "removed": 17736,
+        "RemoveMargins_removed": 17737,
+        "agreement_with_RemoveMargins": 1.0
+      },
+      "peacoqc": {
+        "agreement": 1.0,
+        "removed_fraction": 0.01328
+      }
+    },
     "peacoqc_111": {
       "events": 10000,
       "channels": 13,
@@ -119,6 +202,138 @@
       "peacoqc": {
         "agreement": 1.0,
         "removed_fraction": 0.125
+      }
+    },
+    "symphony_omip24_controls": {
+      "autospill": {
+        "controls": 24,
+        "rust_vs_upstream": {
+          "max_abs": 4.9976e-13,
+          "compensation_frobenius": 1.67196e-11
+        },
+        "max_offdiag_spillover": 1.65138,
+        "gates": {
+          "Alexa700-A": {
+            "rust": 35671,
+            "upstream": 35671,
+            "delta": 0
+          },
+          "APC-A": {
+            "rust": 44003,
+            "upstream": 44003,
+            "delta": 0
+          },
+          "APC-Cy7-A": {
+            "rust": 13281,
+            "upstream": 13281,
+            "delta": 0
+          },
+          "BB515-A": {
+            "rust": 21117,
+            "upstream": 21117,
+            "delta": 0
+          },
+          "BB630-A": {
+            "rust": 59784,
+            "upstream": 59784,
+            "delta": 0
+          },
+          "BB700-A": {
+            "rust": 18361,
+            "upstream": 18361,
+            "delta": 0
+          },
+          "BB790-A": {
+            "rust": 25413,
+            "upstream": 25413,
+            "delta": 0
+          },
+          "BUV396-A": {
+            "rust": 29235,
+            "upstream": 29235,
+            "delta": 0
+          },
+          "BUV496-A": {
+            "rust": 22500,
+            "upstream": 22500,
+            "delta": 0
+          },
+          "BUV615-A": {
+            "rust": 37316,
+            "upstream": 37316,
+            "delta": 0
+          },
+          "BUV661-A": {
+            "rust": 37365,
+            "upstream": 37365,
+            "delta": 0
+          },
+          "BUV737-A": {
+            "rust": 38556,
+            "upstream": 38556,
+            "delta": 0
+          },
+          "BUV805-A": {
+            "rust": 13712,
+            "upstream": 13712,
+            "delta": 0
+          },
+          "BV421-A": {
+            "rust": 34155,
+            "upstream": 34155,
+            "delta": 0
+          },
+          "BV510-A": {
+            "rust": 34588,
+            "upstream": 34588,
+            "delta": 0
+          },
+          "BV570-A": {
+            "rust": 29682,
+            "upstream": 29682,
+            "delta": 0
+          },
+          "BV605-A": {
+            "rust": 19625,
+            "upstream": 19625,
+            "delta": 0
+          },
+          "BV650-A": {
+            "rust": 47451,
+            "upstream": 47451,
+            "delta": 0
+          },
+          "BV711-A": {
+            "rust": 27615,
+            "upstream": 27615,
+            "delta": 0
+          },
+          "BV750-A": {
+            "rust": 25441,
+            "upstream": 25441,
+            "delta": 0
+          },
+          "BV786-A": {
+            "rust": 20202,
+            "upstream": 20202,
+            "delta": 0
+          },
+          "PE-w-561-A": {
+            "rust": 13201,
+            "upstream": 13201,
+            "delta": 0
+          },
+          "PE-CF594-A": {
+            "rust": 33587,
+            "upstream": 33587,
+            "delta": 0
+          },
+          "PE-Cy7-A": {
+            "rust": 31688,
+            "upstream": 31688,
+            "delta": 0
+          }
+        }
       }
     }
   }

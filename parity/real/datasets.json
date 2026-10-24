@@ -1,0 +1,29 @@
+{
+  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory) or a `url`, and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). URL datasets marked `optional` are skipped with a warning when the download fails.",
+  "datasets": [
+    {
+      "name": "flowsom_68983",
+      "chain": "flowsom_gating",
+      "cytometry": "conventional",
+      "panel": "mouse, 18 colours, FlowSOM vignette",
+      "files": {
+        "sample.fcs": {"r_package": "FlowSOM", "path": "extdata/68983.fcs",
+                       "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"},
+        "flowjo_labels.csv": {"r_package": "FlowSOM", "path": "extdata/gatingResult.csv",
+                              "sha256": "906171895ee6577e8d95e540649c23e23f1b1ff92de57ac7a6fb28e8d2346f89"},
+        "manualGating.xml": {"r_package": "FlowSOM", "path": "extdata/manualGating.xml",
+                             "sha256": "d78a9587cb38cdd0a442c7b374b1c2ee99e945f8dcd326a3cbdeb15722cbca43"}
+      }
+    },
+    {
+      "name": "peacoqc_111",
+      "chain": "qc",
+      "cytometry": "conventional",
+      "panel": "human, 20 colours, LSRII, PeacoQC vignette",
+      "files": {
+        "sample.fcs": {"r_package": "PeacoQC", "path": "extdata/111.fcs",
+                       "sha256": "28b00aac4b3f5acb451e7b3318360ba2d57a50c9fd6b8c387abc3bcb05bdfa7e"}
+      }
+    }
+  ]
+}

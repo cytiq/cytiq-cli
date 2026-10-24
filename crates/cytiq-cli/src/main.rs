@@ -39,6 +39,7 @@ use cytiq_peacoqc::{
 };
 use cytiq_preflight::{CheckStatus, PreflightConfig, PreflightRunner};
 use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir, record_path_for_file};
+use cytiq_qc::{CheckStatus as QcStatus, QcConfig, QcRunner};
 use cytiq_transform::{
     BiexponentialParameters, LogicleParameters, TransformConfig, TransformFormat, TransformMethod,
     TransformParameters, TransformRunResult, TransformRunner,
@@ -275,6 +276,25 @@ enum Commands {
         /// Run manifest (`.yaml`, `.yml` or `.json`).
         #[arg(long)]
         manifest: PathBuf,
+        /// JSON report path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Replace an existing report.
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Check a sample's final event mask against its panel's `qc` policy in
+    /// the run manifest; exits with 1 when a check fails.
+    Qc {
+        /// Run manifest (`.yaml`, `.yml` or `.json`) with the sample.
+        #[arg(long)]
+        manifest: PathBuf,
+        /// Sample id in the manifest.
+        #[arg(long)]
+        sample: String,
+        /// The sample's final event mask (`cytiq mask combine` output).
+        #[arg(long)]
+        mask: PathBuf,
         /// JSON report path.
         #[arg(long)]
         output: PathBuf,
@@ -1244,6 +1264,55 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             report.ensure_passed(&config.output)?;
             Ok(())
         }
+        Commands::Qc {
+            manifest,
+            sample,
+            mask,
+            output,
+            overwrite,
+        } => {
+            info!(
+                "starting qc: manifest={}, sample={sample}, mask={}",
+                manifest.display(),
+                mask.display()
+            );
+            let config = QcConfig {
+                manifest,
+                sample,
+                mask,
+                output,
+                overwrite,
+            };
+            recorder.snapshot_inputs(&QcRunner::input_files(&config)?)?;
+            let report = QcRunner::run(&config)?;
+            for check in &report.checks {
+                match check.status {
+                    QcStatus::Fail => {
+                        error!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                    QcStatus::Warn => {
+                        warn!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                    QcStatus::Pass => {
+                        debug!("{}: {}: {}", check.scope, check.check, check.message);
+                    }
+                }
+            }
+            info!(
+                "qc: {} passed, {} warning(s), {} failure(s); wrote {}",
+                report.passed,
+                report.warnings,
+                report.failures,
+                config.output.display()
+            );
+            record_provenance(
+                recorder,
+                std::slice::from_ref(&config.output),
+                &record_path_for_file(&config.output),
+            )?;
+            report.ensure_passed(&config.output)?;
+            Ok(())
+        }
         Commands::Meta {
             input,
             output,
@@ -1377,6 +1446,7 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Mask(MaskCommand::Combine { .. }) => "mask combine",
         Commands::Meta { .. } => "meta",
         Commands::Preflight { .. } => "preflight",
+        Commands::Qc { .. } => "qc",
         Commands::Compensate { .. } => "compensate",
         Commands::Clean(_) => "clean",
         Commands::Flowsom { .. } => "flowsom",

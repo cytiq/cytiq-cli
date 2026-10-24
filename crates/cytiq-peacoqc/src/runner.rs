@@ -1352,8 +1352,10 @@ fn build_summary(
             time_channel: DEFAULT_TIME_CHANNEL.to_owned(),
         },
         metrics,
+        // Acceptance thresholds belong to `cytiq qc`; this only says whether
+        // the run met inputs it did not expect.
+        status: if warnings.is_empty() { "PASS" } else { "WARN" }.to_owned(),
         warnings,
-        status: "PASS".to_owned(),
     }
 }
 

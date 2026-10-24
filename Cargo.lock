@@ -561,6 +561,7 @@ dependencies = [
  "cytiq-peacoqc",
  "cytiq-preflight",
  "cytiq-provenance",
+ "cytiq-qc",
  "cytiq-transform",
  "log",
  "parquet",
@@ -717,6 +718,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "cytiq-qc"
+version = "0.1.0"
+dependencies = [
+ "cytiq-fcs",
+ "cytiq-manifest",
+ "cytiq-mask",
+ "log",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

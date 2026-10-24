@@ -8,5 +8,17 @@ panel:
     - { marker: CD19 }
     - { marker: CD56 }
     - { marker: Live/Dead }
+  # Built-in artefacts: debris 8%, doublets 6%, dead 10%, an unstable
+  # interval (6%) and saturation; each limit leaves headroom above them.
+  qc:
+    min_events: 10000
+    min_kept_events: 8000
+    max_removed_fraction: 0.45
+    filters:
+      margin_pass: { required: true, max_removed_fraction: 0.12 }
+      peacoqc_pass: { required: true, max_removed_fraction: 0.2 }
+      non_debris: { required: true, max_removed_fraction: 0.12 }
+      singlets: { required: true, max_removed_fraction: 0.15 }
+      live: { required: true, max_removed_fraction: 0.15 }
 samples:
   - { id: GOLDEN, file: sample.fcs }

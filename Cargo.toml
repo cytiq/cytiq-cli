@@ -16,6 +16,7 @@ members = [
     "crates/cytiq-peacoqc",
     "crates/cytiq-preflight",
     "crates/cytiq-provenance",
+    "crates/cytiq-qc",
     "crates/cytiq-transform",
 ]
 resolver = "3"

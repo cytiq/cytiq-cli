@@ -31,6 +31,29 @@ pub const FLOWSOM_RADIUS_END: f64 = 0.0;
 pub const FLOWSOM_RANDOM_SEED: u64 = 1;
 pub const FLOWSOM_SCALE_INPUT: bool = true;
 
+/// The fixed training schedule, for provenance records; grid size,
+/// metaclusters, seed and scaling are options.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct FlowSomConstants {
+    pub training_iterations: usize,
+    pub learning_rate_start: f64,
+    pub learning_rate_end: f64,
+    pub radius_start_quantile: f64,
+    pub radius_end: f64,
+}
+
+impl Default for FlowSomConstants {
+    fn default() -> Self {
+        Self {
+            training_iterations: FLOWSOM_TRAINING_ITERATIONS,
+            learning_rate_start: FLOWSOM_LEARNING_RATE_START,
+            learning_rate_end: FLOWSOM_LEARNING_RATE_END,
+            radius_start_quantile: FLOWSOM_RADIUS_START_QUANTILE,
+            radius_end: FLOWSOM_RADIUS_END,
+        }
+    }
+}
+
 const EQUALITY_EPSILON: f64 = 1.0e-12;
 /// Mixed into the seed for the training subsample, so it does not reuse the
 /// training RNG stream.

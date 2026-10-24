@@ -301,18 +301,18 @@ impl CytoScanRunner {
         with_thread_pool(config.threads, || Self::run_inner(config))
     }
 
-    /// The FCS files a run with `config` reads: test inputs, then reference
-    /// inputs, with directories and globs resolved as [`Self::run`] does.
+    /// The FCS files a run with `config` reads, `(test, reference)`, with
+    /// directories and globs resolved as [`Self::run`] does.
     ///
     /// # Errors
     ///
     /// Returns an error when the configuration is invalid or an input cannot
     /// be resolved.
-    pub fn input_files(config: &CytoScanConfig) -> Result<Vec<PathBuf>, CytoScanError> {
+    pub fn input_files(
+        config: &CytoScanConfig,
+    ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), CytoScanError> {
         validate_config(config)?;
-        let (mut test_paths, reference_paths) = resolve_test_and_reference(config)?;
-        test_paths.extend(reference_paths);
-        Ok(test_paths)
+        resolve_test_and_reference(config)
     }
 
     fn run_inner(config: &CytoScanConfig) -> Result<CytoScanResult, CytoScanError> {

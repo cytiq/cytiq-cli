@@ -23,22 +23,24 @@ use cytiq_clean::{
 };
 use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
 use cytiq_cytoscan::{
-    CytoScanConfig, CytoScanRunner, FeatureMethod, FlagMethod,
+    CytoScanConfig, CytoScanConstants, CytoScanRunner, FeatureMethod, FlagMethod,
     parse_channel_list as parse_cytoscan_channel_list,
 };
 use cytiq_flowsom::{
     FLOWSOM_METACLUSTERS, FLOWSOM_RANDOM_SEED, FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomConfig,
-    FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
+    FlowSomConstants, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
 use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
 use cytiq_meta::{MetaConfig, MetaRunner};
 use cytiq_peacoqc::{
-    PeacoQcConfig, PeacoQcMethod, PeacoQcRunner, masks_path as peacoqc_masks_path,
-    parse_channel_list as parse_peacoqc_channel_list,
+    PeacoQcConfig, PeacoQcConstants, PeacoQcMethod, PeacoQcRunner,
+    masks_path as peacoqc_masks_path, parse_channel_list as parse_peacoqc_channel_list,
 };
 use cytiq_preflight::{CheckStatus, PreflightConfig, PreflightRunner};
-use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir, record_path_for_file};
+use cytiq_provenance::{
+    BuildInfo, RunRecorder, files_under, record_path_for_dir, record_path_for_file,
+};
 use cytiq_qc::{CheckStatus as QcStatus, QcConfig, QcRunner};
 use cytiq_transform::{
     BiexponentialParameters, LogicleParameters, TransformConfig, TransformFormat, TransformMethod,
@@ -46,6 +48,7 @@ use cytiq_transform::{
     parse_channel_list as parse_transform_channel_list,
 };
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError, debug, error, info, warn};
+use serde::Serialize;
 
 #[derive(Debug, Parser)]
 #[command(name = "cytiq")]
@@ -55,7 +58,10 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Debug, Subcommand)]
+/// Serialized untagged into provenance as the effective configuration:
+/// every option with clap's defaults applied.
+#[derive(Debug, Serialize, Subcommand)]
+#[serde(untagged)]
 enum Commands {
     /// Estimate a spillover or compensation matrix from single-color controls.
     Autospill {
@@ -380,7 +386,8 @@ enum Commands {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliFilterKind {
     Debris,
     Singlets,
@@ -406,7 +413,8 @@ impl From<CliMatrixKind> for CompensateMatrixKind {
     }
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Serialize, Subcommand)]
+#[serde(untagged)]
 enum MaskCommand {
     /// Combine masks of one acquisition by `source_event_id`; an event is kept
     /// only when every mask keeps it.
@@ -423,7 +431,7 @@ enum MaskCommand {
     },
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Serialize, Args)]
 struct CleanArgs {
     /// Input FCS file.
     #[arg(long)]
@@ -488,7 +496,8 @@ struct CleanArgs {
     threads: Option<usize>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliDebrisMode {
     /// FSC-A threshold at the density valley above the debris peak.
     Adaptive,
@@ -542,7 +551,8 @@ impl From<CleanArgs> for CleanConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliGateOutputFormat {
     Csv,
     Json,
@@ -557,7 +567,8 @@ impl From<CliGateOutputFormat> for GateOutputFormat {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliMatrixKind {
     Compensation,
     Spillover,
@@ -572,7 +583,8 @@ impl From<CliMatrixKind> for MatrixKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliPeacoQcMethod {
     All,
     Mad,
@@ -580,7 +592,8 @@ enum CliPeacoQcMethod {
     PeaksOnly,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliTransformMethod {
     Arcsinh,
     Biexponential,
@@ -589,7 +602,8 @@ enum CliTransformMethod {
     None,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliCytoScanFeatureMethod {
     Summary,
     Quantiles,
@@ -610,7 +624,8 @@ impl From<CliCytoScanFeatureMethod> for FeatureMethod {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliCytoScanFlagMethod {
     Outlier,
     Novelty,
@@ -639,7 +654,8 @@ impl From<CliTransformMethod> for TransformMethod {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 enum CliTransformFormat {
     Fcs,
     Csv,
@@ -720,7 +736,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         format!("cytiq {}", command_name(&cli.command)),
         env!("CARGO_PKG_VERSION"),
         env::args().skip(1).collect(),
-    );
+    )
+    .with_build(build_info());
+    recorder.set_config(&cli.command);
     match cli.command {
         Commands::Autospill {
             controls,
@@ -748,11 +766,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 manifest.len(),
                 controls.display()
             );
-            let mut inputs = vec![controls.clone()];
-            inputs.extend(detectors.clone());
-            inputs.extend(transform_file.clone());
-            inputs.extend(manifest.iter().map(|row| input_dir.join(&row.filename)));
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("controls_manifest", std::slice::from_ref(&controls))?;
+            recorder.snapshot_inputs("detectors", detectors.as_slice())?;
+            recorder.snapshot_inputs("transforms", transform_file.as_slice())?;
+            recorder.snapshot_inputs(
+                "control",
+                &manifest
+                    .iter()
+                    .map(|row| input_dir.join(&row.filename))
+                    .collect::<Vec<_>>(),
+            )?;
+            recorder.set_algorithms(cytiq_autospill::UPSTREAM);
             let detectors = detectors
                 .map(read_detectors_manifest)
                 .transpose()?
@@ -825,10 +849,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 manifest.len(),
                 controls.display()
             );
-            let mut inputs = vec![controls.clone()];
-            inputs.extend(detectors.clone());
-            inputs.extend(manifest.iter().map(|row| input_dir.join(&row.filename)));
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("controls_manifest", std::slice::from_ref(&controls))?;
+            recorder.snapshot_inputs("detectors", detectors.as_slice())?;
+            recorder.snapshot_inputs(
+                "control",
+                &manifest
+                    .iter()
+                    .map(|row| input_dir.join(&row.filename))
+                    .collect::<Vec<_>>(),
+            )?;
             let detectors = detectors
                 .map(read_detectors_manifest)
                 .transpose()?
@@ -885,19 +914,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             debug!("autospectral channels: FSC=`{fsc}`, SSC=`{ssc}`");
             let control_manifest = read_autospectral_controls_manifest(&controls)?;
             let sample_manifest = read_samples_manifest(&samples)?;
-            let mut inputs = vec![controls.clone(), samples.clone()];
-            inputs.extend(detectors.clone());
-            inputs.extend(
-                control_manifest
+            recorder.snapshot_inputs("controls_manifest", std::slice::from_ref(&controls))?;
+            recorder.snapshot_inputs("samples_manifest", std::slice::from_ref(&samples))?;
+            recorder.snapshot_inputs("detectors", detectors.as_slice())?;
+            recorder.snapshot_inputs(
+                "control",
+                &control_manifest
                     .iter()
                     .map(|row| input_dir.join(&row.filename))
-                    .chain(
-                        sample_manifest
-                            .iter()
-                            .map(|row| input_dir.join(&row.filename)),
-                    ),
-            );
-            recorder.snapshot_inputs(&inputs)?;
+                    .collect::<Vec<_>>(),
+            )?;
+            recorder.snapshot_inputs(
+                "input",
+                &sample_manifest
+                    .iter()
+                    .map(|row| input_dir.join(&row.filename))
+                    .collect::<Vec<_>>(),
+            )?;
+            recorder.set_algorithms(cytiq_autospectral::UPSTREAM);
             info!(
                 "loaded {} control rows and {} sample rows",
                 control_manifest.len(),
@@ -964,7 +998,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 debug_dir,
                 threads,
             };
-            recorder.snapshot_inputs(std::slice::from_ref(&input))?;
+            recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
+            recorder.set_constants(&PeacoQcConstants::default());
+            recorder.set_algorithms(cytiq_peacoqc::UPSTREAM);
             let result = PeacoQcRunner::run(&input, &output, &config)?;
             let outputs = [output.clone(), peacoqc_masks_path(&output)];
             info!(
@@ -1010,7 +1046,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 threads,
                 strict,
             };
-            recorder.snapshot_inputs(&CytoScanRunner::input_files(&config)?)?;
+            let (test, reference) = CytoScanRunner::input_files(&config)?;
+            recorder.snapshot_inputs("input", &test)?;
+            recorder.snapshot_inputs("reference", &reference)?;
+            recorder.set_constants(&CytoScanConstants::default());
+            recorder.set_algorithms(cytiq_cytoscan::UPSTREAM);
             let result = CytoScanRunner::run(&config)?;
             for warning in &result.diagnostics.warnings {
                 warn!("cytoscan: {warning}");
@@ -1085,7 +1125,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 allow_retransform,
             };
             if !config.dry_run {
-                recorder.snapshot_inputs(&TransformRunner::input_files(&config)?)?;
+                recorder.snapshot_inputs("input", &TransformRunner::input_files(&config)?)?;
+                recorder.set_algorithms(cytiq_transform::UPSTREAM);
             }
             let result = TransformRunner::run(&config)?;
             if result.dry_run {
@@ -1135,9 +1176,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 masks,
                 membership,
             };
-            let mut inputs = vec![config.input.clone(), config.gating_ml.clone()];
-            inputs.extend(config.masks.iter().cloned());
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("input", std::slice::from_ref(&config.input))?;
+            recorder.snapshot_inputs("gating_ml", std::slice::from_ref(&config.gating_ml))?;
+            recorder.snapshot_inputs("mask", &config.masks)?;
+            recorder.set_algorithms(cytiq_gating::UPSTREAM);
             let result = GatingRunner::run(&config)?;
             let mut outputs = vec![config.output.clone()];
             outputs.extend(config.membership.clone());
@@ -1173,9 +1215,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 matrix: matrix.zip(matrix_kind.map(CompensateMatrixKind::from)),
                 overwrite,
             };
-            let mut inputs = vec![config.input.clone()];
-            inputs.extend(config.matrix.as_ref().map(|(path, _)| path.clone()));
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("input", std::slice::from_ref(&config.input))?;
+            if let Some((matrix, _)) = &config.matrix {
+                recorder.snapshot_inputs("matrix", std::slice::from_ref(matrix))?;
+            }
+            recorder.set_algorithms(cytiq_compensate::UPSTREAM);
             let result = CompensateRunner::run(&config)?;
             info!(
                 "compensated {} channel(s) over {} event(s); {} on a raw detector margin; wrote {} and {}",
@@ -1202,7 +1246,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 overwrite,
             };
-            recorder.snapshot_inputs(&config.masks)?;
+            recorder.snapshot_inputs("mask", &config.masks)?;
             let combined = MaskCombineRunner::run(&config)?;
             info!(
                 "mask combine kept {} of {} event(s); wrote {}",
@@ -1233,8 +1277,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             // An invalid manifest fails the run below with the same error.
             let inputs = PreflightRunner::input_files(&config)
-                .unwrap_or_else(|_| vec![config.manifest.clone()]);
-            recorder.snapshot_inputs(&inputs)?;
+                .unwrap_or_else(|_| vec![("manifest", config.manifest.clone())]);
+            recorder.snapshot_roles(&inputs)?;
             let report = PreflightRunner::run(&config)?;
             for check in &report.checks {
                 match check.status {
@@ -1283,7 +1327,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output,
                 overwrite,
             };
-            recorder.snapshot_inputs(&QcRunner::input_files(&config)?)?;
+            recorder.snapshot_roles(&QcRunner::input_files(&config)?)?;
             let report = QcRunner::run(&config)?;
             for check in &report.checks {
                 match check.status {
@@ -1341,11 +1385,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 args.input.display(),
                 args.output.display()
             );
-            let mut inputs = vec![args.input.clone()];
-            inputs.extend(args.masks.iter().cloned());
-            inputs.extend(args.gates.clone());
-            inputs.extend(args.viability_control.clone());
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("input", std::slice::from_ref(&args.input))?;
+            recorder.snapshot_inputs("mask", &args.masks)?;
+            recorder.snapshot_inputs("gating_ml", args.gates.as_slice())?;
+            recorder.snapshot_inputs("control", args.viability_control.as_slice())?;
             let result = CleanRunner::run(&args.into())?;
             let metrics = &result.metrics;
             for (name, report) in [
@@ -1411,9 +1454,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 training_events,
                 masks,
             };
-            let mut inputs = vec![input.clone()];
-            inputs.extend(config.masks.iter().cloned());
-            recorder.snapshot_inputs(&inputs)?;
+            recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
+            recorder.snapshot_inputs("mask", &config.masks)?;
+            recorder.set_constants(&FlowSomConstants::default());
+            recorder.set_algorithms(cytiq_flowsom::UPSTREAM);
             let result = FlowSomRunner::run(&input, &output, &config)?;
             info!(
                 "flowsom assigned {} events across {} SOM nodes and {} metaclusters",
@@ -1450,6 +1494,16 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Compensate { .. } => "compensate",
         Commands::Clean(_) => "clean",
         Commands::Flowsom { .. } => "flowsom",
+    }
+}
+
+/// What `build.rs` recorded about this binary.
+fn build_info() -> BuildInfo {
+    BuildInfo {
+        git_commit: env!("CYTIQ_GIT_COMMIT").to_owned(),
+        rustc: env!("CYTIQ_RUSTC_VERSION").to_owned(),
+        target: env!("CYTIQ_TARGET").to_owned(),
+        profile: env!("CYTIQ_PROFILE").to_owned(),
     }
 }
 

@@ -53,22 +53,38 @@ pub struct PanelSummary {
 pub struct PreflightRunner;
 
 impl PreflightRunner {
-    /// The files a run with `config` reads: the manifest, the sample and
-    /// control FCS files it lists, then the panels' compensation matrices.
+    /// The files a run with `config` reads, with their provenance role: the
+    /// manifest, the sample and control FCS files it lists, then the panels'
+    /// compensation matrices.
     ///
     /// # Errors
     ///
     /// Returns an error when the manifest is invalid.
-    pub fn input_files(config: &PreflightConfig) -> Result<Vec<PathBuf>, PreflightError> {
+    pub fn input_files(
+        config: &PreflightConfig,
+    ) -> Result<Vec<(&'static str, PathBuf)>, PreflightError> {
         let manifest = RunManifest::load(&config.manifest)?;
-        let mut files = vec![config.manifest.clone()];
-        files.extend(manifest_files(&manifest));
+        let mut files = vec![("manifest", config.manifest.clone())];
+        files.extend(
+            manifest
+                .samples
+                .iter()
+                .map(|sample| ("input", sample.file.clone())),
+        );
+        files.extend(
+            manifest
+                .controls
+                .iter()
+                .map(|control| ("control", control.file.clone())),
+        );
         files.extend(
             manifest
                 .panels
                 .iter()
                 .filter_map(|panel| match &panel.compensation {
-                    Some(CompensationSource::Matrix { matrix, .. }) => Some(matrix.clone()),
+                    Some(CompensationSource::Matrix { matrix, .. }) => {
+                        Some(("matrix", matrix.clone()))
+                    }
                     _ => None,
                 }),
         );

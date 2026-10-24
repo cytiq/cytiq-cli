@@ -53,6 +53,7 @@ let xml = to_gatingml(&strategy)?;
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `parse_gatingml` | Parse a Gating-ML 2.0 document into a `GatingStrategy` |
 | `to_gatingml` | Serialize a strategy back to Gating-ML (deterministic, round-trips) |
 | `GatingStrategy` | Gates in evaluation order; `new`, `gate_sample`, `gate_sample_masked`, `dimension_values`, `gate_path` |

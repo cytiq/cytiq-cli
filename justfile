@@ -94,7 +94,8 @@ docker-down:
 # ---- Build the Docker image
 [group('docker')]
 docker-build:
-    docker build -f {{ DOCKERFILE }} -t {{ DOCKER_IMAGE }} .
+    docker build -f {{ DOCKERFILE }} -t {{ DOCKER_IMAGE }} \
+        --build-arg CYTIQ_BUILD_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)" .
 
 # ---- Remove Rust build artifacts
 [group('utils')]

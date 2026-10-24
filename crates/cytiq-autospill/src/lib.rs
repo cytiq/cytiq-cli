@@ -31,3 +31,7 @@ pub use crate::runner::{
     AutospillConfig, AutospillResult, AutospillRunner, AutospreadConfig, AutospreadResult,
     AutospreadRunner, ConvergenceStep, ConvergenceSummary, GateStats, MatrixKind, SpreadStats,
 };
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("autospill", "0.2.0@1e60e86"), ("MASS", "7.3.66")];

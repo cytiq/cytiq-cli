@@ -122,6 +122,9 @@ pub fn adjusted_rand_index(left: &[u64], right: &[u64]) -> f64 {
 
 /// Every `*.provenance.json` under `directory`: a file read by one stage has
 /// the SHA-256 another stage recorded when it wrote that file.
+/// Every provenance record under `directory` is a schema 2 record with build
+/// info, a config and input roles, and each stage's inputs are byte-identical
+/// to the outputs an earlier stage recorded.
 pub fn assert_provenance_chain(directory: &Path) {
     let records = walk(directory)
         .into_iter()
@@ -159,6 +162,24 @@ pub fn assert_provenance_chain(directory: &Path) {
             )
         })
         .collect::<HashMap<_, _>>();
+    for record in &records {
+        assert_eq!(record["schema_version"], 2, "{record:#}");
+        assert!(
+            record["build"]["git_commit"]
+                .as_str()
+                .is_some_and(|commit| !commit.is_empty()),
+            "{record:#}"
+        );
+        assert!(record["config"].is_object(), "{record:#}");
+        assert!(
+            record["inputs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .all(|input| input["role"].is_string()),
+            "every input has a role: {record:#}"
+        );
+    }
     let mut linked = 0;
     for record in &records {
         for input in record["inputs"].as_array().into_iter().flatten() {

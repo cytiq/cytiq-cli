@@ -18,6 +18,10 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
 
 ## Invariants
 
+- `build.rs` sets `CYTIQ_GIT_COMMIT` (git, or the `CYTIQ_BUILD_COMMIT`
+  environment variable), `CYTIQ_RUSTC_VERSION`, `CYTIQ_TARGET` and
+  `CYTIQ_PROFILE` for provenance records.
+
 - Keep the CLI thin. A command arm only reads manifests, maps flags into the
   library config, calls `<Crate>Runner::run` and logs. No algorithm, file
   format or output-layout logic here.
@@ -50,12 +54,15 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
    reusing the shared parsers and the `--threads` / `--debug-dir` /
    `--channels` + `--channel` / `--mask` conventions where they apply.
 4. Add a `run()` arm: `info!("starting <name>: ...")`, build the config, call
-   `recorder.snapshot_inputs` with the command's input files **before** the
-   runner (so inputs are hashed before anything can change them), run, log a
-   one-line result summary, and end with `record_provenance` listing the
-   output files. When the library resolves inputs itself (globs,
+   `recorder.snapshot_inputs(role, files)` for each kind of input **before**
+   the runner (so inputs are hashed before anything can change them), set
+   `set_algorithms(<crate>::UPSTREAM)` and `set_constants` when the crate has
+   them, run, log a one-line result summary, and end with `record_provenance`
+   listing the output files. When the library resolves inputs itself (globs,
    directories, manifests), expose a `<Name>Runner::input_files`. Add the
-   command to `command_name`.
+   command to `command_name`. The variant's fields become the record's
+   `config` (`Commands` derives `Serialize`), so new `Cli*` value enums
+   derive it too.
 5. Add `tests/<name>_cli.rs` covering success, a missing input and at least
    one invalid flag.
 6. Document the command in the root `README.md` (and its crate list) and in the

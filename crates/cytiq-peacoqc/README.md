@@ -49,6 +49,8 @@ println!("kept {}", result.summary.metrics.events_after);
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
+| `PeacoQcConstants` | The fixed algorithm constants, recorded in provenance `constants` |
 | `PeacoQcRunner::run` / `PeacoQcConfig` / `PeacoQcResult` | The `cytiq peacoqc` command |
 | `PeacoQcMethod` | `All`, `Mad`, `It`, `PeaksOnly` |
 | `PeacoQcSummary`, `PeacoQcParameters`, `PeacoQcMetrics` | `summary.json` contents |

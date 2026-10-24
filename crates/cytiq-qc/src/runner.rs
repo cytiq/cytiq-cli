@@ -48,19 +48,19 @@ pub struct QcReport {
 pub struct QcRunner;
 
 impl QcRunner {
-    /// The files a run with `config` reads: the manifest, the sample's raw
-    /// FCS and the mask.
+    /// The files a run with `config` reads, with their provenance role: the
+    /// manifest, the sample's raw FCS and the mask.
     ///
     /// # Errors
     ///
     /// Returns an error when the manifest is invalid or lacks the sample.
-    pub fn input_files(config: &QcConfig) -> Result<Vec<PathBuf>, QcError> {
+    pub fn input_files(config: &QcConfig) -> Result<Vec<(&'static str, PathBuf)>, QcError> {
         let manifest = RunManifest::load(&config.manifest)?;
         let sample = find_sample(&manifest, config)?;
         Ok(vec![
-            config.manifest.clone(),
-            sample.file.clone(),
-            config.mask.clone(),
+            ("manifest", config.manifest.clone()),
+            ("input", sample.file.clone()),
+            ("mask", config.mask.clone()),
         ])
     }
 

@@ -10,6 +10,10 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 
+# The build context has no `.git`; provenance records take the commit from
+# here (`just docker-build` passes `git rev-parse HEAD`).
+ARG CYTIQ_BUILD_COMMIT=unknown
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \

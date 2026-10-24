@@ -29,6 +29,7 @@ println!("{} events on a raw detector margin", result.margin_event_count);
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `CompensateRunner::run` / `CompensateConfig` / `CompensateResult` | The `cytiq compensate` command |
 | `read_matrix_file`, `MatrixKind`, `CompensationMatrix` | Square autospill matrix files and the file's own `$SPILLOVER` |
 | `masks_path` | `sample.comp.fcs` → `sample.comp.masks.parquet` |

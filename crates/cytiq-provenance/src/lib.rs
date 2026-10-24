@@ -1,12 +1,15 @@
 //! Run provenance: which command produced which files from which inputs.
 //!
 //! Each cytiq command that writes files also writes a `provenance.json`
-//! record next to its output: the tool and version, the exact command-line
-//! arguments, start and finish times, and the size and SHA-256 of every input
-//! and output file. Inputs are hashed before the command runs, so a command
-//! that replaces its own input (`transform --overwrite` in place) still
-//! records what it read.
+//! record next to its output: the tool, version and build, the platform, the
+//! exact command-line arguments and the effective configuration, fixed
+//! algorithm constants and the upstream versions the algorithms port, start
+//! and finish times, and the size, SHA-256 and role of every input and output
+//! file. Inputs are hashed before the command runs, so a command that replaces
+//! its own input (`transform --overwrite` in place) still records what it
+//! read.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io;
@@ -18,7 +21,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub const SCHEMA_VERSION: u32 = 1;
+/// Version 2 added `build`, `platform`, `config`, `constants`, `algorithms`
+/// and input `role`s, and hashes inputs before the run.
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum ProvenanceError {
@@ -44,8 +49,56 @@ pub enum ProvenanceError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRecord {
     pub path: String,
+    /// What the command read the file as: `input`, `mask`, `gating_ml`,
+    /// `matrix`, `manifest`, `control`, `reference`, ... Outputs have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     pub bytes: u64,
     pub sha256: String,
+}
+
+/// How the binary was built.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildInfo {
+    /// Commit the binary was built from, or `unknown`.
+    pub git_commit: String,
+    pub rustc: String,
+    /// Target triple.
+    pub target: String,
+    /// Cargo profile: `release` or `debug`.
+    pub profile: String,
+}
+
+impl BuildInfo {
+    #[must_use]
+    pub fn unknown() -> Self {
+        Self {
+            git_commit: "unknown".to_owned(),
+            rustc: "unknown".to_owned(),
+            target: "unknown".to_owned(),
+            profile: "unknown".to_owned(),
+        }
+    }
+}
+
+/// Where the command ran.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Platform {
+    pub os: String,
+    pub arch: String,
+    /// Logical CPUs available; the default thread count of parallel stages.
+    pub cpus: usize,
+}
+
+impl Platform {
+    #[must_use]
+    pub fn current() -> Self {
+        Self {
+            os: std::env::consts::OS.to_owned(),
+            arch: std::env::consts::ARCH.to_owned(),
+            cpus: std::thread::available_parallelism().map_or(1, usize::from),
+        }
+    }
 }
 
 impl FileRecord {
@@ -61,6 +114,7 @@ impl FileRecord {
         })?;
         Ok(Self {
             path: path.display().to_string(),
+            role: None,
             bytes,
             sha256,
         })
@@ -74,8 +128,17 @@ pub struct RunRecord {
     /// `cytiq <command>`.
     pub tool: String,
     pub version: String,
+    pub build: BuildInfo,
+    pub platform: Platform,
     /// Command-line arguments after the program name, exactly as given.
     pub arguments: Vec<String>,
+    /// Every option of the command with its default applied.
+    pub config: serde_json::Value,
+    /// Fixed algorithm constants that shape the result but are no options.
+    pub constants: serde_json::Value,
+    /// Upstream implementations the command's algorithms port: name to
+    /// version.
+    pub algorithms: BTreeMap<String, String>,
     /// Milliseconds since the Unix epoch.
     pub started_at_unix_ms: u128,
     pub finished_at_unix_ms: u128,
@@ -89,7 +152,11 @@ pub struct RunRecord {
 pub struct RunRecorder {
     tool: String,
     version: String,
+    build: BuildInfo,
     arguments: Vec<String>,
+    config: serde_json::Value,
+    constants: serde_json::Value,
+    algorithms: BTreeMap<String, String>,
     started_at_unix_ms: u128,
     inputs: Vec<InputSnapshot>,
 }
@@ -112,27 +179,73 @@ impl RunRecorder {
         Self {
             tool: tool.into(),
             version: version.into(),
+            build: BuildInfo::unknown(),
             arguments,
+            config: serde_json::Value::Null,
+            constants: serde_json::Value::Null,
+            algorithms: BTreeMap::new(),
             started_at_unix_ms: unix_ms(),
             inputs: Vec::new(),
         }
     }
 
-    /// Hash `inputs` now, before the command reads them. Paths that are not
-    /// files (missing optional inputs, directories) are skipped.
+    #[must_use]
+    pub fn with_build(mut self, build: BuildInfo) -> Self {
+        self.build = build;
+        self
+    }
+
+    /// Record the command's effective configuration.
+    pub fn set_config(&mut self, config: &impl Serialize) {
+        self.config = to_value(config);
+    }
+
+    /// Record fixed algorithm constants.
+    pub fn set_constants(&mut self, constants: &impl Serialize) {
+        self.constants = to_value(constants);
+    }
+
+    /// Record the upstream implementations the algorithms port.
+    pub fn set_algorithms(&mut self, algorithms: &[(&str, &str)]) {
+        self.algorithms = algorithms
+            .iter()
+            .map(|(name, version)| ((*name).to_owned(), (*version).to_owned()))
+            .collect();
+    }
+
+    /// Hash `inputs` now, before the command reads them, recording `role`
+    /// for each. Paths that are not files (missing optional inputs,
+    /// directories) are skipped.
     ///
     /// # Errors
     ///
     /// Returns an error when an input cannot be hashed.
-    pub fn snapshot_inputs(&mut self, inputs: &[PathBuf]) -> Result<(), ProvenanceError> {
+    pub fn snapshot_inputs(
+        &mut self,
+        role: &str,
+        inputs: &[PathBuf],
+    ) -> Result<(), ProvenanceError> {
         for path in inputs.iter().filter(|path| path.is_file()) {
             let modified = modified(path);
-            let record = FileRecord::of(path)?;
+            let mut record = FileRecord::of(path)?;
+            record.role = Some(role.to_owned());
             self.inputs.push(InputSnapshot {
                 path: path.clone(),
                 record,
                 modified,
             });
+        }
+        Ok(())
+    }
+
+    /// [`Self::snapshot_inputs`] for files that each carry their role.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an input cannot be hashed.
+    pub fn snapshot_roles(&mut self, inputs: &[(&str, PathBuf)]) -> Result<(), ProvenanceError> {
+        for (role, path) in inputs {
+            self.snapshot_inputs(role, std::slice::from_ref(path))?;
         }
         Ok(())
     }
@@ -174,7 +287,12 @@ impl RunRecorder {
             schema_version: SCHEMA_VERSION,
             tool: self.tool,
             version: self.version,
+            build: self.build,
+            platform: Platform::current(),
             arguments: self.arguments,
+            config: self.config,
+            constants: self.constants,
+            algorithms: self.algorithms,
             started_at_unix_ms: self.started_at_unix_ms,
             finished_at_unix_ms: unix_ms(),
             inputs: self.inputs.into_iter().map(|input| input.record).collect(),
@@ -270,6 +388,12 @@ fn write_record(path: &Path, record: &RunRecord) -> Result<(), ProvenanceError> 
     fs::rename(&temporary, path).map_err(write_error)
 }
 
+/// Plain option structs always serialize; anything else is recorded as its
+/// error rather than failing the run.
+fn to_value(value: &impl Serialize) -> serde_json::Value {
+    serde_json::to_value(value).unwrap_or_else(|error| serde_json::Value::String(error.to_string()))
+}
+
 fn modified(path: &Path) -> Option<SystemTime> {
     fs::metadata(path)
         .and_then(|metadata| metadata.modified())
@@ -310,7 +434,7 @@ mod tests {
 
         let mut recorder = RunRecorder::start("cytiq test", "0.0.0", vec!["--input".to_owned()]);
         recorder
-            .snapshot_inputs(&[input, directory.join("missing.txt")])
+            .snapshot_inputs("input", &[input, directory.join("missing.txt")])
             .unwrap();
         fs::write(&output, b"").unwrap();
         let record = recorder.finish(&[output], &record_path).unwrap();
@@ -333,7 +457,7 @@ mod tests {
 
         let mut recorder = RunRecorder::start("cytiq test", "0.0.0", Vec::new());
         recorder
-            .snapshot_inputs(std::slice::from_ref(&file))
+            .snapshot_inputs("input", std::slice::from_ref(&file))
             .unwrap();
         // The command replaces its input in place.
         fs::write(&file, b"abcdef").unwrap();
@@ -355,7 +479,7 @@ mod tests {
 
         let mut recorder = RunRecorder::start("cytiq test", "0.0.0", Vec::new());
         recorder
-            .snapshot_inputs(std::slice::from_ref(&input))
+            .snapshot_inputs("input", std::slice::from_ref(&input))
             .unwrap();
         fs::write(&input, b"abcd").unwrap();
         fs::write(&output, b"").unwrap();
@@ -366,5 +490,46 @@ mod tests {
             Err(ProvenanceError::InputChanged { .. })
         ));
         assert!(!record_path.exists());
+    }
+
+    #[test]
+    fn records_build_config_and_roles() {
+        let directory = temp_dir("v2");
+        let input = directory.join("in.txt");
+        let output = directory.join("out.txt");
+        fs::write(&input, b"abc").unwrap();
+        let build = BuildInfo {
+            git_commit: "0123abc".to_owned(),
+            rustc: "rustc 1.99.1".to_owned(),
+            target: "x86_64-unknown-linux-gnu".to_owned(),
+            profile: "release".to_owned(),
+        };
+        let mut recorder =
+            RunRecorder::start("cytiq test", "0.0.0", Vec::new()).with_build(build.clone());
+        recorder.set_config(&serde_json::json!({ "threads": 4 }));
+        recorder.set_constants(&serde_json::json!({ "mad": 6.0 }));
+        recorder.set_algorithms(&[("PeacoQC", "1.20.0")]);
+        recorder
+            .snapshot_inputs("mask", std::slice::from_ref(&input))
+            .unwrap();
+        fs::write(&output, b"").unwrap();
+        let record = recorder
+            .finish(
+                std::slice::from_ref(&output),
+                &record_path_for_file(&output),
+            )
+            .unwrap();
+
+        assert_eq!(record.schema_version, 2);
+        assert_eq!(record.build, build);
+        assert_eq!(record.platform.os, std::env::consts::OS);
+        assert!(record.platform.cpus >= 1);
+        assert_eq!(record.config["threads"], 4);
+        assert_eq!(record.constants["mad"], 6.0);
+        assert_eq!(record.algorithms["PeacoQC"], "1.20.0");
+        assert_eq!(record.inputs[0].role.as_deref(), Some("mask"));
+        assert_eq!(record.outputs[0].role, None);
+        let json = fs::read_to_string(record_path_for_file(&output)).unwrap();
+        assert!(!json.contains("\"role\": null"), "outputs carry no role");
     }
 }

@@ -54,6 +54,8 @@ println!("{} metaclusters", result.summary.metrics.metaclusters);
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
+| `FlowSomConstants` | The fixed training schedule, recorded in provenance `constants` |
 | `FlowSomRunner::run(input, output, &FlowSomConfig)` | Run the pipeline and write the assignment CSV |
 | `FlowSomConfig` | `channels`, optional `debug_dir`, optional `threads`, `masks`, `xdim`, `ydim`, `metaclusters`, `seed`, `scale`, `training_events` (defaults from `FLOWSOM_*`) |
 | `FlowSomResult` | `summary`, per-event `assignments`, `nodes`, `metaclusters` |

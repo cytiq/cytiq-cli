@@ -22,3 +22,13 @@ pub use crate::runner::{
     DEFAULT_OUTLIER_THRESHOLD, DEFAULT_QUANTILE_STEP, DEFAULT_RANDOM_SEED, FeatureMethod,
     FlagMethod, parse_channel_list,
 };
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[
+    ("CytoScan", "0.1.0@c97f403"),
+    ("flowFP", "1.68.0"),
+    ("isotree", "0.6.1.5"),
+    ("mclust", "6.1.3"),
+    ("transport", "0.15.4"),
+];

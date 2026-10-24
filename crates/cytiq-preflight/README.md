@@ -20,22 +20,32 @@ fails; failures and warnings are also logged.
 | `acquisition_metadata` | every file | | `$CYT` or `$DATE` is missing |
 | `panel_marker` | samples | a required marker matches no channel, or several | an optional marker is missing; `channel`'s `$PnS` names another marker |
 | `unique_labels` | samples | | two channels share a `$PnS` |
-| `spillover` | conventional samples | no, invalid, mismatched or singular spillover matrix | its 1-norm condition number exceeds `SPILLOVER_CONDITION_WARN` (100) |
+| `spillover` | samples of a conventional panel with `source: fcs` (the default) | no, invalid, mismatched or singular spillover matrix | its 1-norm condition number exceeds `SPILLOVER_CONDITION_WARN` (100) |
+| `compensation_matrix` | conventional panel with `source: matrix` | the file cannot be read, is not square or is singular | its 1-norm condition number exceeds `SPILLOVER_CONDITION_WARN` |
+| `compensation_channels` | samples of that panel | a matrix channel is not in the file | |
+| `control_coverage` | conventional panel with `source: controls`; spectral panels | `source: controls` and a marker channel has no single-stain control with that `primary_channel` | a spectral marker channel has no control, or a control without `primary_channel` makes coverage unknown |
+| `control_dyes` | panels with controls | two controls of the panel share a dye | |
 | `primary_channel` | controls with one | the channel is not in the file | |
-| `detector_configuration` | every file but the first | the `$PnN` set differs from the first sample | a `$PnV` voltage differs |
+| `detector_configuration` | every file of a panel but the first | the `$PnN` set differs from the panel's first sample | a `$PnV` voltage differs |
 | `unique_files` | manifest | | a file is listed twice |
 
 A marker without `channel` matches a parameter whose `$PnS` or `$PnN` equals
 it, or whose `$PnS` starts with it as a word (`CD3 BUV395`), ignoring case;
 `CD3` does not match `CD38`.
 
+Samples are checked against their own panel. A control without `panel` is
+part of every panel, so it is compared with each panel's detector set.
+`control_coverage` resolves markers without `channel` on the panel's first
+readable sample. The report lists each panel with its samples, controls and
+compensation source under `panels`.
+
 ## Public API
 
 | Item | Purpose |
 | --- | --- |
 | `PreflightRunner::run` / `PreflightConfig` | Run the checks and write the report |
-| `PreflightRunner::input_files` | The manifest and the FCS files it lists, for provenance |
-| `PreflightReport` (`ensure_passed`) | The report: status, counts, files, checks |
+| `PreflightRunner::input_files` | The manifest, the FCS files it lists and the panels' matrix files, for provenance |
+| `PreflightReport` (`ensure_passed`), `PanelSummary` | The report: status, counts, files, panels, checks |
 | `Check`, `CheckStatus` | One finding: `pass`, `warn`, `fail` |
 | `SPILLOVER_CONDITION_WARN` | Condition-number warning threshold |
 | `PreflightError` | Error type |
@@ -43,7 +53,8 @@ it, or whose `$PnS` starts with it as a word (`CD3 BUV395`), ignoring case;
 ## Dependencies
 
 [`cytiq-fcs`](../cytiq-fcs), [`cytiq-manifest`](../cytiq-manifest),
-`serde` / `serde_json`.
+[`cytiq-compensate`](../cytiq-compensate) (matrix files, read as `cytiq
+compensate --matrix` reads them), `serde` / `serde_json`.
 
 ## Tests
 

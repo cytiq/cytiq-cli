@@ -207,3 +207,224 @@ fn rejects_an_invalid_manifest() {
         "stderr: {stderr}"
     );
 }
+
+/// A single-panel conventional manifest whose panel carries `compensation`.
+fn manifest_with_compensation(samples: &str, compensation: &str) -> String {
+    manifest(samples, MARKERS).replace(
+        "  name: test\n",
+        &format!("  name: test\n  compensation: {compensation}\n"),
+    )
+}
+
+/// Copy `source` to `target` without its spillover keyword, as for a file
+/// whose matrix comes from `cytiq autospill`.
+fn without_spillover(source: &Path, target: &Path) {
+    let dataset = cytiq_fcs::FcsReader::open(source)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .expect("fixture should be readable");
+    let keywords = cytiq_fcs::carried_keywords(&dataset.text)
+        .into_iter()
+        .filter(|(key, _)| !cytiq_fcs::is_spillover_keyword(key))
+        .collect::<Vec<_>>();
+    cytiq_fcs::write_fcs3_1_exact_with_options(
+        target,
+        &dataset
+            .parameters
+            .iter()
+            .map(cytiq_fcs::FcsWriteParameter::from_source)
+            .collect::<Vec<_>>(),
+        &dataset
+            .data
+            .columns
+            .iter()
+            .map(cytiq_fcs::ColumnData::to_f64_vec)
+            .collect::<Vec<_>>(),
+        &cytiq_fcs::FcsWriteOptions::new().with_text_keywords(keywords),
+    )
+    .expect("copy should write");
+}
+
+fn checks_named<'a>(report: &'a Value, name: &str) -> Vec<&'a Value> {
+    report["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .filter(|check| check["check"] == name)
+        .collect()
+}
+
+#[test]
+fn passes_with_an_external_compensation_matrix() {
+    let directory = create_temp_dir("cytiq-cli-preflight-matrix");
+    let controls = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill");
+    let matrix = directory.join("compensation.csv");
+    let autospill = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospill",
+            "--controls",
+            utf8(&controls.join("controls.csv")),
+            "--input-dir",
+            utf8(&controls),
+            "--output",
+            utf8(&matrix),
+        ])
+        .output()
+        .expect("command should run");
+    assert!(autospill.status.success());
+    let sample_path = directory.join("sample.fcs");
+    without_spillover(&fixture("sample.fcs"), &sample_path);
+    let samples = sample("S01", &sample_path);
+
+    // Without a matrix source the missing `$SPILLOVER` fails the run.
+    let (output, report, _) = preflight(&directory, "fcs.yaml", &manifest(&samples, MARKERS));
+    assert!(!output.status.success());
+    assert!(failed_checks(&report).contains(&r#""sample S01" "spillover""#.to_owned()));
+
+    let (output, report, manifest_path) = preflight(
+        &directory,
+        "matrix.yaml",
+        &manifest_with_compensation(
+            &samples,
+            "{ source: matrix, matrix: compensation.csv, kind: compensation }",
+        ),
+    );
+    assert!(output.status.success(), "{:?}", failed_checks(&report));
+    assert_eq!(
+        checks_named(&report, "compensation_matrix")[0]["status"],
+        "pass"
+    );
+    assert_eq!(
+        checks_named(&report, "compensation_channels")[0]["status"],
+        "pass"
+    );
+    assert_eq!(checks_named(&report, "spillover").len(), 0);
+    assert_eq!(report["panels"][0]["compensation"]["source"], "matrix");
+    common::assert_provenance(
+        &directory.join("matrix.yaml.report.json.provenance.json"),
+        "cytiq preflight",
+        &[&manifest_path, &sample_path, &matrix],
+        &[&directory.join("matrix.yaml.report.json")],
+    );
+}
+
+#[test]
+fn fails_when_the_matrix_misses_a_sample_channel() {
+    let directory = create_temp_dir("cytiq-cli-preflight-matrix-channels");
+    fs::write(
+        directory.join("matrix.csv"),
+        "channel,FL1-A,FL9-A\nFL1-A,1,0\nFL9-A,0,1\n",
+    )
+    .expect("matrix should write");
+
+    let (output, report, _) = preflight(
+        &directory,
+        "run.yaml",
+        &manifest_with_compensation(
+            &sample("S01", &fixture("sample.fcs")),
+            "{ source: matrix, matrix: matrix.csv, kind: compensation }",
+        ),
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(
+        failed_checks(&report),
+        [r#""sample S01" "compensation_channels""#]
+    );
+    let message = checks_named(&report, "compensation_channels")[0]["message"]
+        .as_str()
+        .expect("message")
+        .to_owned();
+    assert!(message.contains("FL9-A"), "{message}");
+}
+
+#[test]
+fn warns_on_an_ill_conditioned_matrix() {
+    let directory = create_temp_dir("cytiq-cli-preflight-matrix-condition");
+    fs::write(
+        directory.join("spillover.csv"),
+        "channel,FL1-A,FL2-A\nFL1-A,1,0.99\nFL2-A,0.99,1\n",
+    )
+    .expect("matrix should write");
+
+    let (output, report, _) = preflight(
+        &directory,
+        "run.yaml",
+        &manifest_with_compensation(
+            &sample("S01", &fixture("sample.fcs")),
+            "{ source: matrix, matrix: spillover.csv, kind: spillover }",
+        ),
+    );
+
+    assert!(output.status.success(), "{:?}", failed_checks(&report));
+    let check = checks_named(&report, "compensation_matrix")[0];
+    assert_eq!(check["status"], "warn");
+    assert!(
+        check["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("amplify noise")),
+        "{check}"
+    );
+}
+
+#[test]
+fn controls_source_needs_controls_for_every_marker() {
+    let directory = create_temp_dir("cytiq-cli-preflight-controls");
+    let text = manifest_with_compensation(
+        &sample("S01", &fixture("sample.fcs")),
+        "{ source: controls }",
+    )
+    .replace(
+        "controls:\n",
+        &format!(
+            "controls:\n  - {{ file: {}, dye: FITC, primary_channel: FL1-A }}\n",
+            utf8(&fixture("control.fcs"))
+        ),
+    );
+
+    let (output, report, _) = preflight(&directory, "run.yaml", &text);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        failed_checks(&report),
+        [r#""panel test" "control_coverage""#]
+    );
+    let message = checks_named(&report, "control_coverage")[0]["message"]
+        .as_str()
+        .expect("message")
+        .to_owned();
+    assert!(
+        message.contains("CD19 (FL2-A)")
+            && message.contains("Live/Dead (FL3-A)")
+            && !message.contains("CD3"),
+        "{message}"
+    );
+}
+
+#[test]
+fn checks_each_sample_against_its_own_panel() {
+    let directory = create_temp_dir("cytiq-cli-preflight-panels");
+    // `no_viability.fcs` has no Live/Dead channel: valid for a panel without it.
+    let text = format!(
+        "cytometry: conventional\n\
+         panels:\n\
+         \x20 - name: full\n    markers:\n{MARKERS}\
+         \x20 - name: lineage\n    markers:\n      - {{ marker: CD3 }}\n      - {{ marker: CD19, channel: FL2-A }}\n\
+         samples:\n\
+         \x20 - {{ id: S01, file: {full}, panel: full, specimen: P1 }}\n\
+         \x20 - {{ id: S02, file: {lineage}, panel: lineage, specimen: P1 }}\n\
+         controls:\n  - {{ file: {control}, dye: Autofluorescence, panel: full }}\n",
+        MARKERS = MARKERS.replace("    - ", "      - "),
+        full = utf8(&fixture("sample.fcs")),
+        lineage = utf8(&fixture("no_viability.fcs")),
+        control = utf8(&fixture("control.fcs")),
+    );
+
+    let (output, report, _) = preflight(&directory, "run.yaml", &text);
+
+    assert!(output.status.success(), "{:?}", failed_checks(&report));
+    let panels = report["panels"].as_array().expect("panels");
+    assert_eq!(panels.len(), 2);
+    assert_eq!(panels[1]["name"], "lineage");
+    assert_eq!(panels[1]["samples"][0], "S02");
+    assert!(panels[1]["controls"].as_array().is_some_and(Vec::is_empty));
+}

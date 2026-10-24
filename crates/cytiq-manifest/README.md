@@ -17,21 +17,48 @@ controls:                                     # optional
   - { file: fcs/cd3_fitc.fcs, dye: FITC, primary_channel: FL1-A }
 ```
 
+Several panels go under `panels` (each named); samples name their `panel`,
+controls may (a control without `panel` belongs to every panel), and
+`specimen` groups one biological sample's files across panels. A
+conventional panel says where its compensation comes from:
+
+```yaml
+panels:
+  - name: T
+    markers: [{ marker: CD3 }]
+    compensation: { source: matrix, matrix: autospill/t.csv, kind: compensation }
+  - name: B
+    markers: [{ marker: CD19 }]
+    compensation: { source: controls }      # default: { source: fcs }
+samples:
+  - { id: S01-T, file: s01_t.fcs, panel: T, specimen: S01 }
+  - { id: S01-B, file: s01_b.fcs, panel: B, specimen: S01 }
+```
+
 ## Public API
 
 | Item | Purpose |
 | --- | --- |
-| `RunManifest::load` | Read, parse (by extension) and validate; resolves relative paths against the manifest's directory |
-| `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry` | The document |
+| `RunManifest::load` | Read, parse (by extension) and validate; resolves relative paths (FCS files and matrices) against the manifest's directory |
+| `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry`, `CompensationSource`, `MatrixKind` | The document; a single `panel` is read as one entry of `panels` |
+| `RunManifest::panel_of`, `controls_of`, `compensation_of` | A sample's panel, a panel's controls, a conventional panel's compensation source (`fcs` by default) |
+| `Panel::label` | `name`, or `panel` when unnamed |
 | `ControlEntry::is_unstained` | `dye` is `Autofluorescence`, `AF` or `unstained` |
 | `ManifestError` | Error type |
 
 ## Rules
 
 - Unknown fields are errors, with the line and column for YAML.
-- At least one sample and one marker; sample ids and marker names are unique
-  (marker names ignoring case); file paths are not empty.
-- Spectral runs need an unstained control.
+- Exactly one of `panel` and `panels`.
+- At least one sample, one panel and one marker per panel; sample ids, panel
+  names and a panel's marker names are unique (marker names ignoring case);
+  file paths are not empty.
+- With several panels, every panel has a name and every sample names an
+  existing panel; a control's `panel`, when given, exists.
+- A specimen has at most one file per panel.
+- `compensation` is for conventional runs only; `source: controls` needs
+  single-stain controls in the panel.
+- Every spectral panel needs an unstained control.
 - Files themselves are not opened here; `cytiq preflight` checks them.
 
 ## Dependencies

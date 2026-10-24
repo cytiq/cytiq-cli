@@ -15,7 +15,9 @@ estimation from single-colour controls. Backs the `cytiq autospill` and
    infer the primary channel by matching `dye` against `$PnN`, then `$PnS`
    (case-insensitive, one trailing `-A`/`-H`/`-W` stripped). `dye =
    Autofluorescence` is reserved for a synthetic autofluorescence control and
-   needs a detectors manifest.
+   needs a detectors manifest. Values above a channel's `$PnR` are capped at
+   `$PnR`, as `flowCore::read.FCS` does by default (`truncate_max_range`);
+   FACSDiva float data can exceed it.
 2. **FSC/SSC gate** — `cytiq_density::gate_events`, with the scatter range
    clamped to `[0, max($P1R)]` over all controls (`read.flow.control`).
 3. **Initial spillover** — per-pair `secondary ~ primary` fits with a port of
@@ -32,9 +34,10 @@ quantile bins of each control. Neither `autospill` nor `AutoSpectral` computes
 a spread matrix, so this part is a Nguyen-2013-style heuristic without an
 upstream reference.
 
-On the parity datasets the spillover matrix matches R `autospill` 0.2.0 to
-`4.8e-13` and the gates match event for event
-([`parity/REPORT.md`](../../parity/REPORT.md) section 2.2).
+On the synthetic parity datasets the spillover matrix matches R `autospill`
+0.2.0 to `4.8e-13`, and on real single-stain controls from a FACSCelesta (11
+colours) and a FACSymphony (24 colours) to `5e-13`; the gates match event for
+event ([`parity/REPORT.md`](../../parity/REPORT.md) sections 2.2 and 2.10).
 
 Manifest formats, matrix layout and flags: root
 [README](../../README.md#autospill).

@@ -528,7 +528,8 @@ def check_tolerances(metrics: dict, rules_path: Path) -> list[str]:
     violations = []
     for rule in json.loads(rules_path.read_text())["rules"]:
         matches = list(_resolve(metrics, rule["path"]))
-        if not matches:
+        # An `optional` rule covers datasets that may be skipped (downloads).
+        if not matches and not rule.get("optional"):
             violations.append(f"{'.'.join(rule['path'])}: no metric matches")
         for path, value in matches:
             name = ".".join(map(str, path))

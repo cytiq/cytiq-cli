@@ -564,13 +564,7 @@ fn load_controls(
             } = control;
 
             let event_count = dataset.data.columns.first().map_or(0, ColumnData::len);
-            let resolution = dataset.parameters.first().and_then(|parameter| {
-                parameter
-                    .keywords
-                    .iter()
-                    .find(|(key, _)| key.eq_ignore_ascii_case("$P1R"))
-                    .and_then(|(_, value)| value.trim().parse::<f64>().ok())
-            });
+            let resolution = dataset.parameters.first().and_then(parameter_range);
             let primary_detector_index = resolve_primary_detector_index(
                 &dataset.parameters,
                 &primary_channel,
@@ -595,14 +589,8 @@ fn load_controls(
             let resolved_detector_columns = detector_names
                 .iter()
                 .map(|channel| {
-                    find_parameter_index(&dataset.parameters, channel).map(|index| {
-                        column_to_f64(
-                            dataset
-                                .data
-                                .column(index)
-                                .expect("validated parameter index"),
-                        )
-                    })
+                    find_parameter_index(&dataset.parameters, channel)
+                        .map(|index| control_column(&dataset, index))
                 })
                 .collect::<Vec<_>>();
             let autofluorescence_proxy = if is_autofluorescence {
@@ -635,18 +623,8 @@ fn load_controls(
                     }
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let fsc_values = column_to_f64(
-                dataset
-                    .data
-                    .column(fsc_index)
-                    .expect("validated parameter index"),
-            );
-            let ssc_values = column_to_f64(
-                dataset
-                    .data
-                    .column(ssc_index)
-                    .expect("validated parameter index"),
-            );
+            let fsc_values = control_column(&dataset, fsc_index);
+            let ssc_values = control_column(&dataset, ssc_index);
 
             let mut detector_events = Array2::zeros((event_count, detector_names.len()));
             for (column_index, column) in detector_columns.iter().enumerate() {
@@ -1361,6 +1339,36 @@ fn gated_column(matrix: &Array2<f64>, indices: &[usize], column: usize) -> Vec<f
         .iter()
         .map(|&index| matrix[(index, column)])
         .collect()
+}
+
+/// `$PnR` of a parameter.
+fn parameter_range(parameter: &Parameter) -> Option<f64> {
+    let key = format!("$P{}R", parameter.index);
+    parameter
+        .keywords
+        .iter()
+        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(&key))
+        .and_then(|(_, value)| value.trim().parse::<f64>().ok())
+}
+
+/// A control column as autospill reads it: `flowCore::read.FCS` keeps its
+/// default `truncate_max_range = TRUE`, which caps values above `$PnR` at
+/// `$PnR` (float data can exceed it).
+fn control_column(dataset: &FcsDataset, index: usize) -> Vec<f64> {
+    let mut values = column_to_f64(
+        dataset
+            .data
+            .column(index)
+            .expect("validated parameter index"),
+    );
+    if let Some(range) = parameter_range(&dataset.parameters[index]) {
+        for value in &mut values {
+            if *value > range {
+                *value = range;
+            }
+        }
+    }
+    values
 }
 
 fn column_to_f64(column: &ColumnData) -> Vec<f64> {

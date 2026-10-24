@@ -58,11 +58,19 @@ run_qc_chain() {
     --channels "$channels"
 }
 
+# --- AutoSpill chain (single-stain controls): spillover matrix and gates ------
+run_autospill_chain() {
+  local D="$1"
+  "$BIN" autospill --controls "$D/controls.csv" --input-dir "$D" \
+    --output "$D/autospill_spillover.csv" --matrix-kind spillover --debug-dir "$D/autospill_debug"
+}
+
 "$PY" "$PARITY/real/datasets.py" "$OUT" > "$OUT/datasets.tsv"
 while IFS=$'\t' read -r name chain; do
   case "$chain" in
     flowsom_gating) run_flowsom_chain "$OUT/$name" ;;
     qc) run_qc_chain "$OUT/$name" ;;
+    autospill) run_autospill_chain "$OUT/$name" ;;
     *) echo "unknown chain \`$chain\` for $name in datasets.json" >&2; exit 1 ;;
   esac
 done < "$OUT/datasets.tsv"

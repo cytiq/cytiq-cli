@@ -34,6 +34,10 @@ this crate.
 - The refinement state machine must keep R's behaviour on the linear → biexp
   switch (λ `1 → 0.1`, `delta_change` reset to `-1`); `parity/REPORT.md` 2.2
   lists the bugs that came from diverging here.
+- Controls are read as `flowCore::read.FCS` reads them in upstream
+  `read.flow.control`: every value above its channel's `$PnR` is capped at
+  `$PnR`. The synthetic parity data never exceeds `$PnR`; the real-data suite
+  (`parity/real/`, `autospill` chain) is what covers this.
 - Gating lives in `cytiq-density` and is shared with `cytiq-clean`; change it
   there, with the same parity checks.
 - Primary channels are always reported by their canonical `$PnN` short name.
@@ -59,6 +63,7 @@ this crate.
 cargo test -p cytiq-autospill
 cargo test -p cytiq-cli --test autospill_cli
 parity/run_all.sh   # after parity/setup_env.sh; needs R + Python
+parity/real/run_real.sh   # real controls; CYTIQ_REAL_SLOW=1 adds the 24-colour set
 ```
 
 Unit tests sit next to the code in `export.rs`, `manifest.rs`,
@@ -67,4 +72,5 @@ Unit tests sit next to the code in `export.rs`, `manifest.rs`,
 checked-in fixtures `data/fixtures/autospill/` (expected spillover and
 compensation matrices) and `data/fixtures/autospread/` (expected spread
 matrix), plus synthetic controls for rectangular detector sets,
-autofluorescence, singular matrices and channel-inference errors.
+autofluorescence, singular matrices, channel-inference errors and values
+above `$PnR`.

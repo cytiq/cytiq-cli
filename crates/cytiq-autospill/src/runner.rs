@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter};
+use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter, SignalState};
 use log::{debug, info};
 use nalgebra::DMatrix;
 use ndarray::Array2;
@@ -473,6 +473,19 @@ fn load_controls(
             let event_count = dataset.data.columns.first().map_or(0, ColumnData::len);
             if event_count == 0 {
                 return Err(AutospillError::EmptyControl { path });
+            }
+            // Spillover and spread are estimated from raw linear detector
+            // values; autospill applies its own transforms.
+            let state =
+                SignalState::of(&dataset.text).map_err(|source| AutospillError::FcsRead {
+                    path: path.clone(),
+                    source,
+                })?;
+            if !state.is_raw() {
+                return Err(AutospillError::ProcessedControl {
+                    path,
+                    state: state.to_string(),
+                });
             }
             let primary_channel =
                 infer_primary_channel(&row.dye, &path, &dataset.parameters, &config.detectors)?;

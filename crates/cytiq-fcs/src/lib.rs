@@ -38,9 +38,9 @@ pub use crate::margins::{
     recorded_margin_bounds,
 };
 pub use crate::signal::{
-    COMPENSATION_KEYWORD, CompensationState, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
-    TransformState, UNMIXING_KEYWORD, UnmixingState, compensation_state, transform_state,
-    unmixing_state,
+    COMPENSATION_KEYWORD, CompensationState, SOURCE_SPILLOVER_KEYWORD, SignalState,
+    TRANSFORM_KEYWORD, TransformState, UNMIXING_KEYWORD, UnmixingState, compensation_state,
+    transform_state, unmixing_state,
 };
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,

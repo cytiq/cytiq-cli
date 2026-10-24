@@ -35,13 +35,18 @@ samples:
   - { id: S01-B, file: s01_b.fcs, panel: B, specimen: S01 }
 ```
 
+A panel whose sample files other software already processed declares it with
+`signal_state`: `raw` (default), `compensated` (conventional) or `unmixed`
+(spectral). cytiq stages only recognise their own `CYTIQ_*` keywords, so this
+is the only way they learn about processing done elsewhere.
+
 ## Public API
 
 | Item | Purpose |
 | --- | --- |
 | `RunManifest::load` | Read, parse (by extension) and validate; resolves relative paths (FCS files and matrices) against the manifest's directory |
-| `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry`, `CompensationSource`, `MatrixKind` | The document; a single `panel` is read as one entry of `panels` |
-| `RunManifest::panel_of`, `controls_of`, `compensation_of` | A sample's panel, a panel's controls, a conventional panel's compensation source (`fcs` by default) |
+| `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry`, `CompensationSource`, `MatrixKind`, `SignalState` | The document; a single `panel` is read as one entry of `panels` |
+| `RunManifest::panel_of`, `controls_of`, `compensation_of` | A sample's panel, a panel's controls, the compensation source of a conventional panel of raw samples (`fcs` by default) |
 | `Panel::label` | `name`, or `panel` when unnamed |
 | `QcPolicy`, `FilterPolicy`, `Severity` | A panel's `qc` section, checked by [`cytiq qc`](../cytiq-qc) |
 | `ControlEntry::is_unstained` | `dye` is `Autofluorescence`, `AF` or `unstained` |
@@ -59,7 +64,9 @@ samples:
 - A specimen has at most one file per panel.
 - `compensation` is for conventional runs only; `source: controls` needs
   single-stain controls in the panel.
-- Every spectral panel needs an unstained control.
+- Every spectral panel of raw samples needs an unstained control.
+- `signal_state: compensated` is for conventional panels and excludes
+  `compensation`; `unmixed` is for spectral panels.
 - QC fractions (`max_removed_fraction`) lie between 0 and 1; filter names
   are not empty.
 - Files themselves are not opened here; `cytiq preflight` checks them.

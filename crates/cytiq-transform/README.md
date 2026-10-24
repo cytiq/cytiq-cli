@@ -78,6 +78,10 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
   keywords, `CYTIQ_TRANSFORM` (the transform metadata JSON) and
   `CYTIQ_ACQUISITION`.
 - `TransformRunner::input_files` resolves the inputs a run would read.
+- Compensation comes first: a selected channel in the file's pending
+  `$SPILLOVER`/`$SPILL` matrix is `UncompensatedInput` unless
+  `allow_uncompensated` (`--allow-uncompensated`) is set. An input with
+  `CYTIQ_TRANSFORM` is `AlreadyTransformed` unless `allow_retransform`.
 - Existing outputs and the `metadata_json` sidecar are errors unless
   `overwrite` is set; writing over the input itself goes through a temporary
   sibling and a rename.

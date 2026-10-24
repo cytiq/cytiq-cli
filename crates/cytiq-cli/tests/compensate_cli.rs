@@ -384,3 +384,30 @@ fn preserves_large_original_ids_exactly() {
     assert_eq!(mask.source_event_ids[0], 16_777_216);
     assert_eq!(mask.acquisition, common::sha256_hex(&input));
 }
+
+#[test]
+fn refuses_to_compensate_unmixed_input() {
+    let directory = create_temp_dir("cytiq-cli-compensate-unmixed");
+    let input = directory.join("sample.unmixed.fcs");
+    fs::copy(fixture("gating", "sample.fcs"), &input).expect("fixture should copy");
+    common::add_keyword(
+        &input,
+        cytiq_fcs::UNMIXING_KEYWORD,
+        r#"{"components":["FL1-A","FL2-A","FL3-A"],"detectors":["V1","V2","V3"]}"#,
+    );
+
+    let result = cytiq(&[
+        "compensate",
+        "--input",
+        utf8(&input),
+        "--output",
+        utf8(&directory.join("sample.comp.fcs")),
+    ]);
+
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("unmixing replaces compensation"),
+        "{stderr}"
+    );
+}

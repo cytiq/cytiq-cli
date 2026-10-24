@@ -75,6 +75,8 @@ export_matrix(&result, config.matrix_kind, "spillover.parquet")?;
 
 ## Output rules
 
+- Controls must be raw acquisition files: one with `CYTIQ_COMPENSATION`,
+  `CYTIQ_UNMIXING` or `CYTIQ_TRANSFORM` is `ProcessedControl`.
 - Without a detectors manifest (or when detectors equal the primary channels)
   the matrix is square with a `channel` header. With detectors it is
   rectangular: spillover is dye × detector, compensation is detector × dye,

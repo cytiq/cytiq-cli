@@ -59,6 +59,9 @@ println!("kept {}", result.summary.metrics.events_after);
 
 ## Output rules
 
+- Input should be compensated and transformed. A pending spillover matrix, or
+  selected channels without `CYTIQ_TRANSFORM` coverage, are reported in
+  `summary.warnings` and the log; the run continues.
 - Input and output are FCS; an output path without a `.fcs` extension is an
   error. An existing output file is replaced.
 - The output is FCS 3.1 with the retained events of every input parameter,

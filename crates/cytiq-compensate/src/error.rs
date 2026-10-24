@@ -39,6 +39,13 @@ pub enum CompensateError {
         "channel `{channel}` in `{path}` was transformed by `cytiq transform`; compensate the raw FCS before transforming"
     )]
     TransformedInput { path: PathBuf, channel: String },
+    #[error(
+        "`{path}` holds spectrally unmixed abundances ({components:?}) from `cytiq autospectral`; unmixing replaces compensation, so pass the raw FCS or skip `cytiq compensate`"
+    )]
+    UnmixedInput {
+        path: PathBuf,
+        components: Vec<String>,
+    },
     #[error("matrix channel `{channel}` was not found in `{path}`")]
     MissingChannel { path: PathBuf, channel: String },
     #[error("failed to read matrix `{path}`: {source}")]

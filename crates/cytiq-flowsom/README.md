@@ -65,6 +65,8 @@ println!("{} metaclusters", result.summary.metrics.metaclusters);
 
 ## Output rules
 
+- Selected channels that `cytiq transform` did not transform are clustered as
+  given, with a logged warning.
 - `output` is a CSV with one row per clustered event: `event_index` (0-based
   row in the input file), `source_event_id` (0-based row in the raw file, from
   `Original_ID` when present), `flowsom_node` (1..=100) and

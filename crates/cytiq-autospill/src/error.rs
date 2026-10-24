@@ -58,6 +58,8 @@ pub enum AutospillError {
     },
     #[error("control `{path}` has no events")]
     EmptyControl { path: PathBuf },
+    #[error("control `{path}` was {state}; single-stain controls must be raw acquisition files")]
+    ProcessedControl { path: PathBuf, state: String },
     #[error(
         "could not infer `primary_channel` for dye `{dye}` in `{path}`; available channels: {available_channels:?}"
     )]

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
     COMPENSATION_KEYWORD, CompensationState, FcsDataset, FcsReader, FcsWriteOptions,
-    FcsWriteParameter, MARGINS_KEYWORD, SOURCE_SPILLOVER_KEYWORD,
+    FcsWriteParameter, MARGINS_KEYWORD, SOURCE_SPILLOVER_KEYWORD, SignalState,
 };
 use cytiq_mask::EventMask;
 use log::{debug, info};
@@ -57,6 +57,10 @@ impl CompensateRunner {
             source,
         };
         let acquisition = cytiq_fcs::acquisition_id(input, &dataset.text).map_err(read_error)?;
+        // Before the matrix: a compensated or unmixed file no longer has
+        // `$SPILLOVER`, which would otherwise be the reported problem.
+        let state = SignalState::of(&dataset.text).map_err(read_error)?;
+        ensure_uncompensated(input, &state)?;
         let matrix = match &config.matrix {
             Some((path, kind)) => read_matrix_file(path, *kind)?,
             None => CompensationMatrix::from_dataset(input, &dataset)?,
@@ -66,7 +70,7 @@ impl CompensateRunner {
             .iter()
             .map(|index| dataset.parameters[*index].name.clone())
             .collect::<Vec<_>>();
-        ensure_raw_input(input, &dataset, &channels)?;
+        ensure_untransformed(input, &state, &channels)?;
         info!(
             "compensate: {} event(s), {} channel(s) from {}",
             dataset.event_count(),
@@ -167,26 +171,28 @@ fn resolve_matrix_channels(
         .collect()
 }
 
-fn ensure_raw_input(
-    path: &Path,
-    dataset: &FcsDataset,
-    channels: &[String],
-) -> Result<(), CompensateError> {
-    let read_error = |source| CompensateError::FcsRead {
-        path: path.to_path_buf(),
-        source,
-    };
-    if let Some(state) = cytiq_fcs::compensation_state(&dataset.text).map_err(read_error)? {
+fn ensure_uncompensated(path: &Path, state: &SignalState) -> Result<(), CompensateError> {
+    if let Some(compensation) = &state.compensation {
         return Err(CompensateError::AlreadyCompensated {
             path: path.to_path_buf(),
-            channels: state.channels,
+            channels: compensation.channels.clone(),
         });
     }
-    if let Some(state) = cytiq_fcs::transform_state(&dataset.text).map_err(read_error)?
-        && let Some(channel) = channels
-            .iter()
-            .find(|channel| state.channels.is_empty() || state.covers(channel))
-    {
+    if let Some(unmixing) = &state.unmixing {
+        return Err(CompensateError::UnmixedInput {
+            path: path.to_path_buf(),
+            components: unmixing.components.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn ensure_untransformed(
+    path: &Path,
+    state: &SignalState,
+    channels: &[String],
+) -> Result<(), CompensateError> {
+    if let Some(channel) = channels.iter().find(|channel| state.transformed(channel)) {
         return Err(CompensateError::TransformedInput {
             path: path.to_path_buf(),
             channel: channel.clone(),

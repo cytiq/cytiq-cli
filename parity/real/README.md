@@ -2,8 +2,14 @@
 
 `parity/real/run_real.sh` (or `just parity-real`) runs cytiq and the upstream
 R tools on real acquisitions and compares them per event. It needs
-`parity/setup_env.sh` once and no download: the datasets ship with the R
-packages that environment installs.
+`parity/setup_env.sh` once. The datasets are listed in
+[`datasets.json`](datasets.json): each file comes from an installed R package
+or a URL (downloaded once into `parity/.data/real-cache`) and must match its
+SHA-256. A dataset's `chain` picks the comparison: `qc` works for any file
+with `$SPILL`; `flowsom_gating` is specific to FlowSOM's 68983 sample. To add
+a dataset, add an entry with its source, SHA-256, cytometry type and panel; a
+URL entry marked `optional` is skipped with a warning when its download
+fails.
 
 | Dataset | Source | What is compared |
 | --- | --- | --- |

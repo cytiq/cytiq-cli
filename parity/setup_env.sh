@@ -43,9 +43,19 @@ for pin in carlosproca/autospill@1e60e86337b297f1dd9ffec6701d8010dd06175b \
     git -C "$src" fetch -q --depth 1 origin "$commit"
     git -C "$src" checkout -q --detach FETCH_HEAD
   fi
-  Rscript -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()));
-    remotes::install_local('$ENV_DIR/$name-src', lib = '$R_LIBS_USER', upgrade = 'never',
-                           dependencies = c('Depends', 'Imports', 'LinkingTo'))"
+  # Dependencies come from the pinned Bioconductor release. remotes would also
+  # resolve the DESCRIPTION's Remotes field through the GitHub API, which
+  # rate-limits unauthenticated CI runners.
+  Rscript - "$src" <<'R'
+lib <- Sys.getenv("R_LIBS_USER")
+.libPaths(c(lib, .libPaths()))
+options(repos = c(CRAN = Sys.getenv("PARITY_CRAN")), Ncpus = parallel::detectCores())
+src <- commandArgs(trailingOnly = TRUE)[1]
+deps <- remotes::local_package_deps(src, dependencies = c("Depends", "Imports", "LinkingTo"))
+missing <- setdiff(deps, c(rownames(installed.packages()), "R"))
+if (length(missing) > 0) BiocManager::install(missing, lib = lib, ask = FALSE, update = FALSE)
+R
+  R CMD INSTALL --library="$R_LIBS_USER" "$src"
 done
 
 uv venv -q --allow-existing "$ENV_DIR/py" --python 3.12

@@ -891,6 +891,30 @@ controls:
   - { file: fcs/cd3_fitc.fcs, dye: FITC, primary_channel: FL1-A }
 ```
 
+A run with several panels lists them under `panels`, each with a `name`, and
+links every sample to its panel. A control without `panel` belongs to every
+panel; `specimen` groups the files of one biological sample across panels:
+
+```yaml
+cytometry: conventional
+panels:
+  - name: T
+    markers: [{ marker: CD3 }, { marker: CD4 }]
+    compensation:                 # conventional only; default { source: fcs }
+      source: matrix              # fcs | matrix | controls
+      matrix: autospill/t.csv     # relative to the manifest
+      kind: compensation          # spillover | compensation, as for compensate --matrix-kind
+  - name: B
+    markers: [{ marker: CD19 }]
+    compensation: { source: controls }   # autospill from the panel's single stains
+samples:
+  - { id: S01-T, file: fcs/s01_t.fcs, panel: T, specimen: S01 }
+  - { id: S01-B, file: fcs/s01_b.fcs, panel: B, specimen: S01 }
+controls:
+  - { file: fcs/unstained.fcs, dye: Autofluorescence }
+  - { file: fcs/cd19_pe.fcs, dye: PE, primary_channel: FL2-A, panel: B }
+```
+
 ```bash
 cytiq preflight --manifest run.yaml --output preflight.json
 ```
@@ -899,12 +923,21 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
 [`cytiq-preflight`](crates/cytiq-preflight/README.md)):
 - every file parses, has events, and is raw: files already processed by
   `cytiq transform`, `compensate` or `autospectral` fail
-- every required panel marker maps to exactly one channel of every sample
+- every required marker of a sample's panel maps to exactly one channel
   (`$PnS` or `$PnN`; a marker found on several channels fails)
-- all samples and controls share one detector set (`$PnN`); different `$PnV`
-  voltages warn
-- conventional samples carry a spillover matrix over existing channels that is
-  invertible; a 1-norm condition number above 100 warns
+- the samples and controls of each panel share one detector set (`$PnN`);
+  different `$PnV` voltages warn
+- conventional compensation, by the panel's `compensation.source`:
+  - `fcs` (default): each sample carries a spillover matrix over existing
+    channels that is invertible; a 1-norm condition number above 100 warns
+  - `matrix`: the matrix file (for example from `cytiq autospill`) is square
+    and invertible, its condition number is checked the same way, and every
+    sample has its channels; the samples need no `$SPILLOVER`
+  - `controls`: every marker channel has a single-stain control with that
+    `primary_channel`
+- spectral panels: every marker with a `channel` has a single-stain control
+  (warns otherwise)
+- a panel's controls have distinct dyes
 - missing `$CYT`/`$DATE` warns
 
 The JSON report is always written; the command exits with `1` when any check

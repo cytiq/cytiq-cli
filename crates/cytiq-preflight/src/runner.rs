@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cytiq_manifest::{Cytometry, RunManifest};
+use cytiq_manifest::{CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry};
 use log::{debug, info};
 use serde::Serialize;
 
 use crate::checks::{
-    Check, CheckStatus, check_detectors, check_file, check_markers, check_primary_channel,
-    check_spillover,
+    Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
+    check_file, check_markers, check_matrix, check_primary_channel, check_spillover, panel_scope,
 };
 use crate::error::PreflightError;
 
@@ -29,6 +29,7 @@ pub struct PreflightReport {
     pub manifest: String,
     /// FCS files the manifest lists, resolved.
     pub files: Vec<String>,
+    pub panels: Vec<PanelSummary>,
     /// The worst check status.
     pub status: CheckStatus,
     pub passed: usize,
@@ -37,11 +38,23 @@ pub struct PreflightReport {
     pub checks: Vec<Check>,
 }
 
+/// What the report found for one panel.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PanelSummary {
+    pub name: String,
+    /// Sample ids.
+    pub samples: Vec<String>,
+    /// Control dyes, including controls shared by every panel.
+    pub controls: Vec<String>,
+    /// Compensation source of a conventional panel; `None` for spectral.
+    pub compensation: Option<CompensationSource>,
+}
+
 pub struct PreflightRunner;
 
 impl PreflightRunner {
-    /// The files a run with `config` reads: the manifest, then the sample and
-    /// control FCS files it lists.
+    /// The files a run with `config` reads: the manifest, the sample and
+    /// control FCS files it lists, then the panels' compensation matrices.
     ///
     /// # Errors
     ///
@@ -50,6 +63,15 @@ impl PreflightRunner {
         let manifest = RunManifest::load(&config.manifest)?;
         let mut files = vec![config.manifest.clone()];
         files.extend(manifest_files(&manifest));
+        files.extend(
+            manifest
+                .panels
+                .iter()
+                .filter_map(|panel| match &panel.compensation {
+                    Some(CompensationSource::Matrix { matrix, .. }) => Some(matrix.clone()),
+                    _ => None,
+                }),
+        );
         Ok(files)
     }
 
@@ -70,10 +92,10 @@ impl PreflightRunner {
         let manifest = RunManifest::load(&config.manifest)?;
         let files = manifest_files(&manifest);
         info!(
-            "preflight: {} sample(s), {} control(s), {} marker(s)",
+            "preflight: {} sample(s), {} control(s), {} panel(s)",
             manifest.samples.len(),
             manifest.controls.len(),
-            manifest.panel.markers.len()
+            manifest.panels.len()
         );
         let checks = run_checks(&manifest);
         let count = |status| checks.iter().filter(|check| check.status == status).count();
@@ -84,6 +106,21 @@ impl PreflightRunner {
             files: files
                 .iter()
                 .map(|file| file.display().to_string())
+                .collect(),
+            panels: manifest
+                .panels
+                .iter()
+                .map(|panel| PanelSummary {
+                    name: panel.label().to_owned(),
+                    samples: samples_of(&manifest, panel)
+                        .map(|sample| sample.id.clone())
+                        .collect(),
+                    controls: manifest
+                        .controls_of(panel)
+                        .map(|control| control.dye.clone())
+                        .collect(),
+                    compensation: manifest.compensation_of(panel).cloned(),
+                })
                 .collect(),
             status: checks
                 .iter()
@@ -121,19 +158,14 @@ impl PreflightReport {
 
 fn run_checks(manifest: &RunManifest) -> Vec<Check> {
     let mut checks = Vec::new();
-    let mut files = Vec::new();
+    // Each file is read once; panels refer to them by position.
+    let mut samples = Vec::with_capacity(manifest.samples.len());
     for sample in &manifest.samples {
-        let scope = format!("sample {}", sample.id);
-        let (file_checks, loaded) = check_file(&scope, &sample.file);
+        let (file_checks, loaded) = check_file(&format!("sample {}", sample.id), &sample.file);
         checks.extend(file_checks);
-        if let Some(dataset) = &loaded.dataset {
-            checks.extend(check_markers(&scope, dataset, &manifest.panel));
-            if manifest.cytometry == Cytometry::Conventional {
-                checks.push(check_spillover(&scope, dataset));
-            }
-        }
-        files.push(loaded);
+        samples.push(loaded);
     }
+    let mut controls = Vec::with_capacity(manifest.controls.len());
     for control in &manifest.controls {
         let scope = format!("control {}", control.dye);
         let (file_checks, loaded) = check_file(&scope, &control.file);
@@ -141,10 +173,101 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
         if let (Some(dataset), Some(channel)) = (&loaded.dataset, &control.primary_channel) {
             checks.push(check_primary_channel(&scope, dataset, channel));
         }
-        files.push(loaded);
+        controls.push(loaded);
     }
-    checks.extend(check_detectors(&files));
+    for panel in &manifest.panels {
+        checks.extend(check_panel(manifest, panel, &samples, &controls));
+    }
     checks.extend(duplicate_files(manifest));
+    checks
+}
+
+fn samples_of<'a>(
+    manifest: &'a RunManifest,
+    panel: &'a Panel,
+) -> impl Iterator<Item = &'a SampleEntry> {
+    manifest.samples.iter().filter(move |sample| {
+        manifest
+            .panel_of(sample)
+            .is_some_and(|own| std::ptr::eq(own, panel))
+    })
+}
+
+/// Markers, calibration and detector configuration of one panel's files.
+fn check_panel(
+    manifest: &RunManifest,
+    panel: &Panel,
+    samples: &[LoadedFile],
+    controls: &[LoadedFile],
+) -> Vec<Check> {
+    let mut checks = Vec::new();
+    let panel_samples = manifest
+        .samples
+        .iter()
+        .zip(samples)
+        .filter(|(sample, _)| {
+            manifest
+                .panel_of(sample)
+                .is_some_and(|own| std::ptr::eq(own, panel))
+        })
+        .map(|(_, loaded)| loaded)
+        .collect::<Vec<_>>();
+    let panel_controls = manifest
+        .controls
+        .iter()
+        .zip(controls)
+        .filter(|(control, _)| {
+            control.panel.is_none() || control.panel.as_deref() == panel.name.as_deref()
+        })
+        .collect::<Vec<(&ControlEntry, &LoadedFile)>>();
+    for loaded in &panel_samples {
+        if let Some(dataset) = &loaded.dataset {
+            checks.extend(check_markers(&loaded.scope, dataset, panel));
+        }
+    }
+    let reference = panel_samples
+        .iter()
+        .find_map(|loaded| loaded.dataset.as_ref());
+    let scope = panel_scope(panel);
+    if !panel_controls.is_empty() {
+        checks.extend(check_control_dyes(&scope, &panel_controls));
+    }
+    match manifest.compensation_of(panel) {
+        Some(CompensationSource::Fcs) => {
+            for loaded in &panel_samples {
+                if let Some(dataset) = &loaded.dataset {
+                    checks.push(check_spillover(&loaded.scope, dataset));
+                }
+            }
+        }
+        Some(CompensationSource::Matrix { matrix, kind }) => {
+            checks.extend(check_matrix(&scope, matrix, *kind, &panel_samples));
+        }
+        Some(CompensationSource::Controls) => {
+            checks.push(check_control_coverage(
+                &scope,
+                panel,
+                &panel_controls,
+                reference,
+                CheckStatus::Fail,
+            ));
+        }
+        None => {
+            checks.push(check_control_coverage(
+                &scope,
+                panel,
+                &panel_controls,
+                reference,
+                CheckStatus::Warn,
+            ));
+        }
+    }
+    let files = panel_samples
+        .iter()
+        .copied()
+        .chain(panel_controls.iter().map(|(_, loaded)| *loaded))
+        .collect::<Vec<_>>();
+    checks.extend(check_detectors(&files));
     checks
 }
 

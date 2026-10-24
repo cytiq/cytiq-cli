@@ -1,5 +1,5 @@
 {
-  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory) or a `url`, and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). URL datasets marked `optional` are skipped with a warning when the download fails.",
+  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
   "datasets": [
     {
       "name": "flowsom_68983",
@@ -7,12 +7,9 @@
       "cytometry": "conventional",
       "panel": "mouse, 18 colours, FlowSOM vignette",
       "files": {
-        "sample.fcs": {"r_package": "FlowSOM", "path": "extdata/68983.fcs",
-                       "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"},
-        "flowjo_labels.csv": {"r_package": "FlowSOM", "path": "extdata/gatingResult.csv",
-                              "sha256": "906171895ee6577e8d95e540649c23e23f1b1ff92de57ac7a6fb28e8d2346f89"},
-        "manualGating.xml": {"r_package": "FlowSOM", "path": "extdata/manualGating.xml",
-                             "sha256": "d78a9587cb38cdd0a442c7b374b1c2ee99e945f8dcd326a3cbdeb15722cbca43"}
+        "sample.fcs": {"r_package": "FlowSOM", "path": "extdata/68983.fcs", "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"},
+        "flowjo_labels.csv": {"r_package": "FlowSOM", "path": "extdata/gatingResult.csv", "sha256": "906171895ee6577e8d95e540649c23e23f1b1ff92de57ac7a6fb28e8d2346f89"},
+        "manualGating.xml": {"r_package": "FlowSOM", "path": "extdata/manualGating.xml", "sha256": "d78a9587cb38cdd0a442c7b374b1c2ee99e945f8dcd326a3cbdeb15722cbca43"}
       }
     },
     {
@@ -21,9 +18,123 @@
       "cytometry": "conventional",
       "panel": "human, 20 colours, LSRII, PeacoQC vignette",
       "files": {
-        "sample.fcs": {"r_package": "PeacoQC", "path": "extdata/111.fcs",
-                       "sha256": "28b00aac4b3f5acb451e7b3318360ba2d57a50c9fd6b8c387abc3bcb05bdfa7e"}
+        "sample.fcs": {"r_package": "PeacoQC", "path": "extdata/111.fcs", "sha256": "28b00aac4b3f5acb451e7b3318360ba2d57a50c9fd6b8c387abc3bcb05bdfa7e"}
       }
+    },
+    {
+      "name": "celesta_mdsc_controls",
+      "chain": "autospill",
+      "cytometry": "conventional",
+      "instrument": "BD FACSCelesta (4-Blue 3-Red 5-Violet; FACSDiva 9.0)",
+      "source": "https://doi.org/10.5281/zenodo.21384789",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "panel": "mouse, 11 colours, single-stain cell controls (5,000 events each)",
+      "archive": {"url": "https://zenodo.org/api/records/21384789/files/Raw%20flow%20cytometry%20fcs%20files.zip/content", "sha256": "ffced13e2c6538dc693d0978e1c0c136df6dab7865be3094da442e713d0e6beb"},
+      "files": {
+        "ctrl_alexafluor700.fcs": {"member": "Compensation Controls_Alexa Fluor 700 Stained Control.fcs", "sha256": "e60e6ab927a2a80c7e842de36e435442cf62a2b45008f9905038954ec30ed7af"},
+        "ctrl_apc.fcs": {"member": "Compensation Controls_APC Stained Control.fcs", "sha256": "02a522d8137d0ab90a190b541facffe5d505152bbead0b1f8b70df2941ec339b"},
+        "ctrl_apccy7.fcs": {"member": "Compensation Controls_APC-Cy7 Stained Control.fcs", "sha256": "8de1a3ea57e4f8c0a605f1ba67106dc31a624b95ca7baa13da4033626cebd005"},
+        "ctrl_bv421.fcs": {"member": "Compensation Controls_BV421 Stained Control.fcs", "sha256": "132bc93397155f2a518369c61676cbef959e58de9bab8fe1f3714f47e49873e9"},
+        "ctrl_bv510.fcs": {"member": "Compensation Controls_BV510 Stained Control.fcs", "sha256": "017e39baec824c798079355fc9f40dd45b7f42871d7dbd87a8f80303834a1283"},
+        "ctrl_bv605.fcs": {"member": "Compensation Controls_BV605 Stained Control.fcs", "sha256": "fecfe01672c38c69deb4a18e5d5bf50b0afb93dd41b033e05ab5006a92882706"},
+        "ctrl_bv786.fcs": {"member": "Compensation Controls_BV786 Stained Control.fcs", "sha256": "ed66994e1d8205e485941b5f7bc1b997c603b840c91ca1f2fb111a68621c0c79"},
+        "ctrl_fitc.fcs": {"member": "Compensation Controls_FITC Stained Control.fcs", "sha256": "f0c0c7ac6f135bc9b5959a18ed4bd36ab387a648c5e4821c9d249306b3f627d5"},
+        "ctrl_pe.fcs": {"member": "Compensation Controls_PE Stained Control.fcs", "sha256": "80862dfc202c93036b0a3d55f0bbc51ed2afa0f6e06ac5258ac19791ce24d5b0"},
+        "ctrl_petexasred.fcs": {"member": "Compensation Controls_PE-Texas Red Stained Control.fcs", "sha256": "cf3b8c3574e47f9e1949fa7d1fc454e911022de47b6a7e09666b0bf647757efd"},
+        "ctrl_percpcy55.fcs": {"member": "Compensation Controls_PerCP-Cy5-5 Stained Control.fcs", "sha256": "f707ad43235ac2c04ca25bbafd59d176430a8544f29575bf30587c9dd7840681"}
+      },
+      "controls": [
+        {"filename": "ctrl_alexafluor700.fcs", "dye": "Alexa Fluor 700-A", "antigen": "Alexa Fluor 700", "wavelength": 719},
+        {"filename": "ctrl_apc.fcs", "dye": "APC-A", "antigen": "APC", "wavelength": 660},
+        {"filename": "ctrl_apccy7.fcs", "dye": "APC-Cy7-A", "antigen": "APC-Cy7", "wavelength": 785},
+        {"filename": "ctrl_bv421.fcs", "dye": "BV421-A", "antigen": "BV421", "wavelength": 421},
+        {"filename": "ctrl_bv510.fcs", "dye": "BV510-A", "antigen": "BV510", "wavelength": 510},
+        {"filename": "ctrl_bv605.fcs", "dye": "BV605-A", "antigen": "BV605", "wavelength": 605},
+        {"filename": "ctrl_bv786.fcs", "dye": "BV786-A", "antigen": "BV786", "wavelength": 786},
+        {"filename": "ctrl_fitc.fcs", "dye": "FITC-A", "antigen": "FITC", "wavelength": 520},
+        {"filename": "ctrl_pe.fcs", "dye": "PE-A", "antigen": "PE", "wavelength": 578},
+        {"filename": "ctrl_petexasred.fcs", "dye": "PE-Texas Red-A", "antigen": "PE-Texas Red", "wavelength": 615},
+        {"filename": "ctrl_percpcy55.fcs", "dye": "PerCP-Cy5-5-A", "antigen": "PerCP-Cy5-5", "wavelength": 695}
+      ]
+    },
+    {
+      "name": "celesta_mdsc_sample",
+      "chain": "qc",
+      "cytometry": "conventional",
+      "instrument": "BD FACSCelesta (4-Blue 3-Red 5-Violet; FACSDiva 9.0)",
+      "source": "https://doi.org/10.5281/zenodo.21384789",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "panel": "mouse spleen, 11-colour myeloid panel, FACSDiva compensation",
+      "archive": {"url": "https://zenodo.org/api/records/21384789/files/Raw%20flow%20cytometry%20fcs%20files.zip/content", "sha256": "ffced13e2c6538dc693d0978e1c0c136df6dab7865be3094da442e713d0e6beb"},
+      "files": {
+        "sample.fcs": {"member": "Myeloid SP_042.fcs", "sha256": "a6d32244bf1a6e47148e684d59a99528dd6064f9079cfe786ae6de04851d1ceb"}
+      }
+    },
+    {
+      "name": "symphony_omip24_controls",
+      "chain": "autospill",
+      "cytometry": "conventional",
+      "instrument": "BD FACSymphony, A3 or A5 (5B-3R-8V-7UV-3YG; FACSDiva 9.1)",
+      "panel": "human PBMC, 24-colour OMIP, single-stain cell controls (27-60k events each)",
+      "source": "https://doi.org/10.5281/zenodo.22994607",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "archive": {"url": "https://zenodo.org/api/records/22994607/files/Table%208.zip/content", "sha256": "1c88a8cfbd5829413a84fe22a937093bd145ce8b09d92d11826e1422c34be9f8"},
+      "files": {
+        "ctrl_buv396.fcs": {"member": "Table 8/Compensation Controls_BUV396 Stained Control.fcs", "sha256": "d2cf885375bb54d6063ca3b86bd9f06e10b0e0c606aa88cbc957f819f99bb9d3"},
+        "ctrl_buv496.fcs": {"member": "Table 8/Compensation Controls_BUV496 Stained Control.fcs", "sha256": "5758cdde1e0c931944ec7c67f5fcaa8dbbe8e78f246f896bcf368dbf49ce36b2"},
+        "ctrl_buv615.fcs": {"member": "Table 8/Compensation Controls_BUV615 Stained Control.fcs", "sha256": "240572f500167b9634e40d27dfe05b8c5bc448d719073e06c4b19b3b73a98fd0"},
+        "ctrl_buv661.fcs": {"member": "Table 8/Compensation Controls_BUV661 Stained Control.fcs", "sha256": "823860ff19eed7ad04a4a10caa2f32132b284f36d004556860543c3b54f29363"},
+        "ctrl_buv737.fcs": {"member": "Table 8/Compensation Controls_BUV737 Stained Control.fcs", "sha256": "9bf7f6a32a625c501587ef74efdf8e51b2528b511629759ec660593611c5a7ef"},
+        "ctrl_buv805.fcs": {"member": "Table 8/Compensation Controls_BUV805 Stained Control.fcs", "sha256": "6c1eb2b81ca38517ebf515796f18d4c744914cf819d901630266739b9102b2a2"},
+        "ctrl_bv421.fcs": {"member": "Table 8/Compensation Controls_BV421 Stained Control.fcs", "sha256": "547ef3eb97383ff15cd3ff23c5952e546d04e92b982b3eb9921df278f2e96b35"},
+        "ctrl_bv510.fcs": {"member": "Table 8/Compensation Controls_BV510 Stained Control.fcs", "sha256": "0bb66e320381652a766c4f9951541e1fef6d3dfea9d81bac6ec9d17cacb4ac6b"},
+        "ctrl_bv570.fcs": {"member": "Table 8/Compensation Controls_BV570 Stained Control.fcs", "sha256": "cff115ad693193d61a736873066e4b60d0ca45f7b6abeca4ee969e46c04002f0"},
+        "ctrl_bv605.fcs": {"member": "Table 8/Compensation Controls_BV605 Stained Control.fcs", "sha256": "6cf51902aea25dc45659a3cbb50bf2e13ed811802b40e09c5805a6549df13185"},
+        "ctrl_bv650.fcs": {"member": "Table 8/Compensation Controls_BV650 Stained Control.fcs", "sha256": "14172fbd004d1dbd6d0498b6023b02497cbf49e312af033bd7acc32206aa0151"},
+        "ctrl_bv711.fcs": {"member": "Table 8/Compensation Controls_BV711 Stained Control.fcs", "sha256": "777976d69c4eaee756f70712fb8254c8046a00a9388f75caab30bbc5a16eee0f"},
+        "ctrl_bv750.fcs": {"member": "Table 8/Compensation Controls_BV750 Stained Control.fcs", "sha256": "56d6b99ca20b420f6b743b5d92424146e8a6d462db9b1dce96b4e371a8f483fd"},
+        "ctrl_bv786.fcs": {"member": "Table 8/Compensation Controls_BV786 Stained Control.fcs", "sha256": "f8ec211d8d337ce599b70790e045699a1fc9b35c4e74162618a5370eadbb7404"},
+        "ctrl_bb515.fcs": {"member": "Table 8/Compensation Controls_BB515 Stained Control.fcs", "sha256": "9af033ff6b707f7f143072f4950415ddb9a9535b64cf76666c8deb22f5320c03"},
+        "ctrl_bb630.fcs": {"member": "Table 8/Compensation Controls_BB630 Stained Control.fcs", "sha256": "6c1d8cb227a4ac2db81e1a4933cb8b3c2d54c8bc5a2133107605892118e0769c"},
+        "ctrl_bb700.fcs": {"member": "Table 8/Compensation Controls_BB700 Stained Control.fcs", "sha256": "c3139592b820074271dc4022b3e9acd0fce291072ab5e81d137e6127dd9bffff"},
+        "ctrl_bb790.fcs": {"member": "Table 8/Compensation Controls_BB790 Stained Control.fcs", "sha256": "ec501df3ef59c5cd40a6da2a667125c1a3e7b8b91d89c83f55133e10a763df3c"},
+        "ctrl_pe.fcs": {"member": "Table 8/Compensation Controls_PE w,2f,561 Stained Control.fcs", "sha256": "5bcc7204a74f7e4b1806fcdbd7aab1116f403aabb7d058387203fd1da2b83d8d"},
+        "ctrl_pecf594.fcs": {"member": "Table 8/Compensation Controls_PE-CF594 Stained Control.fcs", "sha256": "9b44ad1dd05aa937bc0aabbbeceb3718d0240b053b20457e2ac501948e7d3fd5"},
+        "ctrl_pecy7.fcs": {"member": "Table 8/Compensation Controls_PE-Cy7 Stained Control.fcs", "sha256": "6f8c17ee4ab6a81b7c21618ef99ab7cbae57b9d8d31e5da3ebc751e0c60d4cd8"},
+        "ctrl_apc.fcs": {"member": "Table 8/Compensation Controls_APC Stained Control.fcs", "sha256": "6020314c9572037e5bee4a0af604abb2d217188208aba007bff2e8debfc641e2"},
+        "ctrl_alexa700.fcs": {"member": "Table 8/Compensation Controls_Alexa700 Stained Control.fcs", "sha256": "bcc41e5e176528144d9fb85b39c457e799862a172e8caf6e8232e24ad2a7e9ab"},
+        "ctrl_apccy7.fcs": {"member": "Table 8/Compensation Controls_APC-Cy7 Stained Control.fcs", "sha256": "38de9fd5581817f314af4f9beae4a666366f72559ebb1858252d05489a68a981"}
+      },
+      "controls": [
+        {"filename": "ctrl_buv396.fcs", "dye": "BUV396-A", "antigen": "BUV396", "wavelength": 396},
+        {"filename": "ctrl_buv496.fcs", "dye": "BUV496-A", "antigen": "BUV496", "wavelength": 496},
+        {"filename": "ctrl_buv615.fcs", "dye": "BUV615-A", "antigen": "BUV615", "wavelength": 615},
+        {"filename": "ctrl_buv661.fcs", "dye": "BUV661-A", "antigen": "BUV661", "wavelength": 661},
+        {"filename": "ctrl_buv737.fcs", "dye": "BUV737-A", "antigen": "BUV737", "wavelength": 737},
+        {"filename": "ctrl_buv805.fcs", "dye": "BUV805-A", "antigen": "BUV805", "wavelength": 805},
+        {"filename": "ctrl_bv421.fcs", "dye": "BV421-A", "antigen": "BV421", "wavelength": 421},
+        {"filename": "ctrl_bv510.fcs", "dye": "BV510-A", "antigen": "BV510", "wavelength": 510},
+        {"filename": "ctrl_bv570.fcs", "dye": "BV570-A", "antigen": "BV570", "wavelength": 570},
+        {"filename": "ctrl_bv605.fcs", "dye": "BV605-A", "antigen": "BV605", "wavelength": 605},
+        {"filename": "ctrl_bv650.fcs", "dye": "BV650-A", "antigen": "BV650", "wavelength": 650},
+        {"filename": "ctrl_bv711.fcs", "dye": "BV711-A", "antigen": "BV711", "wavelength": 711},
+        {"filename": "ctrl_bv750.fcs", "dye": "BV750-A", "antigen": "BV750", "wavelength": 750},
+        {"filename": "ctrl_bv786.fcs", "dye": "BV786-A", "antigen": "BV786", "wavelength": 786},
+        {"filename": "ctrl_bb515.fcs", "dye": "BB515-A", "antigen": "BB515", "wavelength": 515},
+        {"filename": "ctrl_bb630.fcs", "dye": "BB630-A", "antigen": "BB630", "wavelength": 630},
+        {"filename": "ctrl_bb700.fcs", "dye": "BB700-A", "antigen": "BB700", "wavelength": 700},
+        {"filename": "ctrl_bb790.fcs", "dye": "BB790-A", "antigen": "BB790", "wavelength": 790},
+        {"filename": "ctrl_pe.fcs", "dye": "PE w/561-A", "antigen": "PE w/561", "wavelength": 578},
+        {"filename": "ctrl_pecf594.fcs", "dye": "PE-CF594-A", "antigen": "PE-CF594", "wavelength": 612},
+        {"filename": "ctrl_pecy7.fcs", "dye": "PE-Cy7-A", "antigen": "PE-Cy7", "wavelength": 785},
+        {"filename": "ctrl_apc.fcs", "dye": "APC-A", "antigen": "APC", "wavelength": 660},
+        {"filename": "ctrl_alexa700.fcs", "dye": "Alexa700-A", "antigen": "Alexa700", "wavelength": 719},
+        {"filename": "ctrl_apccy7.fcs", "dye": "APC-Cy7-A", "antigen": "APC-Cy7", "wavelength": 785}
+      ],
+      "slow": true
     }
   ]
 }

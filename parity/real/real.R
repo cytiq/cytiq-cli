@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # Upstream side of parity/real/run_real.sh: the same processing with flowCore,
-# PeacoQC and FlowSOM, written per event next to the cytiq outputs.
+# PeacoQC, FlowSOM and autospill, written next to the cytiq outputs.
 # Usage: Rscript parity/real/real.R <out_dir>
 
 suppressPackageStartupMessages({
@@ -60,5 +60,29 @@ for (dir in list.dirs(out_dir, recursive = FALSE)) {
                      time_channel_parameter = "Time", suppress_message = TRUE)
   write.csv(data.frame(good = as.integer(peacoqc$GoodCells)), file.path(dir, "r_peacoqc.csv"),
             row.names = FALSE)
+}
+
+# AutoSpill chains: single-stain controls --------------------------------------
+for (dir in list.dirs(out_dir, recursive = FALSE)) {
+  if (!file.exists(file.path(dir, "controls_full.csv"))) next
+  suppressPackageStartupMessages(library(autospill))
+  work <- file.path(dir, "r_autospill_work")
+  dir.create(work, showWarnings = FALSE)
+  old <- setwd(work)
+  asp <- get.autospill.param("minimal")
+  asp$worker.process.n <- parallel::detectCores()
+  asp$verbose <- FALSE
+  flow.control <- read.flow.control(dir, file.path(dir, "controls_full.csv"), asp)
+  flow.gate <- gate.flow.data(flow.control, asp)
+  initial <- get.marker.spillover(TRUE, flow.gate, flow.control, asp)
+  refined <- refine.spillover(initial, NULL, flow.gate, flow.control, asp)
+  setwd(old)
+  write.csv(refined[[1]], file.path(dir, "r_autospill_spillover.csv"))
+  gates <- do.call(rbind, lapply(names(flow.gate), function(s) {
+    ids <- flow.gate[[s]]
+    if (is.character(ids)) ids <- as.integer(sub(".*\\.", "", ids))
+    data.frame(sample = s, event = as.integer(ids))
+  }))
+  write.csv(gates, file.path(dir, "r_autospill_gates.csv"), row.names = FALSE)
 }
 writeLines(capture.output(sessionInfo()), file.path(out_dir, "sessionInfo.txt"))

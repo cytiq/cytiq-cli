@@ -104,9 +104,8 @@ def compare_qc_chain(directory: Path) -> dict:
     channels = (directory / "channels.txt").read_text().strip().split(",")
     raw, ranges = read_columns(directory / "sample.fcs", channels)
     upper = np.array([ranges[channel] - 1 for channel in channels])
-    # Detector limits recomputed independently: `$PnR - 1` and flowCore's -111
-    # (the files carry no `$PnE` zero offsets).
-    at_limit = ((raw >= upper) | (raw <= -111)).any(axis=1)
+    # The detector limit recomputed independently: `$PnR - 1` only, no low bound.
+    at_limit = (raw >= upper).any(axis=1)
     comp = pq.read_table(directory / "sample.comp.masks.parquet").to_pandas().sort_values("source_event_id")
     margin_removed = ~comp["margin_pass"].astype(bool).to_numpy()
     r_margins = pd.read_csv(directory / "r_margins.csv")["removed"].to_numpy().astype(bool)
@@ -124,6 +123,7 @@ def compare_qc_chain(directory: Path) -> dict:
             "removed": int(margin_removed.sum()),
             "RemoveMargins_removed": int(r_margins.sum()),
             "agreement_with_RemoveMargins": _r((margin_removed == r_margins).mean(), 4),
+            "kept_by_RemoveMargins": int((margin_removed & ~r_margins).sum()),
         },
         "peacoqc": {
             "agreement": _r((peacoqc["keep"].astype(bool).to_numpy() == r_peacoqc).mean(), 6),

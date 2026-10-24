@@ -2,7 +2,7 @@
   "_comment": "Acceptance thresholds for crates/cytiq-cli/tests/pipeline_cli.rs. Measured values on this fixture are in README.md; thresholds keep a margin below them. Fractions are of the true `good` events unless stated.",
   "compensation_residual_slope_max": 0.01,
   "margin_recall_min": 0.99,
-  "margin_good_loss_max": 0.015,
+  "margin_good_loss_max": 0.001,
   "peacoqc_unstable_recall_min": 0.99,
   "peacoqc_good_loss_max": 0.12,
   "clean_recall_min": 0.99,

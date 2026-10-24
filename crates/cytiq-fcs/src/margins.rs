@@ -60,14 +60,16 @@ impl MarginBounds {
         )
     }
 
-    /// Detector-limit thresholds alone: events at or below `lower`, or at or
-    /// above `upper`, are on a margin. Unlike [`Self::thresholds`] (the
-    /// `PeacoQC::RemoveMargins` rule) the observed minimum and maximum play no
-    /// part, so a discrete channel does not lose its lowest and highest
-    /// levels.
+    /// The detector limit alone: events at or above `upper` are on a margin.
+    /// Unlike [`Self::thresholds`] (the `PeacoQC::RemoveMargins` rule) neither
+    /// the observed extremes nor `lower` count. A discrete channel keeps its
+    /// lowest and highest levels, and float data keeps the noise of negative
+    /// populations: FCS declares no low detector limit, and flowCore's fixed
+    /// -111 floor flags 31% of the events of a real BD sample
+    /// (`parity/REPORT.md` §2.10). Integer data never goes below that floor.
     #[must_use]
-    pub fn detector_thresholds(&self) -> (f64, f64) {
-        (self.lower, self.upper.unwrap_or(f64::INFINITY))
+    pub fn detector_limit(&self) -> f64 {
+        self.upper.unwrap_or(f64::INFINITY)
     }
 
     /// Map the bounds through a monotonically increasing transform.
@@ -141,10 +143,10 @@ pub fn dataset_margin_bounds(
 }
 
 /// Per-event pass flags for the detector margins of `indices`: an event
-/// fails when it sits at or beyond a detector limit (`$PnR - 1`, or the low
-/// bound) of any listed channel. Only detector limits count
-/// ([`MarginBounds::detector_thresholds`]); `cytiq peacoqc --remove-margins`
-/// keeps the upstream rule that also removes the observed extremes.
+/// fails when it sits at or above the detector limit (`$PnR - 1`) of any
+/// listed channel. Only that limit counts ([`MarginBounds::detector_limit`]);
+/// `cytiq peacoqc --remove-margins` keeps the upstream rule that also removes
+/// the observed extremes and values at or below flowCore's low bound.
 /// Compensation and unmixing mix channels, so this must run on raw values
 /// before them.
 ///
@@ -169,9 +171,9 @@ pub fn raw_margin_pass(dataset: &FcsDataset, indices: &[usize]) -> Result<Vec<bo
             .column(*index)
             .expect("every parameter has a data column")
             .to_f64_vec();
-        let (low, high) = bounds.detector_thresholds();
+        let limit = bounds.detector_limit();
         for (event, value) in pass.iter_mut().zip(&values) {
-            *event &= *value > low && *value < high;
+            *event &= *value < limit;
         }
     }
     Ok(pass)
@@ -247,6 +249,22 @@ mod tests {
                 "keywords {keywords:?}, values {values:?}"
             );
         }
+    }
+
+    #[test]
+    fn raw_margins_keep_negative_noise_and_flag_saturation() {
+        let parameters = [crate::FcsWriteParameter::new("FL1-A").with_range(1024.0)];
+        let values = vec![-500.0_f32, -111.0, 0.0, 1022.0, 1023.0, 1500.0];
+        let mut bytes = Vec::new();
+        crate::write_fcs3_1_f32_to_writer(&mut bytes, &parameters, &[values]).unwrap();
+        let dataset = crate::FcsReader::new(std::io::Cursor::new(bytes))
+            .read()
+            .unwrap();
+
+        assert_eq!(
+            raw_margin_pass(&dataset, &[0]).unwrap(),
+            [true, true, true, true, false, false]
+        );
     }
 
     #[test]

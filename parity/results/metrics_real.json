@@ -179,9 +179,10 @@
       "transformed_max_rel_delta": 7.90272e-08,
       "margins": {
         "agreement_with_detector_limits": 1.0,
-        "removed": 17736,
+        "removed": 36,
         "RemoveMargins_removed": 17737,
-        "agreement_with_RemoveMargins": 1.0
+        "agreement_with_RemoveMargins": 0.6865,
+        "kept_by_RemoveMargins": 0
       },
       "peacoqc": {
         "agreement": 1.0,
@@ -195,9 +196,10 @@
       "transformed_max_rel_delta": 7.91701e-08,
       "margins": {
         "agreement_with_detector_limits": 1.0,
-        "removed": 328,
+        "removed": 27,
         "RemoveMargins_removed": 334,
-        "agreement_with_RemoveMargins": 0.9994
+        "agreement_with_RemoveMargins": 0.9693,
+        "kept_by_RemoveMargins": 0
       },
       "peacoqc": {
         "agreement": 1.0,

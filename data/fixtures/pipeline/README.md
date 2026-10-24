@@ -29,10 +29,10 @@ combine → gate --mask → flowsom --mask`.
 
 | Stage | Result |
 | --- | --- |
-| margins (`compensate` mask) | all 117 saturated events found; 0.7% of good events removed. Most other removals are debris below flowCore's −111 floor, as in `PeacoQC::RemoveMargins` |
+| margins (`compensate` mask) | all 117 saturated events found and nothing else removed: no good events lost. flowCore's −111 floor, which the mask applied before, removed 0.7% of good events here |
 | PeacoQC | every unstable event removed; 9.6% of good events removed around the artefact (rows 5250–7499). Upstream R PeacoQC 1.20.0 removes exactly the same 2,250 events: at 15,000 events the bins are coarse |
 | clean | debris recall 0.998, doublet 1.0, dead 0.996; 0.15% of good events lost |
-| final mask | 3 of 4,181 bad events kept; F1 against `good` 0.945 |
+| final mask | 4 of 4,181 bad events kept; F1 against `good` 0.949 |
 | gates | precision 1.0, recall ≥ 0.998 for every population; Rare 27 of 27 |
 | FlowSOM (`--metaclusters 7`) | ARI 0.996 against the true populations; the rare population is a pure SOM node and, with the default 20 metaclusters, a metacluster of purity 0.9 |
 

@@ -16,6 +16,10 @@ pub use crate::runner::{
     FLOWSOM_LEARNING_RATE_END, FLOWSOM_LEARNING_RATE_START, FLOWSOM_METACLUSTERS,
     FLOWSOM_RADIUS_END, FLOWSOM_RADIUS_START_QUANTILE, FLOWSOM_RANDOM_SEED, FLOWSOM_SCALE_INPUT,
     FLOWSOM_TRAINING_ITERATIONS, FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomAssignment, FlowSomConfig,
-    FlowSomMetacluster, FlowSomMetrics, FlowSomNode, FlowSomParameters, FlowSomResult,
-    FlowSomRunner, FlowSomScaleSummary, FlowSomSummary, parse_channel_list,
+    FlowSomConstants, FlowSomMetacluster, FlowSomMetrics, FlowSomNode, FlowSomParameters,
+    FlowSomResult, FlowSomRunner, FlowSomScaleSummary, FlowSomSummary, parse_channel_list,
 };
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("FlowSOM", "2.18.0")];

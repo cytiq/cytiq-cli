@@ -591,6 +591,24 @@ fn golden_chain_recovers_the_known_truth() {
     // Provenance: each stage's inputs are byte-identical to the outputs the
     // earlier stage recorded.
     common::assert_provenance_chain(&directory);
+    let record = |name: &str| -> Value {
+        serde_json::from_str(&fs::read_to_string(directory.join(name)).expect("record"))
+            .expect("JSON")
+    };
+    let gate = record("counts.json.provenance.json");
+    let roles = gate["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["role"].as_str().expect("role"))
+        .collect::<Vec<_>>();
+    assert_eq!(roles, ["input", "gating_ml", "mask"]);
+    assert_eq!(gate["algorithms"]["Gating-ML"], "2.0");
+    let peacoqc = record("s.peacoqc.fcs.provenance.json");
+    assert_eq!(peacoqc["config"]["channels"], FLUORESCENCE);
+    assert_eq!(peacoqc["config"]["method"], "all");
+    assert_eq!(peacoqc["constants"]["mad"], 6.0);
+    assert_eq!(peacoqc["algorithms"]["PeacoQC"], "1.20.0");
 }
 
 /// The order the audit flagged: transform after `PeacoQC` must leave

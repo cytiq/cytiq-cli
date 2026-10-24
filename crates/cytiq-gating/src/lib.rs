@@ -30,3 +30,7 @@ pub use crate::parse::parse_gatingml;
 pub use crate::runner::{GatingConfig, GatingRunResult, GatingRunner, OutputFormat};
 pub use crate::transforms::Transform;
 pub use crate::write::to_gatingml;
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("Gating-ML", "2.0"), ("FlowKit", "1.3.0")];

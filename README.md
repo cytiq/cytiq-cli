@@ -995,9 +995,19 @@ Rules:
 
 Every command that writes files, except `meta`, also writes a provenance
 record next to its output: `<output>.provenance.json` for a file output and
-`<dir>/provenance.json` for a directory output. It holds the tool and version,
-the exact command-line arguments, start and finish times, and the size and
-SHA-256 of every input and output file (debug directories are not listed).
+`<dir>/provenance.json` for a directory output (schema version 2). It holds:
+- the tool, version and `build` (git commit, rustc, target, profile) and the
+  `platform` (OS, architecture, logical CPUs, the default thread count)
+- the exact command-line `arguments`, and `config`: every option of the
+  command with its default applied, keyed by option name in snake_case
+- `constants`: fixed algorithm constants that shape the result but are no
+  options (PeacoQC, CytoScan, FlowSOM training), and `algorithms`: the
+  upstream implementations and versions the command is validated against
+- start and finish times
+- the size, SHA-256 and `role` (`input`, `mask`, `gating_ml`, `matrix`,
+  `manifest`, `control`, `reference`, ...) of every input, and the size and
+  SHA-256 of every output (debug directories are not listed)
+
 Inputs are hashed before the command runs, so a command that replaces its own
 input (`transform --overwrite` with the same input and output) records what it
 read; an input that changes during the run and is not also an output fails
@@ -1005,16 +1015,25 @@ the command:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "tool": "cytiq gate",
   "version": "0.1.0",
+  "build": { "git_commit": "b781ef4…", "rustc": "rustc 1.99.1 …", "target": "x86_64-unknown-linux-gnu", "profile": "release" },
+  "platform": { "os": "linux", "arch": "x86_64", "cpus": 16 },
   "arguments": ["gate", "--input", "s.t.fcs", "--gating-ml", "gates.xml", "--output", "counts.csv"],
+  "config": { "input": "s.t.fcs", "gating_ml": "gates.xml", "output": "counts.csv", "format": "csv", "masks": [], "membership": null, "threads": null },
+  "constants": null,
+  "algorithms": { "FlowKit": "1.3.0", "Gating-ML": "2.0" },
   "started_at_unix_ms": 1792790000000,
   "finished_at_unix_ms": 1792790000120,
-  "inputs": [{ "path": "s.t.fcs", "bytes": 640905, "sha256": "…" }, { "path": "gates.xml", "…": "…" }],
+  "inputs": [{ "path": "s.t.fcs", "role": "input", "bytes": 640905, "sha256": "…" }, { "path": "gates.xml", "role": "gating_ml", "…": "…" }],
   "outputs": [{ "path": "counts.csv", "bytes": 214, "sha256": "…" }]
 }
 ```
+
+`build.git_commit` is the commit the binary was built from (`git rev-parse
+HEAD` at build time, or `CYTIQ_BUILD_COMMIT` where the sources have no
+`.git`, as in the Docker build); uncommitted changes are not detected.
 
 Following the `inputs` of each record back to the outputs of earlier records
 reconstructs the whole chain from the raw FCS files.

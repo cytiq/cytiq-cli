@@ -8,3 +8,7 @@ mod runner;
 pub use crate::error::CompensateError;
 pub use crate::matrix::{CompensationMatrix, MatrixKind, read_matrix_file};
 pub use crate::runner::{CompensateConfig, CompensateResult, CompensateRunner, masks_path};
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("flowCore", "2.22.1"), ("FlowKit", "1.3.0")];

@@ -29,6 +29,10 @@ use log::{debug, info};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("flowCore", "2.22.1"), ("flowWorkspace", "4.22.1")];
+
 const DEFAULT_SUFFIX: &str = ".transformed";
 const DEFAULT_LOGICLE_T: f64 = 262_144.0;
 const DEFAULT_LOGICLE_M: f64 = 4.5;

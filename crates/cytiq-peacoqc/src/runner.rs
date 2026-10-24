@@ -34,6 +34,40 @@ pub const DEFAULT_PEAK_REMOVAL: f64 = 1.0 / 3.0;
 pub const DEFAULT_MIN_PEAK_BIN_PERCENT: f64 = 10.0;
 pub const DEFAULT_TIME_CHANNEL: &str = "Time";
 
+/// The fixed algorithm constants above, for provenance records.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct PeacoQcConstants {
+    pub mad: f64,
+    pub mad_smoothing_spar: f64,
+    pub it_limit: f64,
+    pub consecutive_bins: usize,
+    pub min_cells: usize,
+    pub max_bins: usize,
+    pub step: usize,
+    pub force_it: usize,
+    pub peak_removal: f64,
+    pub min_peak_bin_percent: f64,
+    pub time_channel: &'static str,
+}
+
+impl Default for PeacoQcConstants {
+    fn default() -> Self {
+        Self {
+            mad: DEFAULT_MAD_THRESHOLD,
+            mad_smoothing_spar: MAD_SMOOTHING_SPAR,
+            it_limit: DEFAULT_IT_LIMIT,
+            consecutive_bins: DEFAULT_CONSECUTIVE_BINS,
+            min_cells: DEFAULT_MIN_CELLS,
+            max_bins: DEFAULT_MAX_BINS,
+            step: DEFAULT_STEP,
+            force_it: DEFAULT_FORCE_IT_BINS,
+            peak_removal: DEFAULT_PEAK_REMOVAL,
+            min_peak_bin_percent: DEFAULT_MIN_PEAK_BIN_PERCENT,
+            time_channel: DEFAULT_TIME_CHANNEL,
+        }
+    }
+}
+
 const MEDIAN_ABSOLUTE_DEVIATION_SCALE: f64 = 1.4826;
 const EQUALITY_EPSILON: f64 = 1.0e-12;
 

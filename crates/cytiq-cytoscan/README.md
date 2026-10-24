@@ -72,11 +72,12 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `CytoScanRunner::run` / `CytoScanConfig` | Run the pipeline and write outputs |
 | `CytoScanRunner::input_files` | Test then reference FCS files a run reads, resolved as `run` does |
 | `FeatureMethod`, `FlagMethod` | Feature and flagging methods |
 | `CytoScanResult` | `parameters`, test/reference `CytoScanFeatureMatrix`, `summary_rows`, `diagnostics` |
-| `CytoScanParameters`, `CytoScanConstants` | Effective settings, serialized into `cytoscan_config.json` |
+| `CytoScanParameters`, `CytoScanConstants` | Effective settings, serialized into `cytoscan_config.json`; the constants also go into provenance `constants` |
 | `CytoScanFeatureMatrix`, `CytoScanFeatureRow`, `CytoScanSummaryRow`, `CytoScanDiagnostics` | Result rows and model diagnostics |
 | `NoveltyModelKind` | Which novelty model was fitted (mixture or diagonal fallback) |
 | `DEFAULT_*` constants | Fixed algorithm settings (seed 42, 1,000 events, 10,000 aggregate, 1,000 trees, 0.5 / 0.05 thresholds, cofactor 150, 4 recursions) |

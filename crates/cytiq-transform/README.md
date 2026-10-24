@@ -53,6 +53,7 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `TransformRunner::run` / `TransformConfig` | The `cytiq transform` command: resolve inputs, transform, write FCS + sidecars |
 | `TransformMethod`, `LogicleParameters`, `BiexponentialParameters`, `TransformParameters`, `TransformFormat` | Method selection and parameters |
 | `TransformRunResult`, `TransformFileResult`, `TransformChannelMetrics`, `TransformValueMetrics` | Per-file plan and per-channel raw/transformed statistics |

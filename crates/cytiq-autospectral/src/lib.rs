@@ -17,3 +17,7 @@ pub use crate::runner::{
     MIN_POSITIVE_EVENTS, MIN_RETAINED_EVENTS, POSITIVE_EVENT_LIMIT, POSITIVITY_THRESHOLD,
     SCATTER_GATE_LOWER_QUANTILE, SCATTER_GATE_UPPER_QUANTILE, SOLVER, SOLVER_METHOD,
 };
+
+/// Upstream implementations this crate is validated against
+/// (`parity/versions.txt`), recorded in provenance.
+pub const UPSTREAM: &[(&str, &str)] = &[("AutoSpectral", "1.8.7@292dfea")];

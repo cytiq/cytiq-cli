@@ -64,6 +64,7 @@ export_matrix(&result, config.matrix_kind, "spillover.parquet")?;
 
 | Item | Purpose |
 | --- | --- |
+| `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `AutospillRunner::run`, `AutospillConfig`, `AutospillResult` | AutoSpill pipeline; result holds spillover, compensation, residual slope/skewness matrices, gate stats and convergence |
 | `AutospreadRunner::run`, `AutospreadConfig`, `AutospreadResult` | AutoSpread pipeline |
 | `MatrixKind` | `Compensation` (default) or `Spillover` |

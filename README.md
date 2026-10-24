@@ -914,13 +914,26 @@ panels:
   - name: B
     markers: [{ marker: CD19 }]
     compensation: { source: controls }   # autospill from the panel's single stains
+  - name: NK
+    markers: [{ marker: CD56 }]
+    signal_state: compensated     # raw (default) | compensated | unmixed
 samples:
   - { id: S01-T, file: fcs/s01_t.fcs, panel: T, specimen: S01 }
   - { id: S01-B, file: fcs/s01_b.fcs, panel: B, specimen: S01 }
+  - { id: S01-NK, file: export/s01_nk.fcs, panel: NK, specimen: S01 }
 controls:
   - { file: fcs/unstained.fcs, dye: Autofluorescence }
   - { file: fcs/cd19_pe.fcs, dye: PE, primary_channel: FL2-A, panel: B }
 ```
+
+`signal_state` says what a panel's sample files hold. cytiq stages recognise
+only their own processing (the `CYTIQ_*` keywords), and FCS has no keyword for
+compensation or unmixing done by other software, so files exported already
+compensated (for example from FlowJo) or unmixed (by spectral acquisition
+software) must be declared: `compensated` for conventional panels, `unmixed`
+for spectral ones.
+Such panels take no `compensation` and need no controls; controls are always
+raw.
 
 ```bash
 cytiq preflight --manifest run.yaml --output preflight.json
@@ -930,11 +943,18 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
 [`cytiq-preflight`](crates/cytiq-preflight/README.md)):
 - every file parses, has events, and is raw: files already processed by
   `cytiq transform`, `compensate` or `autospectral` fail
+- every file fits its declared `signal_state`: a raw file with `Comp-<detector>`
+  channels (FlowJo's name for compensated values) fails without the detector
+  itself and warns next to it; a `compensated` file that still carries
+  `$SPILLOVER`/`$SPILL` fails, because `cytiq compensate`, the viability
+  filter of `cytiq clean`, `FCS` references in `cytiq gate` and `cytiq
+  cytoscan` would compensate it again; an `unmixed` file with one warns
 - every required marker of a sample's panel maps to exactly one channel
   (`$PnS` or `$PnN`; a marker found on several channels fails)
 - the samples and controls of each panel share one detector set (`$PnN`);
-  different `$PnV` voltages warn
-- conventional compensation, by the panel's `compensation.source`:
+  different `$PnV` voltages warn. Panels of compensated or unmixed samples
+  compare their samples only
+- conventional compensation of raw samples, by the panel's `compensation.source`:
   - `fcs` (default): each sample carries a spillover matrix over existing
     channels that is invertible; a 1-norm condition number above 100 warns
   - `matrix`: the matrix file (for example from `cytiq autospill`) is square
@@ -942,8 +962,8 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
     sample has its channels; the samples need no `$SPILLOVER`
   - `controls`: every marker channel has a single-stain control with that
     `primary_channel`
-- spectral panels: every marker with a `channel` has a single-stain control
-  (warns otherwise)
+- spectral panels of raw samples: every marker with a `channel` has a
+  single-stain control (warns otherwise)
 - a panel's controls have distinct dyes
 - missing `$CYT`/`$DATE` warns
 

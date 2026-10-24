@@ -1,13 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cytiq_manifest::{CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry};
+use cytiq_manifest::{
+    CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry, SignalState,
+};
 use log::{debug, info};
 use serde::Serialize;
 
 use crate::checks::{
     Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
-    check_file, check_markers, check_matrix, check_primary_channel, check_spillover, panel_scope,
+    check_file, check_markers, check_matrix, check_primary_channel, check_signal_state,
+    check_spillover, panel_scope,
 };
 use crate::error::PreflightError;
 
@@ -46,7 +49,10 @@ pub struct PanelSummary {
     pub samples: Vec<String>,
     /// Control dyes, including controls shared by every panel.
     pub controls: Vec<String>,
-    /// Compensation source of a conventional panel; `None` for spectral.
+    /// What the samples hold, as the manifest declares it.
+    pub signal_state: SignalState,
+    /// Compensation source of a conventional panel of raw files; `None` for
+    /// spectral panels and compensated samples.
     pub compensation: Option<CompensationSource>,
 }
 
@@ -135,6 +141,7 @@ impl PreflightRunner {
                         .controls_of(panel)
                         .map(|control| control.dye.clone())
                         .collect(),
+                    signal_state: panel.signal_state,
                     compensation: manifest.compensation_of(panel).cloned(),
                 })
                 .collect(),
@@ -186,8 +193,12 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
         let scope = format!("control {}", control.dye);
         let (file_checks, loaded) = check_file(&scope, &control.file);
         checks.extend(file_checks);
-        if let (Some(dataset), Some(channel)) = (&loaded.dataset, &control.primary_channel) {
-            checks.push(check_primary_channel(&scope, dataset, channel));
+        if let Some(dataset) = &loaded.dataset {
+            // Controls calibrate raw detector values, whatever the samples hold.
+            checks.push(check_signal_state(&scope, dataset, SignalState::Raw));
+            if let Some(channel) = &control.primary_channel {
+                checks.push(check_primary_channel(&scope, dataset, channel));
+            }
         }
         controls.push(loaded);
     }
@@ -209,7 +220,8 @@ fn samples_of<'a>(
     })
 }
 
-/// Markers, calibration and detector configuration of one panel's files.
+/// Signal state, markers, calibration and detector configuration of one
+/// panel's files.
 fn check_panel(
     manifest: &RunManifest,
     panel: &Panel,
@@ -238,6 +250,11 @@ fn check_panel(
         .collect::<Vec<(&ControlEntry, &LoadedFile)>>();
     for loaded in &panel_samples {
         if let Some(dataset) = &loaded.dataset {
+            checks.push(check_signal_state(
+                &loaded.scope,
+                dataset,
+                panel.signal_state,
+            ));
             checks.extend(check_markers(&loaded.scope, dataset, panel));
         }
     }
@@ -248,6 +265,9 @@ fn check_panel(
     if !panel_controls.is_empty() {
         checks.extend(check_control_dyes(&scope, &panel_controls));
     }
+    // Samples compensated or unmixed elsewhere need no calibration, and their
+    // channels need not match the raw controls.
+    let raw = panel.signal_state == SignalState::Raw;
     match manifest.compensation_of(panel) {
         Some(CompensationSource::Fcs) => {
             for loaded in &panel_samples {
@@ -268,7 +288,7 @@ fn check_panel(
                 CheckStatus::Fail,
             ));
         }
-        None => {
+        None if raw => {
             checks.push(check_control_coverage(
                 &scope,
                 panel,
@@ -277,11 +297,17 @@ fn check_panel(
                 CheckStatus::Warn,
             ));
         }
+        None => {}
     }
     let files = panel_samples
         .iter()
         .copied()
-        .chain(panel_controls.iter().map(|(_, loaded)| *loaded))
+        .chain(
+            panel_controls
+                .iter()
+                .filter(|_| raw)
+                .map(|(_, loaded)| *loaded),
+        )
         .collect::<Vec<_>>();
     checks.extend(check_detectors(&files));
     checks

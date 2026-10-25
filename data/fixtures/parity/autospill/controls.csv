@@ -1,0 +1,7 @@
+filename,dye
+ctrl_bv421.fcs,BV421-A
+ctrl_fitc.fcs,FITC-A
+ctrl_pe.fcs,PE-A
+ctrl_pecy7.fcs,PE-Cy7-A
+ctrl_apc.fcs,APC-A
+ctrl_apccy7.fcs,APC-Cy7-A

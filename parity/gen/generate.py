@@ -1,9 +1,12 @@
 """Generate synthetic cytometry datasets with known ground truth for parity runs.
 
-Usage: python generate.py <out_dir>
+Usage: python generate.py <out_dir> [full|smoke]
 
 Every dataset is written under <out_dir>/<tool>/ together with a `truth/`
-directory holding the values the tools are expected to recover.
+directory holding the values the tools are expected to recover. `smoke`
+writes small versions of the datasets whose upstream results are exact or
+deterministic (autospill, autospectral, peacoqc, cytoscan_exact), for the CI
+check in data/fixtures/parity (parity/make_smoke.sh).
 """
 
 from __future__ import annotations
@@ -226,15 +229,25 @@ def gen_pipeline(out: Path, profile: str) -> None:
     pipeline.write(out, data, truth)
 
 
+FULL = [("transform", gen_transform), ("autospill", gen_autospill), ("autospectral", gen_autospectral),
+        ("peacoqc", gen_peacoqc), ("flowsom", gen_flowsom),
+        ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True)),
+        ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
+        ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating),
+        ("pipeline", lambda target: gen_pipeline(target, "full")),
+        ("pipeline_beads", lambda target: gen_pipeline(target, "beads"))]
+# Small enough to commit (about 3 MB), large enough for every gate: the KDE
+# scatter gates want a few thousand events, PeacoQC a few hundred bins' worth.
+SMOKE = [("autospill", lambda target: gen_autospill(target, n_events=3_000)),
+         ("autospectral", lambda target: gen_autospectral(target, n_events=2_000, n_sample=3_000)),
+         ("peacoqc", lambda target: gen_peacoqc(target, n_events=15_000)),
+         ("cytoscan_exact", gen_cytoscan_exact)]
+
+
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "parity/.data")
-    for name, fn in [("transform", gen_transform), ("autospill", gen_autospill), ("autospectral", gen_autospectral),
-                     ("peacoqc", gen_peacoqc), ("flowsom", gen_flowsom),
-                     ("flowsom_hard", lambda target: gen_flowsom(target, n_pop=20, hard=True)),
-                     ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
-                     ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating),
-                     ("pipeline", lambda target: gen_pipeline(target, "full")),
-                     ("pipeline_beads", lambda target: gen_pipeline(target, "beads"))]:
+    profile = sys.argv[2] if len(sys.argv) > 2 else "full"
+    for name, fn in {"full": FULL, "smoke": SMOKE}[profile]:
         target = out / name
         target.mkdir(parents=True, exist_ok=True)
         fn(target)

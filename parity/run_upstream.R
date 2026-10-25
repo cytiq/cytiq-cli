@@ -132,9 +132,9 @@ run_autospectral <- function() {
 
 # ------------------------------------------------------------------ cytoscan
 # Upstream CytoScan (AUMC-HEMA/CytoScan): features via generateFeatures(),
-# outliers via isotree (seed 42 plus 43-44 for the isotree noise band), novelty
-# via mclust::Mclust (default model search and VVV-only, which is what
-# linfa's full-covariance GMM corresponds to).
+# outliers via isotree (seed 42, 1042 and 2042 for the isotree noise band),
+# novelty via mclust::Mclust (the default model search CytoScan uses, and
+# VVV-only), on R's features and on cytiq's.
 cytoscan_features <- function(dataset_dir, method, seed = 42) {
   suppressPackageStartupMessages(library(CytoScan))
   if (seed != 42) {

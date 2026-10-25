@@ -1,0 +1,7 @@
+filename,dye,antigen,wavelength
+ctrl_bv421.fcs,BV421-A,BV421,400
+ctrl_fitc.fcs,FITC-A,FITC,450
+ctrl_pe.fcs,PE-A,PE,500
+ctrl_pecy7.fcs,PE-Cy7-A,PE-Cy7,550
+ctrl_apc.fcs,APC-A,APC,600
+ctrl_apccy7.fcs,APC-Cy7-A,APC-Cy7,650

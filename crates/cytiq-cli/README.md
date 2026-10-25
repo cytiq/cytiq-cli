@@ -31,6 +31,14 @@ just run meta --input data/data.fcs
 cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method logicle
 ```
 
+## Build and distribute
+
+`cargo build --release --locked` produces `target/release/cytiq` and its CPU
+ONNX Runtime in `target/release/lib/`. The runtime is downloaded and verified
+by the build; no Python installation or runtime environment variables are
+needed. Keep `cytiq` and `lib/` together when distributing the build. See the
+root [classify documentation](../../README.md#classify) for supported targets.
+
 ## Shared flag conventions
 
 - `--threads N` caps worker threads; omitted means all logical CPUs, `0` is

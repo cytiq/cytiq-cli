@@ -1310,12 +1310,26 @@ fraction among assessed events; `provenance.json` records the model, input and
 mask hashes. Existing outputs require `--overwrite`.
 
 `--batch-size` defaults to 65536; `--threads` caps ONNX CPU threads. No GPU,
-Python, model registry or network is required for inference. Release archives
-must include the CPU ONNX Runtime 1.25.1 library in `lib/` beside `cytiq`.
-Docker images include it. Build-time packaging is available with the sibling
-`cytiq-ml/scripts/package_classify_runtime.py`; source-tree developers/tests
-can instead set `ORT_DYLIB_PATH` to their installed runtime shared library.
-CI executes both model fixtures on Linux and macOS and checks Docker inference.
+Python, model registry or network is required for inference. `cargo build`
+automatically downloads the official CPU ONNX Runtime 1.25.1 archive, verifies
+its pinned SHA-256 and places the library and licenses in `target/<profile>/lib/`.
+The first build needs HTTPS access to GitHub Releases; later builds reuse the
+verified archive in Cargo's build directory. Supported targets are macOS Apple
+Silicon and Linux x86_64/aarch64 with glibc.
+
+```sh
+cargo build --release --locked
+./target/release/cytiq classify --input data/fixtures/classify/raw.fcs \
+  --model data/fixtures/classify/lightgbm --output classified/
+```
+
+No environment variables or separate runtime installation are needed. The loader
+finds `lib/` relative to `cytiq`, independent of the working directory. When
+copying a binary to another directory or machine, include its `lib/` directory.
+Docker packages these same build outputs. `ORT_DYLIB_PATH` remains an optional
+custom-runtime override. CI executes both model fixtures on Linux and macOS,
+verifies a relocated release build without runtime variables and checks Docker
+inference.
 
 The reusable API is `ClassifyRunner::run(&ClassifyConfig)` in
 [`cytiq-classify`](crates/cytiq-classify). Synthetic fixture generation lives in

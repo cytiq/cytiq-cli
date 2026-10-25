@@ -268,18 +268,29 @@ fn initialize_runtime() -> Result<(), ClassifyError> {
     }
     let executable = std::env::current_exe()?;
     let directory = executable.parent().unwrap_or(Path::new("."));
-    for name in [
-        "libonnxruntime.so",
-        "libonnxruntime.dylib",
-        "onnxruntime.dll",
-    ] {
-        let path = directory.join("lib").join(name);
-        if path.exists() {
-            ort::init_from(path)?.commit();
-            return Ok(());
+    // Cargo puts library tests in deps/ and examples in examples/.
+    let profile = if matches!(
+        directory.file_name().and_then(|s| s.to_str()),
+        Some("deps" | "examples")
+    ) {
+        directory.parent()
+    } else {
+        None
+    };
+    for directory in std::iter::once(directory).chain(profile) {
+        for name in [
+            "libonnxruntime.so",
+            "libonnxruntime.dylib",
+            "onnxruntime.dll",
+        ] {
+            let path = directory.join("lib").join(name);
+            if path.exists() {
+                ort::init_from(path)?.commit();
+                return Ok(());
+            }
         }
     }
     Err(ClassifyError::Invalid(
-        "ONNX Runtime missing: install the release lib/ directory or set ORT_DYLIB_PATH".into(),
+        "ONNX Runtime missing: keep the built lib/ directory beside cytiq or rebuild with cargo build".into(),
     ))
 }

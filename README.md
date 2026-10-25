@@ -499,11 +499,25 @@ Rules:
   `flowFP` probability binning with 4 recursions
 - outlier scores follow `isotree::isolation.forest(sample_size = 1, ntrees =
   1000, ndim = 1)`; files with score `>= 0.5` are outliers
-- novelty fits Gaussian mixtures (`linfa-clustering`, full covariance,
-  `G = 1..9`, mclust-style BIC) on the reference features; test files at or
-  below the 5% quantile of reference log-densities are novelties. When there
-  are no more reference files than features, a single diagonal Gaussian is
-  used instead and reported as a warning
+- novelty fits a Gaussian mixture on the reference features as
+  `mclust::Mclust` does by default: `G = 1..9`, EM started from Ward's
+  hierarchical clustering of the SVD-whitened features (`hc(modelName =
+  "EII", use = "SVD")`), and the best BIC over the covariance structures
+  `EII`, `VII`, `EEI`, `VEI`, `EVI`, `VVI` and, with more reference files
+  than features, `EEE` and `VVV`. Test files at or below the 5% quantile of
+  reference log-densities are novelties. `cytoscan_config.json` records the
+  structure (`novelty_model`, mclust's name), `G` and BIC
+- with no more reference files than features (`summary` has 4 per channel,
+  `quantiles` 9, `binning` 10) only spherical and diagonal structures fit, as
+  in mclust, and the threshold rests on a handful of log-densities: the run
+  warns. Use more reference files than features for a reliable novelty flag
+- the mixture differs from mclust in two ways: it does not try mclust's
+  other full-covariance structures (`VEV`, `EVE`, ...) and starts EM from
+  Ward's clustering where mclust starts from `hcVVV` when there are more
+  files than features; and it rejects a one-component full covariance that is
+  singular up to rounding, which mclust keeps. Binning and fingerprint
+  features sum to 1 per channel, so mclust then fits that covariance and
+  flags every test file
 - low-level algorithm settings such as event sampling, aggregate size,
   isolation tree count, novelty quantile, and fingerprint recursions are fixed
   internal constants for the first public CLI; random draws use `rand` with a

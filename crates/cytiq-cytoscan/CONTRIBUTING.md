@@ -10,8 +10,11 @@ this crate.
 - `src/runner.rs` — config and result types, input resolution (files,
   directories, globs), FCS preprocessing, subsampling, all five feature
   methods, isolation-forest outlier scoring, summary rows; most unit tests.
-- `src/novelty.rs` — Gaussian-mixture novelty model with mclust-style BIC
-  selection and the diagonal fallback; its own unit tests.
+- `src/mixture.rs` — port of `mclust::Mclust`'s default search: `hcEII`
+  start (Ward on SVD-whitened data), EM for `EII` … `VVV`, BIC table and
+  `pickBIC`; unit tests against mclust's BIC table, `hclass` and `dens`.
+- `src/novelty.rs` — the novelty model on top of it: threshold at the 5%
+  quantile of reference log-densities.
 - `src/export.rs` — CSV / JSON outputs, debug artifacts, PCA, Ward-ordered
   heatmap and the Plotly HTML report.
 - `src/error.rs` — `CytoScanError` (`thiserror`).
@@ -52,8 +55,10 @@ cargo test -p cytiq-cli --test cytoscan_cli
 - `src/runner.rs` `#[cfg(test)]` — EMD vs `transport::wasserstein1d`, binning
   vs `cut()`, fingerprint vs flowFP, isotree expected depth and score noise,
   path-independent subsampling, aggregate shares.
-- `src/novelty.rs` `#[cfg(test)]` — mixture fits vs mclust `VVV` / `XXX`,
-  diagonal fallback, determinism.
+- `src/mixture.rs` `#[cfg(test)]` — BIC tables of every structure and `G`
+  vs `Mclust` (`n > d` and `n <= d`), `hclass` partitions, chosen model and
+  log-densities; fixtures from `parity/make_fixtures.R`.
+- `src/novelty.rs` `#[cfg(test)]` — `XXX` densities, determinism, no model.
 - `crates/cytiq-cli/tests/cytoscan_cli.rs` — end-to-end runs for every
   feature method, novelty with reference, debug artifacts, error cases.
 

@@ -139,6 +139,24 @@ fn cli_runs_cytoscan_novelty_with_reference() {
     let config = fs::read_to_string(output_dir.join("cytoscan_config.json"))
         .expect("config json should exist");
     assert!(config.contains("novelty_threshold"));
+    // 4 reference files, 30 binning features: mclust's spherical and
+    // diagonal structures only, with a warning.
+    let config: serde_json::Value = serde_json::from_str(&config).expect("config should be JSON");
+    let diagnostics = &config["diagnostics"];
+    assert!(
+        ["XII", "XXI", "EII", "VII", "EEI", "VEI", "EVI", "VVI"]
+            .contains(&diagnostics["novelty_model"].as_str().unwrap_or_default()),
+        "{diagnostics}"
+    );
+    assert!(diagnostics["novelty_bic"].is_f64(), "{diagnostics}");
+    assert!(
+        diagnostics["warnings"]
+            .as_array()
+            .is_some_and(|warnings| warnings.iter().any(|warning| warning
+                .as_str()
+                .is_some_and(|warning| warning.contains("4 reference file(s) for 30 features")))),
+        "{diagnostics}"
+    );
     assert!(debug_dir.join("reference_features.csv").is_file());
     assert!(debug_dir.join("feature_heatmap.csv").is_file());
     assert!(debug_dir.join("boxplot_samples.csv").is_file());

@@ -90,19 +90,50 @@ fp_counts <- counts(flowFP(flowCore::flowFrame(fp_x), model))
 cat(mat("FINGERPRINT_AGGREGATE", fp_agg), mat("FINGERPRINT_VALUES", fp_x),
     arr("FINGERPRINT_EXPECTED", as.numeric(fp_counts / sum(fp_counts))), file = out)
 
-# mclust::Mclust(modelNames = "VVV"): two clusters (G = 2) and one cluster (XXX)
+# mclust::Mclust(modelNames = "VVV") on one cluster (XXX)
 set.seed(11)
 g_a <- MASS::mvrnorm(120, c(0, 0, 0), matrix(c(1, .5, .2, .5, 1, .3, .2, .3, 1), 3))
 g_b <- MASS::mvrnorm(80, c(5, 4, -3), diag(c(.5, .8, .3)))
 g_x <- round(rbind(g_a, g_b), 6)
-g2 <- Mclust(g_x, modelNames = "VVV", verbose = FALSE)
 g1 <- Mclust(g_x[1:120, ], modelNames = "VVV", verbose = FALSE)
 cat(mat("GMM_POINTS", g_x), file = out)
-cat(sprintf("const GMM_TWO_G: usize = %d;\nconst GMM_TWO_LOGLIK: f64 = %s;\nconst GMM_TWO_BIC: f64 = %s;\n",
-            g2$G, num(g2$loglik), num(g2$bic)), file = out)
-cat(arr("GMM_TWO_LOG_DENSITY", log(dens(g_x, g2$modelName, parameters = g2$parameters))), file = out)
 cat(sprintf("const GMM_ONE_G: usize = %d;\nconst GMM_ONE_LOGLIK: f64 = %s;\n", g1$G, num(g1$loglik)), file = out)
+cat(sprintf("const GMM_ONE_MODEL: &str = \"%s\";\n", g1$modelName), file = out)
 cat(arr("GMM_ONE_LOG_DENSITY", log(dens(g_x[1:120, ], g1$modelName, parameters = g1$parameters))), file = out)
+
+# mclust::Mclust defaults (CytoScan's novelty model): the BIC table of every
+# structure cytiq fits, the chosen model and its log-densities.
+# - GMM_POINTS (n > d), initialised from hc(modelName = "EII", use = "SVD")
+#   as cytiq does; Mclust's own default for n > d starts from hcVVV.
+# - WIDE_POINTS (n <= d), where Mclust itself starts from hcEII and only
+#   tries spherical and diagonal structures.
+opt <- function(v) ifelse(is.na(v), "None", paste0("Some(", num(v), ")"))
+bic_table <- function(name, b, models) {
+  m <- b[, models, drop = FALSE]
+  sprintf("const %s: [[Option<f64>; %d]; %d] = [%s];\n", name, ncol(m), nrow(m),
+          paste(apply(m, 1, function(r) paste0("[", paste(opt(r), collapse = ", "), "]")), collapse = ", "))
+}
+mixture_fixture <- function(prefix, x, fit, models) {
+  cat(sprintf("const %s_MODEL: &str = \"%s\";\nconst %s_G: usize = %d;\nconst %s_BIC: f64 = %s;\nconst %s_LOGLIK: f64 = %s;\n",
+              prefix, fit$modelName, prefix, fit$G, prefix, num(fit$bic), prefix, num(fit$loglik)), file = out)
+  cat(bic_table(paste0(prefix, "_BIC_TABLE"), fit$BIC, models), file = out)
+  cat(arr(paste0(prefix, "_LOG_DENSITY"), log(dens(x, fit$modelName, parameters = fit$parameters))), file = out)
+}
+all_models <- c("EII", "VII", "EEI", "VEI", "EVI", "VVI", "EEE", "VVV")
+g_hc <- hc(g_x, modelName = "EII", use = "SVD")
+g_default <- Mclust(g_x, initialization = list(hcPairs = g_hc), verbose = FALSE)
+mixture_fixture("GMM_DEFAULT", g_x, g_default, all_models)
+set.seed(13)
+w_centres <- rbind(rep(0, 20), c(rep(3, 10), rep(0, 10)), c(rep(0, 10), rep(-3, 10)))
+w_x <- round(do.call(rbind, lapply(1:3, function(k)
+  matrix(rnorm(5 * 20, mean = rep(w_centres[k, ], each = 5), sd = c(1, 0.5, 2)[k]), 5))), 6)
+w_fit <- Mclust(w_x, verbose = FALSE)
+cat(mat("WIDE_POINTS", w_x), file = out)
+mixture_fixture("WIDE", w_x, w_fit, all_models[1:6])
+w_classes <- hclass(hc(w_x, modelName = "EII", use = "SVD"), 2:9)
+cat(sprintf("const WIDE_HCLASS: [[usize; 8]; %d] = [%s];\n", nrow(w_classes),
+            paste(apply(w_classes - 1, 1, function(r) paste0("[", paste(r, collapse = ", "), "]")), collapse = ", ")),
+    file = out)
 
 # isotree::isolation.forest(sample_size = 1, ntrees = 1000, ndim = 1) scores
 set.seed(12)

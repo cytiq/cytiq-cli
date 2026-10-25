@@ -163,8 +163,45 @@ write_features <- function(features, path) {
   write.csv(out, path, row.names = FALSE)
 }
 
+# CytoScan's novelty model (Mclust defaults, plus Mclust(modelNames = "VVV")):
+# `ll_*` as CytoScan computes it, log(dens()), which is -Inf where dens()
+# underflows; `logll_*` the same in log space, dens(logarithm = TRUE).
+write_novelty <- function(ref_features, test_features, target, tag) {
+  novelty <- data.frame(filename = basename(rownames(test_features)))
+  meta <- list()
+  for (models in list(default = NULL, VVV = "VVV")) {
+    key <- if (is.null(models)) "default" else models
+    gmm <- tryCatch(suppressWarnings(Mclust(ref_features, modelNames = models, verbose = FALSE)),
+                    error = function(e) NULL)
+    if (is.null(gmm)) {
+      novelty[[paste0("ll_", key)]] <- NA
+      novelty[[paste0("logll_", key)]] <- NA
+      meta[[key]] <- list(model = NA, G = NA, threshold = NA)
+      next
+    }
+    ll_train <- log(dens(ref_features, gmm$modelName, parameters = gmm$parameters))
+    threshold <- unname(quantile(ll_train, 0.05))
+    novelty[[paste0("ll_", key)]] <- log(dens(test_features, gmm$modelName, parameters = gmm$parameters))
+    novelty[[paste0("logll_", key)]] <- dens(test_features, gmm$modelName, parameters = gmm$parameters,
+                                             logarithm = TRUE)
+    meta[[key]] <- list(model = gmm$modelName, G = gmm$G, bic = gmm$bic, threshold = threshold,
+                        train_ll = ll_train)
+  }
+  write.csv(novelty, file.path(target, paste0("novelty_", tag, ".csv")), row.names = FALSE)
+  jsonlite::write_json(meta, file.path(target, paste0("novelty_", tag, ".json")),
+                       auto_unbox = TRUE, digits = NA)
+}
+
+read_rust_features <- function(path) {
+  table <- read.csv(path, check.names = FALSE)
+  features <- as.matrix(table[, setdiff(names(table), c("filename", "path")), drop = FALSE])
+  rownames(features) <- table$filename
+  features
+}
+
 run_cytoscan <- function() {
   suppressPackageStartupMessages({ library(CytoScan); library(mclust) })
+  rust_dir <- Sys.getenv("PARITY_RUST_OUT", file.path(dirname(out_dir), "rust"))
   for (dataset in c("cytoscan_exact", "cytoscan", "cytoscan_ref100")) {
     dataset_dir <- file.path(data_dir, dataset)
     if (!dir.exists(dataset_dir)) next
@@ -187,26 +224,15 @@ run_cytoscan <- function() {
       outlier <- data.frame(filename = basename(rownames(test_features)), scores, check.names = FALSE)
       write.csv(outlier, file.path(target, paste0("outlier_", tag, ".csv")), row.names = FALSE)
 
-      novelty <- data.frame(filename = basename(rownames(test_features)))
-      meta <- list()
-      for (models in list(default = NULL, VVV = "VVV")) {
-        key <- if (is.null(models)) "default" else models
-        gmm <- tryCatch(suppressWarnings(Mclust(ref_features, modelNames = models, verbose = FALSE)),
-                        error = function(e) NULL)
-        if (is.null(gmm)) {
-          novelty[[paste0("ll_", key)]] <- NA
-          meta[[key]] <- list(model = NA, G = NA, threshold = NA)
-          next
-        }
-        ll_train <- log(dens(ref_features, gmm$modelName, parameters = gmm$parameters))
-        threshold <- unname(quantile(ll_train, 0.05))
-        novelty[[paste0("ll_", key)]] <- log(dens(test_features, gmm$modelName, parameters = gmm$parameters))
-        meta[[key]] <- list(model = gmm$modelName, G = gmm$G, threshold = threshold,
-                            train_ll = ll_train)
+      write_novelty(ref_features, test_features, target, tag)
+      # Mclust on cytiq's own features: the model choice without the
+      # subsample difference (cytiq draws with `rand`, not R's RNG).
+      rust_reference <- file.path(rust_dir, paste0(dataset, "_debug"), tag, "reference_features.csv")
+      rust_test <- file.path(rust_dir, dataset, tag, "cytoscan_features.csv")
+      if (file.exists(rust_reference) && file.exists(rust_test)) {
+        write_novelty(read_rust_features(rust_reference), read_rust_features(rust_test), target,
+                      paste0("rust_features_", tag))
       }
-      write.csv(novelty, file.path(target, paste0("novelty_", tag, ".csv")), row.names = FALSE)
-      jsonlite::write_json(meta, file.path(target, paste0("novelty_", tag, ".json")),
-                           auto_unbox = TRUE, digits = NA)
     }
     if (dataset == "cytoscan") {
       for (seed in c(1, 2)) {

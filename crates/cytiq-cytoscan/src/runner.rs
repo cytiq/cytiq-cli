@@ -26,7 +26,8 @@ use serde::Serialize;
 
 use crate::error::CytoScanError;
 use crate::export::write_outputs;
-use crate::novelty::{self, NoveltyModelKind};
+use crate::mixture::MclustModel;
+use crate::novelty;
 
 pub const DEFAULT_RANDOM_SEED: u64 = 42;
 pub const DEFAULT_EVENTS_PER_FILE: usize = 1_000;
@@ -222,7 +223,8 @@ pub struct CytoScanDiagnostics {
     pub feature_count: usize,
     pub outlier_tree_count: Option<usize>,
     pub novelty_components: Option<usize>,
-    pub novelty_model: Option<NoveltyModelKind>,
+    /// mclust's name of the fitted covariance structure (`VVI`, `XXX`, ...).
+    pub novelty_model: Option<MclustModel>,
     pub novelty_bic: Option<f64>,
     pub novelty_threshold: Option<f64>,
     pub warnings: Vec<String>,
@@ -370,13 +372,14 @@ impl CytoScanRunner {
         };
 
         let mut warnings = collect_warnings(&test_files, &reference_files);
-        if let Some((model, _)) = &novelty
-            && model.kind == NoveltyModelKind::DiagonalFallback
-        {
+        let reference_count = reference_features
+            .as_ref()
+            .map_or(0, |matrix| matrix.rows.len());
+        if novelty.is_some() && reference_count <= test_features.feature_names.len() {
             warnings.push(format!(
-                "novelty: {} reference file(s) cannot support a full-covariance mixture over {} features; used a single diagonal Gaussian",
-                reference_features.as_ref().map_or(0, |matrix| matrix.rows.len()),
-                test_features.feature_names.len()
+                "novelty: {reference_count} reference file(s) for {} features: as in mclust, only spherical and diagonal covariance models can be fitted, and the {}% threshold rests on {reference_count} log-densities; add reference files (more than features) for a reliable novelty flag",
+                test_features.feature_names.len(),
+                DEFAULT_NOVELTY_QUANTILE * 100.0
             ));
         }
         let summary_rows = build_summary_rows(
@@ -404,8 +407,8 @@ impl CytoScanRunner {
                 .includes_outlier()
                 .then_some(DEFAULT_ISOLATION_TREES),
             novelty_components: novelty.as_ref().map(|(model, _)| model.components()),
-            novelty_model: novelty.as_ref().map(|(model, _)| model.kind),
-            novelty_bic: novelty.as_ref().and_then(|(model, _)| model.bic),
+            novelty_model: novelty.as_ref().map(|(model, _)| model.model()),
+            novelty_bic: novelty.as_ref().map(|(model, _)| model.bic()),
             novelty_threshold: novelty.as_ref().map(|(model, _)| model.threshold),
             warnings,
         };

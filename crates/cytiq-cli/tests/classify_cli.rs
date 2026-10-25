@@ -244,3 +244,35 @@ fn incompatible_bundles_fail_without_prediction_files() {
         assert!(!output.join("predictions.parquet").exists());
     }
 }
+
+#[test]
+fn relocated_binary_runs_without_external_runtime() {
+    let temp = tempfile::tempdir().unwrap();
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_cytiq"));
+    let relocated = temp.path().join("cytiq");
+    std::fs::copy(&binary, &relocated).unwrap();
+    for kind in ["catboost", "lightgbm"] {
+        let output = temp.path().join(kind);
+        let result = Command::new(&relocated)
+            .env_remove("ORT_DYLIB_PATH")
+            .env_remove("DYLD_LIBRARY_PATH")
+            .env_remove("LD_LIBRARY_PATH")
+            .current_dir(temp.path())
+            .arg("classify")
+            .arg("--input")
+            .arg(fixtures().join("raw.fcs"))
+            .arg("--model")
+            .arg(fixtures().join(kind))
+            .arg("--output")
+            .arg(&output)
+            .args(["--threads", "1"])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(probabilities(&output).len(), 128);
+    }
+}

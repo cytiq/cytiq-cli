@@ -3,7 +3,7 @@ mod features;
 
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, BooleanArray, Float32Array, RecordBatch, StringArray, UInt64Array};
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub use features::{Feature, Profile, feature_columns};
 
 pub const DEFAULT_BATCH_SIZE: usize = 65_536;
-pub const UPSTREAM: &[(&str, &str)] = &[("ONNX Runtime", "1.25.1")];
+pub const UPSTREAM: &[(&str, &str)] = &[("ONNX Runtime", "1.28.0")];
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClassifyError {
@@ -133,7 +133,6 @@ impl ClassifyRunner {
         let source = cytiq_fcs::source_event_ids(&dataset)?
             .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
         let columns = feature_columns(&dataset, &bundle.profile)?;
-        initialize_runtime()?;
         let mut builder = Session::builder()?;
         if let Some(threads) = config.threads {
             builder = builder
@@ -259,27 +258,4 @@ impl ClassifyRunner {
         }
         Ok(result)
     }
-}
-
-fn initialize_runtime() -> Result<(), ClassifyError> {
-    if let Some(path) = std::env::var_os("ORT_DYLIB_PATH") {
-        ort::init_from(PathBuf::from(path))?.commit();
-        return Ok(());
-    }
-    let executable = std::env::current_exe()?;
-    let directory = executable.parent().unwrap_or(Path::new("."));
-    for name in [
-        "libonnxruntime.so",
-        "libonnxruntime.dylib",
-        "onnxruntime.dll",
-    ] {
-        let path = directory.join("lib").join(name);
-        if path.exists() {
-            ort::init_from(path)?.commit();
-            return Ok(());
-        }
-    }
-    Err(ClassifyError::Invalid(
-        "ONNX Runtime missing: install the release lib/ directory or set ORT_DYLIB_PATH".into(),
-    ))
 }

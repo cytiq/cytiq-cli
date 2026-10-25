@@ -82,27 +82,19 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Set up Python for ONNX Runtime
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-
-      - name: Install CPU ONNX Runtime for inference tests
-        run: |
-          python -m venv "$RUNNER_TEMP/ort-venv"
-          "$RUNNER_TEMP/ort-venv/bin/pip" install onnxruntime==1.25.1
-          "$RUNNER_TEMP/ort-venv/bin/python" - <<'PYTHON'
-          import os
-          from pathlib import Path
-          import onnxruntime
-          capi = Path(onnxruntime.__file__).parent / 'capi'
-          library = list(capi.glob('libonnxruntime.so.*')) + list(capi.glob('libonnxruntime.*.dylib'))
-          with open(os.environ['GITHUB_ENV'], 'a') as stream:
-              stream.write(f'ORT_DYLIB_PATH={library[0]}\n')
-          PYTHON
-
       - name: Run tests
         run: cargo test --workspace --locked
+
+      - name: Verify classification with a relocated build and no runtime environment
+        run: |
+          cargo build -p cytiq-cli --release --locked
+          mkdir -p "$RUNNER_TEMP/cytiq-dist"
+          cp target/release/cytiq "$RUNNER_TEMP/cytiq-dist/"
+          env -u ORT_DYLIB_PATH -u DYLD_LIBRARY_PATH -u LD_LIBRARY_PATH \
+            "$RUNNER_TEMP/cytiq-dist/cytiq" classify \
+            --input data/fixtures/classify/raw.fcs \
+            --model data/fixtures/classify/lightgbm \
+            --output "$RUNNER_TEMP/relocated-classification" --threads 1
 
   docker:
     name: docker

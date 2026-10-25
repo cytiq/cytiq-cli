@@ -20,7 +20,88 @@ Current workspace crates:
 - `cytiq-manifest`: the run manifest (YAML/JSON): cytometry type, panels, samples, controls, QC policy
 - `cytiq-preflight`: manifest and FCS checks before any computation
 - `cytiq-qc`: panel QC policy checked on a sample's final event mask
+- `cytiq-classify`: panel-specific ONNX classification of events
 - `cytiq-cli`: command-line entry point
+
+## Pipeline
+
+How the stages connect for one sample, with the command and the crate behind
+each box. Solid arrows carry FCS files and matrices; dotted arrows carry
+per-event masks (see [Masks](#masks)). The order follows the typical chain in
+[Masks](#masks) and the input checks in its stage table. `gate` and
+`classify` also take the raw FCS and compensate and transform it themselves.
+
+```mermaid
+flowchart TB
+    subgraph inputs["Inputs"]
+        direction LR
+        manifest[/"run manifest<br/>run.yaml"/]
+        controls[/"single-stain controls"/]
+        raw[/"raw sample FCS"/]
+    end
+
+    subgraph checks["Checks before computation"]
+        direction LR
+        preflight["preflight<br/>cytiq-preflight"]
+        meta["meta<br/>cytiq-meta"]
+        cytoscan["cytoscan (cohort)<br/>cytiq-cytoscan"]
+    end
+
+    subgraph signal["Compensation or unmixing"]
+        autospill["autospill / autospread<br/>cytiq-autospill"]
+        compensate["compensate<br/>cytiq-compensate"]
+        autospectral["autospectral<br/>cytiq-autospectral"]
+    end
+
+    transform["transform<br/>cytiq-transform"]
+
+    subgraph events["Event filtering"]
+        peacoqc["peacoqc<br/>cytiq-peacoqc"]
+        clean["clean<br/>cytiq-clean"]
+        combine["mask combine<br/>cytiq-mask"]
+    end
+
+    qc["qc (panel policy)<br/>cytiq-qc"]
+
+    subgraph analysis["Analysis"]
+        direction LR
+        gate["gate<br/>cytiq-gating"]
+        flowsom["flowsom<br/>cytiq-flowsom"]
+        classify["classify<br/>cytiq-classify"]
+    end
+
+    inputs --> checks
+    checks ~~~ signal
+    preflight ~~~ meta ~~~ cytoscan
+    gate ~~~ flowsom ~~~ classify
+
+    controls --> autospill
+    autospill -->|"compensation.csv"| compensate
+    raw -->|"conventional"| compensate
+    controls --> autospectral
+    raw -->|"spectral"| autospectral
+
+    compensate -->|"comp.fcs"| transform
+    autospectral -->|"unmixed.fcs"| transform
+    transform -->|"t.fcs"| peacoqc
+    raw -->|"raw scatter and viability"| clean
+
+    compensate -.->|"margin_pass"| combine
+    autospectral -.->|"margin_pass"| combine
+    peacoqc -.->|"peacoqc_pass"| combine
+    clean -.->|"non_debris, singlets, live"| combine
+
+    combine -.->|"analysis mask"| qc
+    combine -.->|"analysis mask"| analysis
+    transform -->|"t.fcs"| analysis
+```
+
+Shared library crates sit under every stage and are not drawn: `cytiq-fcs`
+reads and writes all FCS files, `cytiq-mask` reads and writes the masks,
+`cytiq-density` holds the kernel density and FSC/SSC gate used by `autospill`,
+`autospectral`, `clean` and `peacoqc`, `cytiq-manifest` parses the run
+manifest for `preflight` and `qc`, and `cytiq-provenance` writes the
+provenance record of every command (see [Provenance](#provenance)).
 
 ## AutoSpill
 

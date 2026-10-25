@@ -345,6 +345,12 @@ Rules:
   `$PnE=0,0`. Changed values are rounded to f32; unchanged channels keep their
   exact values, so the output uses doubles when one of them (an `Original_ID`
   above 2^24, 32-bit integer data) does not fit f32
+- `compensate` is the stage that writes log-amplified input (`$PnE` other
+  than `0,0`, from analog log amplifiers) linear; `gate` and `clean` linearise
+  it as they read. `transform`, `peacoqc`, `flowsom`, `cytoscan`, `autospill`
+  and `autospectral` read stored values, so they refuse a file with a
+  log-amplified parameter instead of treating log channel numbers as
+  intensities: run them on the output of `compensate`
 - the output records `CYTIQ_COMPENSATION` (matrix source and channels) and
   keeps the source matrix only as `CYTIQ_SOURCE_SPILL`, so later stages do
   not compensate again. An input that `cytiq compensate` already compensated,
@@ -925,6 +931,9 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
 [`cytiq-preflight`](crates/cytiq-preflight/README.md)):
 - every file parses, has events, and is raw: files already processed by
   `cytiq transform`, `compensate` or `autospectral` fail
+- log-amplified parameters (`$PnE` other than `0,0`) fail in controls and in
+  spectral samples, which `autospill` and `autospectral` read as stored, and
+  warn in conventional samples, which `cytiq compensate` writes linear
 - every required marker of a sample's panel maps to exactly one channel
   (`$PnS` or `$PnN`; a marker found on several channels fails)
 - the samples and controls of each panel share one detector set (`$PnN`);

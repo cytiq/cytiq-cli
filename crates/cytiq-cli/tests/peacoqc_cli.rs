@@ -512,3 +512,23 @@ fn create_temp_dir(label: &str) -> PathBuf {
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
 }
+
+/// The cleaned FCS would declare `$PnE=0,0` over log channel numbers.
+#[test]
+fn cli_rejects_log_amplified_peacoqc_input() {
+    let directory = create_temp_dir("cytiq-cli-peacoqc-log");
+    let input = directory.join("sample.fcs");
+    let output_path = directory.join("sample.peacoqc.fcs");
+    write_peacoqc_fixture_fcs(&input);
+    common::set_log_amplified(&input, "355_378/28_uH-A");
+
+    let output = run_peacoqc(&input, &output_path, None);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`355_378/28_uH-A` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+    assert!(!output_path.exists());
+}

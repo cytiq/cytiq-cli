@@ -511,3 +511,31 @@ fn create_temp_dir(label: &str) -> PathBuf {
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
 }
+
+#[test]
+fn cli_rejects_log_amplified_cytoscan_input() {
+    let directory = create_temp_dir("cytiq-cli-cytoscan-log");
+    let input_dir = directory.join("test");
+    write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
+    common::set_log_amplified(&input_dir.join("sample_01.fcs"), "FL1-A");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "cytoscan",
+            "--input",
+            utf8(&input_dir),
+            "--output",
+            utf8(&directory.join("out")),
+            "--channels",
+            "CD3,CD4",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("sample_01.fcs") && stderr.contains("`FL1-A` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+}

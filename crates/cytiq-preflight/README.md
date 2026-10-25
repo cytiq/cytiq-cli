@@ -18,6 +18,7 @@ fails; failures and warnings are also logged.
 | `events` | every file | the file has no events | |
 | `raw_signal` | every file | `cytiq transform`, `compensate` or `autospectral` already processed it | |
 | `acquisition_metadata` | every file | | `$CYT` or `$DATE` is missing |
+| `linear_scale` | every file | a control, or a sample of a spectral run, has a log-amplified parameter (`$PnE` other than `0,0`): `autospill` and `autospectral` refuse it | a conventional sample has one: `cytiq compensate` writes it linear, the other stages refuse it raw |
 | `panel_marker` | samples | a required marker matches no channel, or several | an optional marker is missing; `channel`'s `$PnS` names another marker |
 | `unique_labels` | samples | | two channels share a `$PnS` |
 | `spillover` | samples of a conventional panel with `source: fcs` (the default) | no, invalid, mismatched or singular spillover matrix | its 1-norm condition number exceeds `SPILLOVER_CONDITION_WARN` (100) |

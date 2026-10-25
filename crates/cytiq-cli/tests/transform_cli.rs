@@ -662,3 +662,22 @@ fn create_temp_dir(label: &str) -> PathBuf {
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("path should be valid utf-8")
 }
+
+#[test]
+fn cli_rejects_log_amplified_input() {
+    let directory = create_temp_dir("cytiq-cli-transform-log");
+    let input = directory.join("sample.fcs");
+    let output_path = directory.join("sample.transformed.fcs");
+    write_transform_fixture_fcs(&input, 0.0);
+    common::set_log_amplified(&input, "FL1-A");
+
+    let output = run_transform(&[utf8(&input), "--output", utf8(&output_path)]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`FL1-A` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+    assert!(!output_path.exists());
+}

@@ -429,3 +429,37 @@ fn checks_each_sample_against_its_own_panel() {
     assert_eq!(panels[1]["samples"][0], "S02");
     assert!(panels[1]["controls"].as_array().is_some_and(Vec::is_empty));
 }
+
+#[test]
+fn reports_log_amplified_samples_and_controls() {
+    let directory = create_temp_dir("cytiq-cli-preflight-log");
+    let sample_path = directory.join("sample.fcs");
+    let control_path = directory.join("control.fcs");
+    fs::copy(fixture("sample.fcs"), &sample_path).expect("fixture should copy");
+    fs::copy(fixture("control.fcs"), &control_path).expect("fixture should copy");
+    common::set_log_amplified(&sample_path, "FL1-A");
+    common::set_log_amplified(&control_path, "FL1-A");
+    let text = manifest(&sample("S01", &sample_path), MARKERS)
+        .replace(utf8(&fixture("control.fcs")), utf8(&control_path));
+
+    let (output, report, _) = preflight(&directory, "run.yaml", &text);
+
+    // `cytiq compensate` linearises conventional samples; controls are read
+    // as stored by `cytiq autospill`.
+    assert!(!output.status.success());
+    assert_eq!(
+        failed_checks(&report),
+        [r#""control Autofluorescence" "linear_scale""#]
+    );
+    let sample_check = checks_named(&report, "linear_scale")
+        .into_iter()
+        .find(|check| check["scope"] == "sample S01")
+        .expect("sample linear_scale check");
+    assert_eq!(sample_check["status"], "warn");
+    assert!(
+        sample_check["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("`FL1-A` store log-amplified values")),
+        "{sample_check}"
+    );
+}

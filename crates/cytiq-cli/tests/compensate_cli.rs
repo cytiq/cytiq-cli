@@ -411,3 +411,44 @@ fn refuses_to_compensate_unmixed_input() {
         "{stderr}"
     );
 }
+
+/// `compensate` is the stage that linearises `$PnE` log amplification, so
+/// the stages that refuse log-amplified input run on its output.
+#[test]
+fn linearises_log_amplified_input_for_later_stages() {
+    let directory = create_temp_dir("cytiq-cli-compensate-log");
+    let input = directory.join("sample.fcs");
+    let output = directory.join("sample.comp.fcs");
+    fs::copy(fixture("gating", "sample.fcs"), &input).expect("fixture should copy");
+    common::set_log_amplified(&input, "FL1-A");
+
+    compensate(&input, &output, &[]);
+
+    let raw = read(&input);
+    let compensated = read(&output);
+    assert_eq!(cytiq_fcs::log_amplified_parameters(&raw), ["FL1-A"]);
+    assert_eq!(
+        cytiq_fcs::log_amplified_parameters(&compensated),
+        Vec::<&str>::new()
+    );
+    let linear = ["FL1-A", "FL2-A", "FL3-A"]
+        .iter()
+        .map(|name| cytiq_fcs::linear_values(&raw, raw.find_parameter(name).unwrap()))
+        .collect::<Vec<_>>();
+    let spillover = cytiq_fcs::Spillover::from_dataset(&raw).unwrap().unwrap();
+    let expected = cytiq_fcs::compensate(&linear, &spillover.compensation_matrix().unwrap());
+    for (actual, expected) in f32_column(&compensated, "FL1-A").iter().zip(&expected[0]) {
+        assert!(
+            (f64::from(*actual) - expected).abs() <= expected.abs() * 1.0e-6 + 1.0e-6,
+            "FL1-A: {actual} vs {expected}"
+        );
+    }
+
+    run(&[
+        "transform",
+        "--input",
+        utf8(&output),
+        "--output",
+        utf8(&directory.join("sample.t.fcs")),
+    ]);
+}

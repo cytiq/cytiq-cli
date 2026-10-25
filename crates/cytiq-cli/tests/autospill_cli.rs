@@ -346,3 +346,29 @@ fn run_output(args: &[&str]) -> Output {
         .output()
         .expect("command should run")
 }
+
+#[test]
+fn cli_rejects_log_amplified_controls() {
+    let directory = support::copy_autospill_fixture_set("cytiq-cli-log-control");
+    common::set_log_amplified(&directory.join("control_a.fcs"), "FL1-A");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospill",
+            "--controls",
+            utf8(&directory.join("controls.csv")),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("matrix.csv")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("control_a.fcs") && stderr.contains("`FL1-A` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+}

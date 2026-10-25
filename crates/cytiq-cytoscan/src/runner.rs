@@ -668,6 +668,7 @@ fn load_processed_file(
     debug!("loading FCS file {}", path.display());
     let dataset = FcsReader::open(path)
         .and_then(FcsReader::read)
+        .and_then(|dataset| cytiq_fcs::ensure_linear_scale(&dataset).map(|()| dataset))
         .map_err(|source| CytoScanError::FcsRead {
             path: path.to_path_buf(),
             source,

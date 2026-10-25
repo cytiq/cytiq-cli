@@ -1,13 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cytiq_manifest::{CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry};
+use cytiq_manifest::{
+    CompensationSource, ControlEntry, Cytometry, Panel, RunManifest, SampleEntry,
+};
 use log::{debug, info};
 use serde::Serialize;
 
 use crate::checks::{
     Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
-    check_file, check_markers, check_matrix, check_primary_channel, check_spillover, panel_scope,
+    check_file, check_linear_scale, check_markers, check_matrix, check_primary_channel,
+    check_spillover, panel_scope,
 };
 use crate::error::PreflightError;
 
@@ -175,10 +178,21 @@ impl PreflightReport {
 fn run_checks(manifest: &RunManifest) -> Vec<Check> {
     let mut checks = Vec::new();
     // Each file is read once; panels refer to them by position.
+    // `cytiq compensate` linearises conventional samples before the stages
+    // that read stored values; `cytiq autospectral` reads spectral samples and
+    // controls as stored.
+    let sample_log_status = match manifest.cytometry {
+        Cytometry::Conventional => CheckStatus::Warn,
+        Cytometry::Spectral => CheckStatus::Fail,
+    };
     let mut samples = Vec::with_capacity(manifest.samples.len());
     for sample in &manifest.samples {
-        let (file_checks, loaded) = check_file(&format!("sample {}", sample.id), &sample.file);
+        let scope = format!("sample {}", sample.id);
+        let (file_checks, loaded) = check_file(&scope, &sample.file);
         checks.extend(file_checks);
+        if let Some(dataset) = &loaded.dataset {
+            checks.push(check_linear_scale(&scope, dataset, sample_log_status));
+        }
         samples.push(loaded);
     }
     let mut controls = Vec::with_capacity(manifest.controls.len());
@@ -186,8 +200,11 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
         let scope = format!("control {}", control.dye);
         let (file_checks, loaded) = check_file(&scope, &control.file);
         checks.extend(file_checks);
-        if let (Some(dataset), Some(channel)) = (&loaded.dataset, &control.primary_channel) {
-            checks.push(check_primary_channel(&scope, dataset, channel));
+        if let Some(dataset) = &loaded.dataset {
+            checks.push(check_linear_scale(&scope, dataset, CheckStatus::Fail));
+            if let Some(channel) = &control.primary_channel {
+                checks.push(check_primary_channel(&scope, dataset, channel));
+            }
         }
         controls.push(loaded);
     }

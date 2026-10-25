@@ -32,7 +32,7 @@ pub use crate::compensation::{
 };
 pub use crate::error::FcsError as Error;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
-pub use crate::linear::linear_values;
+pub use crate::linear::{ensure_linear_scale, linear_values, log_amplified_parameters};
 pub use crate::margins::{
     MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds, raw_margin_pass,
     recorded_margin_bounds,

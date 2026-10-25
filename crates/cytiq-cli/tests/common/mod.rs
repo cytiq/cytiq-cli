@@ -55,6 +55,30 @@ pub fn acquisition_of(path: &Path) -> String {
     cytiq_fcs::acquisition_id(path, &dataset.text).expect("acquisition should resolve")
 }
 
+/// Rewrite `path` with `channel` stored log-amplified (`$PnE=4,1`, four
+/// decades), as analog instruments with log amplifiers recorded it. The
+/// writer only emits `$PnE=0,0`, so the TEXT is patched in place: same length,
+/// same offsets.
+pub fn set_log_amplified(path: &Path, channel: &str) {
+    let dataset = cytiq_fcs::FcsReader::open(path)
+        .and_then(cytiq_fcs::FcsReader::read)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    let number = dataset.parameters[dataset
+        .find_parameter(channel)
+        .unwrap_or_else(|| panic!("{} has no channel `{channel}`", path.display()))]
+    .index;
+    // Rewritten by the cytiq writer, whatever wrote the source.
+    add_keyword(path, "$COM", "log-amplified test copy");
+    let mut bytes = fs::read(path).expect("rewritten FCS should read");
+    let linear = format!("$P{number}E|0,0|").into_bytes();
+    let start = bytes
+        .windows(linear.len())
+        .position(|window| window == linear)
+        .expect("the writer declares `$PnE=0,0`");
+    bytes[start..start + linear.len()].copy_from_slice(format!("$P{number}E|4,1|").as_bytes());
+    fs::write(path, bytes).expect("patched FCS should write");
+}
+
 /// Rewrite `path` with an extra TEXT keyword, for example a `CYTIQ_*` signal
 /// state as if a cytiq stage had produced the file.
 pub fn add_keyword(path: &Path, key: &str, value: &str) {

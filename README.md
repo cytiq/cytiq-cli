@@ -1280,3 +1280,44 @@ just verify
 Release builds use full LTO, one codegen unit, stripped symbols, and aborting panics for optimized CLI binaries.
 
 `just verify` runs formatting, `cargo check`, `clippy`, and the full test suite.
+
+## Classify
+
+`cytiq classify` applies a panel-specific supervised model exported by `cytiq-ml`.
+The first profile is FACSCanto II P1, reproducing expert Blast annotations in
+BLAST110. The Blast phenotype does not imply a leukemic/LAIP-positive cell.
+
+```bash
+cytiq classify --input sample.fcs --model p1-bundle/ --output classified/
+cytiq classify --input sample.fcs --model p1-bundle/ --output classified/ --mask qc.masks.parquet --abstain-margin 0.05
+```
+
+The model bundle v1 includes `model.onnx` and a manifest declaring instrument,
+channels/marker aliases, preprocessing, class order, checksum and threshold.
+The runner validates the panel and model hash, linearises raw FCS signals,
+compensates from the spillover matrix and applies fluorescence arcsinh(x/150).
+Compatible Cytiq compensated/transformed inputs skip steps already recorded;
+incompatible transforms are errors. Third-party processed files without Cytiq
+state are outside the contract: inputs without Cytiq state are treated as raw.
+
+`predictions.parquet` preserves all input events, with `event_id` and
+`source_event_id` (both 0-based), `assessed`, nullable `p_non_blast`, `p_blast` and
+`label`. The Parquet metadata records acquisition identity and schema version.
+Masked events have null predictions. Default labels are blast/non_blast; a
+positive abstain margin emits unknown around the saved threshold. This band is
+not an out-of-distribution detector. `summary.json` reports counts and Blast
+fraction among assessed events; `provenance.json` records the model, input and
+mask hashes. Existing outputs require `--overwrite`.
+
+`--batch-size` defaults to 65536; `--threads` caps ONNX CPU threads. No GPU,
+Python, model registry or network is required for inference. Release archives
+must include the CPU ONNX Runtime 1.25.1 library in `lib/` beside `cytiq`.
+Docker images include it. Build-time packaging is available with the sibling
+`cytiq-ml/scripts/package_classify_runtime.py`; source-tree developers/tests
+can instead set `ORT_DYLIB_PATH` to their installed runtime shared library.
+CI executes both model fixtures on Linux and macOS and checks Docker inference.
+
+The reusable API is `ClassifyRunner::run(&ClassifyConfig)` in
+[`cytiq-classify`](crates/cytiq-classify). Synthetic fixture generation lives in
+`cytiq-ml/scripts/generate_classify_fixture.py`; never regenerate fixtures simply
+to hide a parity failure. `cytiq gate` continues to apply GatingML strategies.

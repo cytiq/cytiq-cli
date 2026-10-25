@@ -67,8 +67,11 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
-    name: test
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -78,6 +81,20 @@ jobs:
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Install CPU ONNX Runtime for inference tests
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ort-venv"
+          "$RUNNER_TEMP/ort-venv/bin/pip" install onnxruntime==1.25.1
+          "$RUNNER_TEMP/ort-venv/bin/python" - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import onnxruntime
+          capi = Path(onnxruntime.__file__).parent / 'capi'
+          library = list(capi.glob('libonnxruntime.so.*')) + list(capi.glob('libonnxruntime.*.dylib'))
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write(f'ORT_DYLIB_PATH={library[0]}\n')
+          PYTHON
 
       - name: Run tests
         run: cargo test --workspace --locked
@@ -97,3 +114,10 @@ jobs:
 
       - name: Smoke-test the image
         run: docker run --rm cytiq:ci --help
+
+      - name: Smoke-test model inference in the image
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/data/fixtures/classify:/fixtures:ro"
+          cytiq:ci classify --input /fixtures/raw.fcs
+          --model /fixtures/catboost --output /tmp/classified

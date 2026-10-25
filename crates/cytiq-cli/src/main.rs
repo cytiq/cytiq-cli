@@ -260,6 +260,25 @@ enum Commands {
         #[arg(long)]
         allow_uncompensated: bool,
     },
+    /// Classify FCS events using a panel-specific ONNX model bundle.
+    Classify {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        #[arg(long, default_value_t = cytiq_classify::DEFAULT_BATCH_SIZE, value_parser = parse_threads)]
+        batch_size: usize,
+        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative_f64)]
+        abstain_margin: f64,
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Apply a Gating-ML 2.0 gating strategy to an FCS file and report per-gate counts.
     Gate {
         /// Input FCS file.
@@ -1171,6 +1190,52 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             record_provenance(recorder, &outputs, &record_path)
         }
+        Commands::Classify {
+            input,
+            model,
+            output,
+            masks,
+            threads,
+            batch_size,
+            abstain_margin,
+            overwrite,
+        } => {
+            let config = cytiq_classify::ClassifyConfig {
+                input,
+                model,
+                output,
+                masks,
+                threads,
+                batch_size,
+                #[allow(clippy::cast_possible_truncation)]
+                abstain_margin: abstain_margin as f32,
+                overwrite,
+            };
+            info!("starting classify: {}", config.input.display());
+            recorder.snapshot_inputs("input", std::slice::from_ref(&config.input))?;
+            recorder.snapshot_inputs(
+                "model",
+                &[
+                    config.model.join("model.onnx"),
+                    config.model.join("manifest.json"),
+                ],
+            )?;
+            recorder.snapshot_inputs("mask", &config.masks)?;
+            recorder.set_algorithms(cytiq_classify::UPSTREAM);
+            let result = cytiq_classify::ClassifyRunner::run(&config)?;
+            info!(
+                "classified {} of {} events; {} blast, {} unknown",
+                result.assessed, result.events, result.blast, result.unknown
+            );
+            record_provenance(
+                recorder,
+                &[
+                    config.output.join("predictions.parquet"),
+                    config.output.join("summary.json"),
+                ],
+                &record_path_for_dir(&config.output),
+            )
+        }
         Commands::Gate {
             input,
             gating_ml,
@@ -1507,6 +1572,7 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Peacoqc { .. } => "peacoqc",
         Commands::Cytoscan { .. } => "cytoscan",
         Commands::Transform { .. } => "transform",
+        Commands::Classify { .. } => "classify",
         Commands::Gate { .. } => "gate",
         Commands::Mask(MaskCommand::Combine { .. }) => "mask combine",
         Commands::Meta { .. } => "meta",

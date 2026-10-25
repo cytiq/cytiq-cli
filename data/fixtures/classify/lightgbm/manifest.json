@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "threshold": 0.5,
+  "profile": {
+    "panel": "P1",
+    "instrument": "FACSCantoII",
+    "recipe": "cytiq-fcm-arcsinh-v1",
+    "cofactor": 150.0,
+    "features": [
+      {
+        "name": "FSC_A",
+        "channel": "FSC-A",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "FSC_H",
+        "channel": "FSC-H",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "SSC_A",
+        "channel": "SSC-A",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "SSC_H",
+        "channel": "SSC-H",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "CD7",
+        "channel": "FITC-A",
+        "labels": [
+          "CD7"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD56",
+        "channel": "PE-A",
+        "labels": [
+          "CD56"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD34",
+        "channel": "PerCP-A",
+        "labels": [
+          "CD34",
+          "CD34 Cy55"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD117",
+        "channel": "PC7-A",
+        "labels": [
+          "CD117"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD33",
+        "channel": "APC-A",
+        "labels": [
+          "CD33"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "HLA_DR",
+        "channel": "APC-H7-A",
+        "labels": [
+          "HLA-DR"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD13",
+        "channel": "Horizon V450-A",
+        "labels": [
+          "CD13",
+          "CD13 BV421"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD45",
+        "channel": "Horizon V500-A",
+        "labels": [
+          "CD45 KO",
+          "CD45"
+        ],
+        "fluorescence": true
+      }
+    ]
+  },
+  "run_id": "synthetic-fixture",
+  "model_kind": "lightgbm",
+  "classes": [
+    "non_blast",
+    "blast"
+  ],
+  "input": "features",
+  "output": "probabilities",
+  "model_sha256": "f7c8c4e27f5abfca2c79d378d4f3d2ec2500fae3be4902fa9c0f5431bcea03f2",
+  "parity": {
+    "status": "ok",
+    "max_probability_error": 7.282182556966887e-08,
+    "same_labels": true,
+    "events": 128,
+    "tolerance": 1e-05,
+    "cpu_seconds_per_1000": 8.287815944640897e-05,
+    "float32_thresholds_corrected": 20
+  }
+}

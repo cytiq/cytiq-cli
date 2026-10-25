@@ -17,6 +17,7 @@ live in the library crates listed below.
 | `cytiq qc` | [`cytiq-qc`](../cytiq-qc) | Check a sample's final event mask against its panel's QC policy | [QC](../../README.md#qc) |
 | `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask) | Combine per-event masks of one acquisition | [Masks](../../README.md#masks) |
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan) | File-level anomaly detection over a cohort | [CytoScan](../../README.md#cytoscan) |
+| `cytiq classify` | [`cytiq-classify`](../cytiq-classify) | Supervised panel-specific event classification | [Classify](../../README.md#classify) |
 | `cytiq gate` | [`cytiq-gating`](../cytiq-gating) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership | [Gating](../../README.md#gating) |
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean) | Debris, doublet and dead-cell removal as per-event masks | [Clean](../../README.md#clean) |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc) | Peak-based acquisition quality control | [PeacoQC](../../README.md#peacoqc) |
@@ -40,10 +41,10 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
   required). `transform` takes `--channels` / `--exclude-channels` only.
 - Numeric flags are validated at parse time (positive, non-negative or finite,
   depending on the flag).
-- `--overwrite` exists only on `transform`, `meta`, `compensate` and
+- `--overwrite` exists on `classify`, `transform`, `meta`, `compensate` and
   `mask combine`; other commands follow the output rules of their library
   crate.
-- `--mask FILE` (repeatable) restricts `gate`, `flowsom` and `clean` to events
+- `--mask FILE` (repeatable) restricts `classify`, `gate`, `flowsom` and `clean` to events
   every mask keeps; see [Masks](../../README.md#masks).
 
 ## Provenance

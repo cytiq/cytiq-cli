@@ -18,8 +18,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo build -p cytiq-cli --release --locked \
-    && install -D -m 0755 target/release/cytiq /out/cytiq \
-    && cp -a target/release/lib /out/lib
+    && install -D -m 0755 target/release/cytiq /out/cytiq
 
 # ---- Runtime -----------------------------------------------------------------
 FROM debian:trixie-slim AS runtime
@@ -30,7 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libg
 RUN useradd --system --uid 10001 --user-group --home-dir /data --create-home cytiq
 
 COPY --from=builder /out/cytiq /usr/local/bin/cytiq
-COPY --from=builder /out/lib /usr/local/bin/lib/
 
 USER cytiq
 WORKDIR /data

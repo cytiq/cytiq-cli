@@ -19,15 +19,13 @@ Third-party processed FCS without verifiable Cytiq signal state are outside the
 contract. Files without Cytiq state are interpreted as raw, as declared by the
 dataset profile. A model is only supported for its declared instrument and panel.
 
-`cargo build` and `cargo test` automatically download the official ONNX Runtime
-1.25.1 CPU archive, verify its pinned SHA-256 and stage the runtime and licenses
-in `target/<profile>/lib/`. Supported targets are macOS Apple Silicon and Linux
-x86_64/aarch64 with glibc. The first build needs HTTPS access to GitHub Releases;
-subsequent builds reuse the verified archive in Cargo's build directory.
+ONNX Runtime 1.28.0 is linked statically by `ort` 2.0.0-rc.13 using its
+`download-binaries` feature. The crate handles downloading, SHA-256 verification
+and caching the prebuilt library during Cargo builds; no project download script
+is needed. The first build needs HTTPS access to the upstream binary CDN.
 
-The runtime is found relative to the executable, independent of the working
-directory. No environment variables, Python or network access are required for
-inference. When moving a binary, copy its `lib/` directory with it. The optional
-`ORT_DYLIB_PATH` override remains available for custom runtime installations.
-Test using `cargo test -p cytiq-classify` and
+The built executable runs without Python, runtime environment variables or a
+separate ONNX Runtime installation. Moving `cytiq` alone is sufficient on the
+supported macOS Apple Silicon and Linux x86_64/aarch64 targets; standard OS
+libraries remain required. Test using `cargo test -p cytiq-classify` and
 `cargo test -p cytiq-cli --test classify_cli`.

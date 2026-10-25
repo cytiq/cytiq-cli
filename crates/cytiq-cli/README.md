@@ -33,11 +33,11 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
 
 ## Build and distribute
 
-`cargo build --release --locked` produces `target/release/cytiq` and its CPU
-ONNX Runtime in `target/release/lib/`. The runtime is downloaded and verified
-by the build; no Python installation or runtime environment variables are
-needed. Keep `cytiq` and `lib/` together when distributing the build. See the
-root [classify documentation](../../README.md#classify) for supported targets.
+`cargo build --release --locked` produces `target/release/cytiq` with ONNX
+Runtime linked statically. The `ort` dependency downloads and caches its prebuilt
+runtime during the build. The executable needs no Python, runtime environment
+variables or companion `lib/` directory. See the root
+[classify documentation](../../README.md#classify) for supported targets.
 
 ## Shared flag conventions
 

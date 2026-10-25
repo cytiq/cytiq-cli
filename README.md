@@ -1310,12 +1310,11 @@ fraction among assessed events; `provenance.json` records the model, input and
 mask hashes. Existing outputs require `--overwrite`.
 
 `--batch-size` defaults to 65536; `--threads` caps ONNX CPU threads. No GPU,
-Python, model registry or network is required for inference. `cargo build`
-automatically downloads the official CPU ONNX Runtime 1.25.1 archive, verifies
-its pinned SHA-256 and places the library and licenses in `target/<profile>/lib/`.
-The first build needs HTTPS access to GitHub Releases; later builds reuse the
-verified archive in Cargo's build directory. Supported targets are macOS Apple
-Silicon and Linux x86_64/aarch64 with glibc.
+Python, model registry or network is required for inference. `ort` 2.0.0-rc.13
+uses its built-in `download-binaries` feature to download, verify and cache
+ONNX Runtime 1.28.0 during Cargo builds. ONNX Runtime is linked statically into
+`cytiq`; no project download script or separate runtime library is required.
+The first build needs HTTPS access to the upstream binary CDN.
 
 ```sh
 cargo build --release --locked
@@ -1323,13 +1322,11 @@ cargo build --release --locked
   --model data/fixtures/classify/lightgbm --output classified/
 ```
 
-No environment variables or separate runtime installation are needed. The loader
-finds `lib/` relative to `cytiq`, independent of the working directory. When
-copying a binary to another directory or machine, include its `lib/` directory.
-Docker packages these same build outputs. `ORT_DYLIB_PATH` remains an optional
-custom-runtime override. CI executes both model fixtures on Linux and macOS,
-verifies a relocated release build without runtime variables and checks Docker
-inference.
+No runtime environment variables are needed. The binary can be moved by itself
+on supported macOS Apple Silicon and Linux x86_64/aarch64 targets; standard OS
+libraries remain required. Docker uses the same build. CI executes both model
+fixtures on Linux and macOS, verifies a relocated release executable without
+runtime variables or a companion library directory, and checks Docker inference.
 
 The reusable API is `ClassifyRunner::run(&ClassifyConfig)` in
 [`cytiq-classify`](crates/cytiq-classify). Synthetic fixture generation lives in

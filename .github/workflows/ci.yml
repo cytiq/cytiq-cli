@@ -90,7 +90,6 @@ jobs:
           cargo build -p cytiq-cli --release --locked
           mkdir -p "$RUNNER_TEMP/cytiq-dist"
           cp target/release/cytiq "$RUNNER_TEMP/cytiq-dist/"
-          cp -R target/release/lib "$RUNNER_TEMP/cytiq-dist/"
           env -u ORT_DYLIB_PATH -u DYLD_LIBRARY_PATH -u LD_LIBRARY_PATH \
             "$RUNNER_TEMP/cytiq-dist/cytiq" classify \
             --input data/fixtures/classify/raw.fcs \

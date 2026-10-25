@@ -5,6 +5,9 @@ Updated 2026-10-24 (Stage 3): end-to-end chain (§2.9), real acquisitions (§2.1
 and pass/fail tolerances (§1, step 5); real single-stain controls from a
 FACSCelesta and a FACSymphony (§2.10); the raw margin mask without flowCore's
 −111 floor (§2.9, §3).
+Updated 2026-10-25: `cytoscan` novelty ports mclust's default model search
+(§2.7); AutoSpectral's own Aurora example as the first real spectral data,
+and `autospectral` spectra built as AutoSpectral builds them (§2.3, §2.10).
 
 ## TL;DR
 
@@ -16,13 +19,13 @@ FACSCelesta and a FACSymphony (§2.10); the raw margin mask without flowCore's
 | `transform` biexponential | flowWorkspace `flowjo_biexp` | ❌ different function, f(−1000) = −420 instead of 10.3 | ✅ Δ ≤ 7.6e-6 channels |
 | `autospill` | autospill 0.2.0 | ⚠️ matrix close (max Δ 3.8e-4), gates 18% wider | ✅ matrix Δ ≤ 4.8e-13, identical gates |
 | `autospread` | — (no upstream) | — | — (regression test only) |
-| `autospectral` | AutoSpectral 1.8.7 (OLS) | ❌ abundances inflated 1.39–1.60× (L2 normalisation) | ✅ scale 0.992–1.0003, RMSE equal to upstream |
+| `autospectral` | AutoSpectral 1.8.7 (OLS) | ❌ abundances inflated 1.39–1.60× (L2 normalisation); on real Aurora controls spectra down to cosine 0.50 against AutoSpectral | ✅ scale 0.992–1.0002, RMSE within 4% of upstream on the true spectra; real Aurora fluorophore spectra cosine ≥ 0.9998 |
 | `peacoqc` | PeacoQC 1.20.0 | ❌ 82–85% mask agreement, IT precision 0.04; 1.5× slower than R | ✅ 100% mask agreement in every mode; 11× faster than R |
-| `cytoscan` | CytoScan 0.1.0 (`c97f403`) | ❌ binning off by up to 0.004, sample depends on path spelling, outlier scores 3× outside isotree noise, novelty model unlike mclust | ✅ features = R to 5e-13 on identical events; outlier flags = R; novelty reproduces mclust's model choice when it is full-covariance |
+| `cytoscan` | CytoScan 0.1.0 (`c97f403`) | ❌ binning off by up to 0.004, sample depends on path spelling, outlier scores 3× outside isotree noise, novelty model unlike mclust | ✅ features = R to 5e-13 on identical events; outlier flags = R; novelty ports `Mclust`'s default search: on the same features R picks the same model, G and flags in 12 of 15 cases (the 3 others are a rounding-singular fit cytiq rejects) |
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 | `gate` | FlowKit 1.3.0 `GatingStrategy.gate_sample` | — (new command) | ✅ identical per-event membership for all 11 gates; identical counts at 1M events, ~13× faster than FlowKit |
 | whole chain (§2.9) | flowCore + PeacoQC + FlowKit + FlowSOM, same steps | — (new) | ✅ every stage equals upstream per event on 200,000 golden events (values Δ ≤ 1e-7, masks and gates identical, FlowSOM ARI vs R 0.999), except the margin mask, which deliberately drops flowCore's −111 floor; against the truth: final mask F1 0.971, every population incl. a 0.2% rare one found with precision ≥ 0.997 |
-| real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels, autospill | — (new) | ✅ compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect); AutoSpill on FACSCelesta (11 colours) and FACSymphony (24 colours) controls: max \|Δ\| 5e-13, gates identical |
+| real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels, autospill, AutoSpectral | — (new) | ✅ Aurora spectral panel: fluorophore spectra cosine ≥ 0.9998 against AutoSpectral, unmixing solver equal to 4e-8; compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect); AutoSpill on FACSCelesta (11 colours) and FACSymphony (24 colours) controls: max \|Δ\| 5e-13, gates identical |
 
 **44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
 two performance defects (section 2.6). The Stage 3 chain validation found two
@@ -71,7 +74,10 @@ are pinned by unit tests against reference values produced by R.
    `compare.py` exits with 1 on any violation or on a rule that matches no
    metric, so `parity/run_all.sh` fails. The same chain also runs in CI on a
    15,000-event golden fixture (`crates/cytiq-cli/tests/pipeline_cli.rs`,
-   thresholds in `data/fixtures/pipeline/thresholds.json`).
+   thresholds in `data/fixtures/pipeline/thresholds.json`), and a smoke test
+   checks autospill, AutoSpectral, PeacoQC and CytoScan against R outputs
+   committed with small synthetic datasets (`data/fixtures/parity`,
+   `crates/cytiq-cli/tests/parity_smoke.rs`), with no R in CI.
 
 Environment (`parity/versions.txt`): R 4.5.3, flowCore 2.22.1, flowWorkspace
 4.22.1, FlowSOM 2.18.0, PeacoQC 1.20.0, autospill 0.2.0 (`1e60e86`),
@@ -180,6 +186,25 @@ regenerated.
 - The `max(0)` background clamp was removed.
 - A warning is emitted when the condition number (fluorophores only)
   exceeds the number of fluorophores, as in `calculate.condition.number`.
+
+**Real data (2026-10-25, §2.10)** showed that the mean difference against
+the whole unstained control does not survive real cell controls: the
+autofluorescence of a different cell mix and saturated debris in the 1–99%
+box entered every spectrum (cosine 0.50–0.99 against AutoSpectral). Now:
+- each spectrum is `get.fluorophore.spectra`'s: on every detector the slope of
+  `MASS::rlm` (Huber, MAD scale, 100 steps, `lm` when it does not converge)
+  against the peak detector, divided by the largest; pinned against `rlm` by
+  unit tests, the non-converging case included;
+- over the positives and their negatives: the unstained control's 3 nearest
+  events on raw FSC/SSC (`clean.controls`' scatter matching, at most 1,000);
+- the AF spectrum is the same slopes over the gated unstained control;
+- controls are cleaned by default (detector margins, the AutoSpill KDE gate);
+  `--quantile-gate` keeps the box.
+
+On the synthetic set the spectra stay at max |Δ| ≤ 4.5e-4 after peak
+normalisation; abundance RMSE is within 4% of R `unmix.ols` on the true
+spectra (BV510 352 against 339, BV421 880 against 860, the others within
+1.1%), and the scale against the truth is 0.992–1.0002.
 
 ### 2.4 `peacoqc`
 
@@ -336,27 +361,58 @@ before these fixes (`7b1e2f6`).
   not from the forest.
 
 **Novelty (GMM).**
-- The fit uses `linfa-clustering` (full covariance) with mclust's BIC over
-  G = 1..9.
-- Unit tests against `Mclust(modelNames = "VVV")` on fixed data:
-  - 2-cluster data: same G, BIC within 1e-3, log-densities within 1e-3;
-  - 1-cluster data: log-likelihood within 1e-6.
-- On the parity cohorts:
+- Upstream calls `Mclust(refFeatures)` with mclust's defaults: G = 1..9, every
+  covariance structure, best BIC. With no more reference files than features
+  mclust only tries the spherical and diagonal structures (`EII`, `VII`,
+  `EEI`, `VEI`, `EVI`, `VVI`) and starts EM from `hc(modelName = "EII", use =
+  "SVD")`, Ward's clustering of the scaled, SVD-whitened features.
+- `crates/cytiq-cytoscan/src/mixture.rs` ports that search: the closed-form
+  one-component fits, `me*` EM with mclust's singularity rules, the `hcEII`
+  start and `pickBIC`'s tie order. It adds `EEE` and `VVV` with more files
+  than features; mclust's other six full-covariance structures are not
+  ported, and there mclust starts from `hcVVV`.
+- One deliberate difference: mclust keeps a one-component full covariance
+  that is singular up to rounding (`mvnXXX` only rejects an exact zero
+  pivot). Binning and fingerprint features sum to 1 per channel, so their
+  covariance is singular, the BIC of that fit is rounding noise, and mclust
+  then flags every test file. cytiq applies the `G >= 2` rule (`rc <=
+  sqrt(eps)`) to it too.
+- Unit tests against mclust: the BIC of every structure and G (n > d with the
+  `hcEII` start, and n <= d) to 1e-6, the `hclass` partitions, the chosen
+  model and its densities.
+- `parity/run_upstream.R` also fits Mclust on cytiq's own features
+  (`upstream_on_rust_features`), which separates the model search from the
+  subsample difference. It found a comparison defect: CytoScan's
+  `log(dens())` is −Inf where `dens()` underflows, which `compare.py` had
+  read as "Mclust returned no model" (the earlier "fails for 4 of 5 methods"
+  on `cytoscan_exact`); the differences now use `dens(logarithm = TRUE)`.
 
-| Dataset | Upstream model (`Mclust` default) | Rust model | Flag agreement with R | Rust TP/FP | R TP/FP |
-|---|---|---|---|---|---|
-| `cytoscan_exact` | fails for 4 of 5 methods (n_ref = 10 < d); EII for fingerprint | diagonal fallback, or G = 1 full for EMD | 100% where R fits | 3 / 6–7 | 3 / 7 |
-| `cytoscan` (n_ref = 20) | EEI/VEI/VII/XII constrained models; XXX for fingerprint | diagonal fallback (d ≥ 20); G = 1 full for EMD and fingerprint | 50–100% | 5 / 4–15 | 5 / 3–15 |
-| `cytoscan_ref100` | XXX (G = 1 full) for 4 of 5 methods; XII for EMD | G = 1 full for all 5 | 65–100% (95–100% when both are XXX) | 4–5 / 1–15 | 4–5 / 0–15 |
+| Dataset | Method | cytiq model | R on R's features: model, flag agreement | R on cytiq's features: model, flag agreement, max \|Δ log-density\| |
+|---|---|---|---|---|
+| `cytoscan_exact` (n_ref 10) | summary, quantiles, EMD, binning | EEI, G = 9 | EEI, 9; 100% | EEI, 9; 100%; ≤ 0.009 (features read back at 12 decimals) |
+| | fingerprint | EII, 9 | EII, 9; 100% | EII, 9; 100%; 4e-12 |
+| `cytoscan` (n_ref 20) | summary | EEI, 2 | EEI, 2; 65% | EEI, 2; 100%; 3e-9 |
+| | quantiles | VEI, 5 | VEI, 6; 90% | VEI, 5; 100%; 3e-9 |
+| | EMD | XII, 1 | XII, 1; 80% | XII, 1; 100%; 4e-11 |
+| | binning | VII, 2 | VII, 3; 70% | VII, 2; 100%; 4e-10 |
+| | fingerprint | EII, 3 | XXX, 1; 50% | XXX, 1 (rounding-singular); 50% |
+| `cytoscan_ref100` (n_ref 100) | summary | XXX, 1 | XXX, 1; 65% | XXX, 1; 100%; 3e-9 |
+| | quantiles | XXX, 1 | XXX, 1; 95% | XXX, 1; 100%; 2e-8 |
+| | EMD | XII, 1 | XII, 1; 95% | XII, 1; 100%; 8e-11 |
+| | binning | VII, 4 | XXX, 1; 30% | XXX, 1 (rounding-singular); 30% |
+| | fingerprint | EII, 6 | XXX, 1; 100% | XXX, 1 (rounding-singular); 95% |
 
-- Where mclust picks a full-covariance model, Rust picks the same model.
-- The remaining Rust–R difference in those cases comes from the different
-  subsamples: with d = 54 features and 100 files the covariance is close to
-  singular and very sensitive to input.
-- Upstream behaves the same way: full-covariance novelty on quantile or
-  binning features flags 14–15 of 20 test files in R as well.
-- The baseline's z-scored diagonal model flagged fewer files, but it did not
-  follow upstream.
+- On the same features the search reproduces mclust in 12 of 15 cases; the
+  other 3 are the rounding-singular `XXX`. There R flags all 20 test files in
+  two of them (precision 0.25) where cytiq flags 10 (recall 0.8, precision
+  0.4) and 6 (recall 1.0, precision 0.83); on `cytoscan_ref100` fingerprint
+  both flag the same 6.
+- Against R's own features the remaining differences come from the
+  subsamples (`rand`, not R's Mersenne Twister): with 20 reference files a
+  slightly different feature matrix moves G (VEI 5 against 6, VII 2 against 3).
+- With no more reference files than features the run warns: only spherical
+  and diagonal structures fit, and the 5% threshold rests on a handful of
+  log-densities.
 
 **Fixed:**
 1. The subsample used a hand-written LCG seeded with `42 ^ FNV(path)`, so a
@@ -381,7 +437,8 @@ before these fixes (`7b1e2f6`).
    - threshold from `rand_distr::Uniform`;
    - deterministic summation over rayon-parallel trees.
 6. Novelty: the self-written z-scored diagonal EM (k ≤ 4) was replaced by
-   `linfa-clustering` full-covariance mixtures. Features are not z-scored,
+   `linfa-clustering` full-covariance mixtures (since replaced by the mclust
+   port above). Features are not z-scored,
    as in upstream, and G is chosen by mclust's BIC (`2 loglik − npar ln n`)
    over G = 1..9. G values with components of ≤ d members are skipped. With
    no valid G it falls back to a single diagonal Gaussian and writes a
@@ -465,8 +522,9 @@ only; real FACSDiva data shows the same effect at a larger scale (§2.10).
 ### 2.10 Real acquisitions
 
 `parity/real/run_real.sh` runs on the datasets of `parity/real/datasets.json`:
-samples that ship with the R packages, and public acquisitions from BD
-instruments downloaded from Zenodo (checked by SHA-256), plus any files in
+samples that ship with the R packages, public acquisitions from BD
+instruments downloaded from Zenodo and AutoSpectral's own Cytek Aurora
+example from Mendeley Data (checked by SHA-256), plus any files in
 `CYTIQ_REAL_DATA` (`parity/real/README.md`).
 
 | Dataset | Check | Result |
@@ -483,6 +541,8 @@ instruments downloaded from Zenodo (checked by SHA-256), plus any files in
 | | PeacoQC vs R | 100% agreement (1.3% removed) |
 | | margins | detector limit 100%: 36 events (0.06%) at `$PnR − 1`; `RemoveMargins` removes those and 17,701 more (31% in all), 17,700 of them at or below flowCore's −111 floor: the noise of negative populations in PE-Texas Red (13% of events), PerCP-Cy5.5 (10%) and Alexa Fluor 700 (9%), whose 1st percentiles lie at −367, −252 and −223 |
 | FACSymphony A3/A5, 24 single-stain controls of a 24-colour OMIP (27,000–60,000 events each; Zenodo 22994607) | `cytiq autospill` vs R autospill | spillover max \|Δ\| 5.0e-13, ‖ΔC‖_F 1.7e-11; gates identical on all 24 controls (713,549 events); cytiq 31 s, R 34 min (25 min on 12 cores) |
+| Cytek Aurora (5 lasers, 64 detectors), 9-colour human PBMC panel, AutoSpectral's own example: unstained and 9 single-stain cell controls (60,000–81,000 events), a 418,152-event sample (Mendeley xzt3h3gnx9) | `cytiq autospectral` spectra vs AutoSpectral (`define.flow.control`, `clean.controls`, `get.fluorophore.spectra`) | fluorophores: cosine 0.99983–1.0, max \|Δ\| ≤ 0.018 (AutoSpectral without `clean.controls`: 0.9993–0.999996); AF: 0.61 (peak detector V7-A against UV7-A) |
+| | unmixing of the sample (every 10th event, 41,816) | solver vs `unmix.ols` on the same spectra: max relative Δ 4.1e-8; abundances vs AutoSpectral's: correlation 0.976–0.99998 (slope 0.92–1.007), with AutoSpectral's AF spectrum swapped in 0.9993–0.999999 (slope 0.993–1.004) |
 
 Running FlowKit on cytiq's compensated output found the second Stage 3 defect:
 the FCS writer left the HEADER DATA offsets at zero, which strict readers
@@ -501,6 +561,36 @@ PE-Texas Red coefficient by 1.3e-4; every other entry agreed to 1e-6.
 `cytiq autospill` now caps control values at `$PnR`, and the synthetic
 generator, which clips at `$PnR - 1`, could not have shown it.
 
+The Aurora panel is the first real spectral data, and it found a fourth
+defect. The fluorophore spectra were the mean of the positives minus the mean
+of the whole unstained control, over a 1–99% FSC/SSC box. On real cell
+controls both halves fail: the positives of a CD8 control are T cells while
+the unstained control is all PBMC, so the difference in autofluorescence
+enters the spectrum, and the box keeps debris and events saturated on many
+detectors.
+Against AutoSpectral the cosines were 0.50 (PerCP Fire 806), 0.60 (Spark UV
+387), 0.66 (BV605) and 0.82–0.99 for the rest.
+
+An ablation in R located the cause. AutoSpectral's spectra hardly depend on
+its cleaning: the `rlm` slopes over the gated controls alone give a cosine of
+0.9993 or more against the full workflow, so the estimator matters, not the
+autofluorescence removal. cytiq now fits the same `rlm` slopes over the
+positives and their scatter-matched negatives, and cleans controls (detector
+margins, KDE gate) by default (§2.3). With the 1–99% box instead, the new
+estimator still reaches only 0.42 on PerCP Fire 806, whose spectrum turns
+flat at 0.71 across 20 detectors from saturated events: the gate matters
+too.
+
+The AF spectrum is the one difference left. AutoSpectral fits it against the
+detector with the highest mean of its gated unstained events, over 1,000
+random ones; here UV7-A and V7-A have means within 1% (3,695 and 3,660), and
+cytiq's gate tips it to V7-A. Fitted against V7-A over all of AutoSpectral's
+own gated events, AutoSpectral's estimator gives cytiq's AF spectrum (cosine
+0.9995); against UV7-A, three random draws of 1,000 events give 0.91–0.94
+against AutoSpectral's reported one. The abundances differ through that
+spectrum alone: with AutoSpectral's AF spectrum, cytiq's fluorophore spectra
+give AutoSpectral's abundances to a correlation of 0.9993 or better.
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
@@ -508,14 +598,16 @@ generator, which clips at `$PnR - 1`, could not have shown it.
 | FlowSOM | RNG: no bit-exact match with R (MT19937 + `R_unif_index`) | statistical agreement (ARI ≈ seed-to-seed) | port MT19937 if bit-exact reproducibility is needed |
 | FlowSOM | ConsensusClusterPlus → average-linkage hc | not visible on the tests | port if needed |
 | FlowSOM | `scale` and `nClus` defaults differ from R | product decision | settable with `--no-scale`/`--metaclusters` |
-| AutoSpectral | 1–99% box gate instead of the `do.gate` KDE gate by default; no PeacoQC/AF removal on controls | not visible on clean controls | `--clean-controls` uses the `cytiq-autospill` KDE gate; PeacoQC/AF removal remain |
-| AutoSpectral | spectrum as a mean difference instead of an `rlm` slope; negatives are the whole AF control instead of scatter-matched kNN | spectrum shapes match to 5e-4 | `rlm` + kNN |
+| AutoSpectral | the AutoSpill KDE gate instead of AutoSpectral's density gates (`do.gate`, large gates); no autofluorescence removal from cell controls | fluorophore spectra still match to cosine ≥ 0.9998 on real Aurora controls (§2.10) | port `do.gate` and `remove.af` if a panel needs them |
+| AutoSpectral | AF spectrum against the detector with the highest mean of a different gate, over every gated event instead of 1,000 random ones | on the Aurora panel cytiq's peak is V7-A, AutoSpectral's UV7-A (means within 1%); AF spectrum cosine 0.61, fluorophore abundances correlate 0.976–0.99998 (≥ 0.999 with AutoSpectral's AF spectrum); AutoSpectral's own AF spectrum moves to 0.91–0.94 between random draws | — |
+| AutoSpectral | negatives capped at 1,000 evenly spaced instead of a random `sample` | reproducible runs | — |
 | AutoSpectral | no WLS/Poisson/per-cell AF (R's default `AutoSpectral` method) | comparable only to `method = "OLS"` | separate task |
 | AutoSpread | no upstream; units are σ/√F while AutoSpectral expects σ²/F | format incompatibility | document the units |
 | transform | biexponential parameters cannot be set from the CLI (defaults hard-coded) | functionality | add `--biex-*` flags |
 | cytoscan | subsamples come from `rand`, not R's MT19937, so features on large files agree only statistically | Rust–R Δ equals R's seed-to-seed Δ | port R's RNG if bit-identical features are needed |
 | cytoscan | isotree uses its own C++ RNG | scores agree within isotree's Monte Carlo noise (≈0.014 at 1000 trees) | — |
-| cytoscan | `linfa` fits full covariance only; mclust also searches 13 constrained structures (EEI, VII, …) | with fewer reference files than features, Rust uses a diagonal Gaussian where mclust picks a constrained model; flags agree 50–100% | add constrained covariance models, or require n_ref > d |
+| cytoscan | the mixture search has mclust's spherical and diagonal structures, `EEE` and `VVV`, not `VEE`, `EVE`, `VVE`, `EEV`, `VEV`, `EVV`; with more reference files than features EM starts from `hcEII` where mclust uses `hcVVV` | on the parity cohorts mclust picks none of the missing structures; on the same features the model, G and flags equal mclust's in 12 of 15 cases | port the rest if a cohort needs them |
+| cytoscan | a one-component full covariance singular up to rounding is rejected; mclust keeps it | binning and fingerprint features (they sum to 1): mclust flags every test file, cytiq picks a diagonal model (flag agreement 30–100%) | — |
 | cytoscan | upstream errors without `SPILL`; Rust warns and keeps raw values | only files without spillover metadata | `--strict` errors like upstream |
 | autospill | on a perfectly regular lattice the KDE produces exact ties, broken in a different order than R | degenerate data only | — |
 | gate | compensation multiplies by an explicit inverse (Gauss-Jordan); FlowKit uses `np.linalg.solve` | round-off of about 1e-16 relative, so only events lying exactly on a boundary in compensated space could flip; none did at 1M events | — |
@@ -546,6 +638,13 @@ generator, which clips at `$PnR - 1`, could not have shown it.
   - regenerated `data/fixtures/autospread/expected_spread.csv`;
   - `crates/cytiq-cli/tests/peacoqc_cli.rs`.
 - `README.md`: transform semantics, AutoSpectral, Algorithm Notes.
+- 2026-10-25: `crates/cytiq-cytoscan/src/mixture.rs` (new; `linfa`,
+  `linfa-clustering`, `ndarray`, `rand_xoshiro` dropped),
+  `crates/cytiq-autospectral/src/spectrum.rs` (new), `runner.rs`;
+  `data/fixtures/cytoscan/reference.rs`,
+  `data/fixtures/autospectral/rlm_reference.rs` (new),
+  `data/fixtures/autospectral/unstained.fcs`; `parity/real/` (`autospectral`
+  chain).
 
 Checks: `cargo fmt --check`, `cargo clippy --workspace --all-targets -D
 warnings`, `cargo test --workspace` — all green.
@@ -557,6 +656,7 @@ parity/setup_env.sh        # once (also `just parity-setup`): R library and uv v
 parity/run_all.sh main     # synthetic data → Rust (branch + main) → R → parity/results/*.json; fails on a tolerance violation
 parity/real/run_real.sh    # real acquisitions → parity/results/metrics_real.json (also `just parity-real`)
 just parity-ci-fixture     # regenerate data/fixtures/pipeline (byte-identical)
+just parity-smoke-fixture  # regenerate data/fixtures/parity: small datasets and the R outputs on them
 R_LIBS_USER=parity/.env/Rlib Rscript parity/make_fixtures.R   # regenerate R reference values for unit tests
 ```
 
@@ -564,7 +664,8 @@ A full run takes about 3 minutes. Raw outputs are in `parity/.out/`, data in
 `parity/.data/`.
 
 The suites run locally, not in CI: the R environment takes too long to
-install on hosted runners. A violated tolerance exits non-zero, and the
+install on hosted runners. CI runs the smoke test on the committed R outputs
+instead. A violated tolerance exits non-zero, and the
 timing wrappers read both BSD (macOS) and GNU `time`. `setup_env.sh`
 (`just parity-setup`) pins the Bioconductor release, the git commits of
 autospill, AutoSpectral and CytoScan, and the Python packages

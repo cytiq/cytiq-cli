@@ -105,6 +105,199 @@
         "rust_vs_upstream_minus_seed_band": 0.0344
       }
     },
+    "aurora_pbmc_spectral": {
+      "autospectral": {
+        "spectra": {
+          "Spark UV 387": {
+            "cosine": 0.999987,
+            "max_abs_diff": 0.0033903,
+            "r_uncleaned_cosine": 0.999736,
+            "peak": {
+              "rust": "UV2-A",
+              "upstream": "UV2-A"
+            }
+          },
+          "Pacific Blue": {
+            "cosine": 1.0,
+            "max_abs_diff": 0.000533085,
+            "r_uncleaned_cosine": 0.999996,
+            "peak": {
+              "rust": "V3-A",
+              "upstream": "V3-A"
+            }
+          },
+          "BV510": {
+            "cosine": 0.999943,
+            "max_abs_diff": 0.01016,
+            "r_uncleaned_cosine": 0.999862,
+            "peak": {
+              "rust": "V7-A",
+              "upstream": "V7-A"
+            }
+          },
+          "BV605": {
+            "cosine": 0.999994,
+            "max_abs_diff": 0.00146566,
+            "r_uncleaned_cosine": 0.999865,
+            "peak": {
+              "rust": "V10-A",
+              "upstream": "V10-A"
+            }
+          },
+          "BV785": {
+            "cosine": 0.999985,
+            "max_abs_diff": 0.00206333,
+            "r_uncleaned_cosine": 0.999427,
+            "peak": {
+              "rust": "V15-A",
+              "upstream": "V15-A"
+            }
+          },
+          "PerCP Fire 806": {
+            "cosine": 0.999992,
+            "max_abs_diff": 0.00192301,
+            "r_uncleaned_cosine": 0.999304,
+            "peak": {
+              "rust": "B14-A",
+              "upstream": "B14-A"
+            }
+          },
+          "PE-Fire 810": {
+            "cosine": 0.999857,
+            "max_abs_diff": 0.0104017,
+            "r_uncleaned_cosine": 0.999946,
+            "peak": {
+              "rust": "YG10-A",
+              "upstream": "YG10-A"
+            }
+          },
+          "Spark NIR 685": {
+            "cosine": 0.99983,
+            "max_abs_diff": 0.0177768,
+            "r_uncleaned_cosine": 0.999301,
+            "peak": {
+              "rust": "R3-A",
+              "upstream": "R3-A"
+            }
+          },
+          "APC-Fire 810": {
+            "cosine": 0.999987,
+            "max_abs_diff": 0.00216223,
+            "r_uncleaned_cosine": 0.999354,
+            "peak": {
+              "rust": "R8-A",
+              "upstream": "R8-A"
+            }
+          }
+        },
+        "af_spectrum": {
+          "cosine": 0.610937,
+          "max_abs_diff": 0.883155,
+          "r_uncleaned_cosine": 0.942309,
+          "peak": {
+            "rust": "V7-A",
+            "upstream": "UV7-A"
+          }
+        },
+        "unmixing": {
+          "E1 Fresh_100ul_TS_BS_005": {
+            "events_compared": 41816,
+            "fluorophores": {
+              "Spark UV 387": {
+                "solver_max_rel": 2.74934e-08,
+                "correlation": 0.994871,
+                "slope": 0.979766,
+                "r_af_spectrum": {
+                  "correlation": 0.999972,
+                  "slope": 1.00035
+                }
+              },
+              "Pacific Blue": {
+                "solver_max_rel": 4.05801e-08,
+                "correlation": 0.993847,
+                "slope": 0.967064,
+                "r_af_spectrum": {
+                  "correlation": 0.999745,
+                  "slope": 1.00212
+                }
+              },
+              "BV510": {
+                "solver_max_rel": 2.16595e-08,
+                "correlation": 0.996254,
+                "slope": 0.97222,
+                "r_af_spectrum": {
+                  "correlation": 0.999999,
+                  "slope": 1.0044
+                }
+              },
+              "BV605": {
+                "solver_max_rel": 4.11603e-08,
+                "correlation": 0.976086,
+                "slope": 0.920413,
+                "r_af_spectrum": {
+                  "correlation": 0.999344,
+                  "slope": 0.998001
+                }
+              },
+              "BV785": {
+                "solver_max_rel": 3.70046e-08,
+                "correlation": 0.999547,
+                "slope": 0.980324,
+                "r_af_spectrum": {
+                  "correlation": 0.999995,
+                  "slope": 0.999051
+                }
+              },
+              "PerCP Fire 806": {
+                "solver_max_rel": 9.56348e-09,
+                "correlation": 0.999671,
+                "slope": 1.00729,
+                "r_af_spectrum": {
+                  "correlation": 0.999931,
+                  "slope": 1.00463
+                }
+              },
+              "PE-Fire 810": {
+                "solver_max_rel": 2.94227e-08,
+                "correlation": 0.996665,
+                "slope": 0.955747,
+                "r_af_spectrum": {
+                  "correlation": 0.99995,
+                  "slope": 0.993521
+                }
+              },
+              "Spark NIR 685": {
+                "solver_max_rel": 3.437e-08,
+                "correlation": 0.997728,
+                "slope": 0.983041,
+                "r_af_spectrum": {
+                  "correlation": 0.999996,
+                  "slope": 0.999562
+                }
+              },
+              "APC-Fire 810": {
+                "solver_max_rel": 1.95969e-08,
+                "correlation": 0.999981,
+                "slope": 1.00247,
+                "r_af_spectrum": {
+                  "correlation": 0.999997,
+                  "slope": 1.00179
+                }
+              }
+            },
+            "af": {
+              "solver_max_rel": 1.80434e-08,
+              "correlation": 0.724458,
+              "slope": 1.20906,
+              "r_af_spectrum": {
+                "correlation": 0.999433,
+                "slope": 0.99715
+              }
+            }
+          }
+        }
+      }
+    },
     "celesta_mdsc_controls": {
       "autospill": {
         "controls": 11,

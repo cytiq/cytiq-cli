@@ -3,6 +3,10 @@
 # ---- Build -------------------------------------------------------------------
 FROM rust:1.99-slim-trixie AS builder
 
+# Static ONNX Runtime linking needs the C++ standard library development files.
+RUN apt-get update && apt-get install -y --no-install-recommends g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # The whole workspace is needed: every member listed in Cargo.toml must exist

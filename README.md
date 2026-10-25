@@ -1314,7 +1314,8 @@ Python, model registry or network is required for inference. `ort` 2.0.0-rc.13
 uses its built-in `download-binaries` feature to download, verify and cache
 ONNX Runtime 1.28.0 during Cargo builds. ONNX Runtime is linked statically into
 `cytiq`; no project download script or separate runtime library is required.
-The first build needs HTTPS access to the upstream binary CDN.
+The first build needs HTTPS access to the upstream binary CDN. Linux source
+builds also need a C++ toolchain such as `g++`; the Docker build installs it.
 
 ```sh
 cargo build --release --locked

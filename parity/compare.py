@@ -437,13 +437,14 @@ def compare_pipeline_dataset(data: Path, rust: Path, upstream: Path, dataset: st
     raw = _fcs_columns(d / "sample.fcs", PIPELINE_FLUOR)
     comp_mask = _parquet_by_row(r / "s.comp.masks.parquet", rows)
     margin_removed = ~comp_mask["margin_pass"].astype(bool).to_numpy()
-    # Detector limits recomputed independently: `$PnR - 1` and flowCore's -111.
-    at_limit = ((raw >= 262_143) | (raw <= -111)).any(axis=1)
+    # The detector limit recomputed independently: `$PnR - 1` only, no low bound.
+    at_limit = (raw >= 262_143).any(axis=1)
     r_margins = pd.read_csv(u / "r_margins.csv")["removed"].to_numpy().astype(bool)
     out["margins"] = {
         "agreement_with_detector_limits": _r((margin_removed == at_limit).mean(), 6),
         "agreement_with_RemoveMargins": _r((margin_removed == r_margins).mean(), 4),
         "RemoveMargins_extra_removed": int((r_margins & ~margin_removed).sum()),
+        "kept_by_RemoveMargins": int((margin_removed & ~r_margins).sum()),
         **_recall_loss(margin_removed, truth["margin"].to_numpy() == 1, good),
     }
 

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use cytiq_fcs::{FcsDataset, FcsReader, Parameter, Spillover};
-use cytiq_manifest::{ControlEntry, Marker, MatrixKind, Panel};
+use cytiq_manifest::{ControlEntry, Marker, MatrixKind, Panel, SignalState};
 use serde::Serialize;
 
 /// Warn when the 1-norm condition number of the spillover matrix exceeds
@@ -160,10 +160,99 @@ fn signal_state(scope: &str, dataset: &FcsDataset) -> Check {
     }
 }
 
+/// The name `FlowJo` gives the compensated copy of a detector: `Comp-<detector>`.
+const COMPENSATED_PREFIX: &str = "Comp-";
+
+/// The file fits the `signal_state` its panel declares. FCS has no keyword
+/// for processing done by other software, so this checks the two traces it
+/// leaves: `Comp-<detector>` channels, and a spillover keyword that stages
+/// would apply to values already compensated.
+pub(crate) fn check_signal_state(
+    scope: &str,
+    dataset: &FcsDataset,
+    declared: SignalState,
+) -> Check {
+    let check =
+        |status, message: &str| Check::new(scope, "signal_state", status, message.to_owned());
+    let spillover = dataset
+        .text
+        .iter()
+        .any(|(key, _)| cytiq_fcs::is_spillover_keyword(key));
+    match declared {
+        SignalState::Raw => check_compensated_copies(scope, dataset),
+        SignalState::Compensated if spillover => check(
+            CheckStatus::Fail,
+            "declared compensated, but the file still carries a spillover keyword: `cytiq compensate`, the viability filter of `cytiq clean`, `FCS` references in `cytiq gate` and `cytiq cytoscan` would compensate the values again; export the file without it",
+        ),
+        SignalState::Compensated => check(
+            CheckStatus::Pass,
+            "declared compensated; no spillover keyword left to apply again",
+        ),
+        SignalState::Unmixed if spillover => check(
+            CheckStatus::Warn,
+            "declared unmixed, and the file carries a spillover keyword: `FCS` references in `cytiq gate` and the viability filter of `cytiq clean` apply it to the unmixed values; make sure the export did not apply it already",
+        ),
+        SignalState::Unmixed => check(CheckStatus::Pass, "declared unmixed; no spillover keyword"),
+    }
+}
+
+/// A file declared raw has no `Comp-<detector>` channels, or only next to
+/// the uncompensated detectors they copy.
+fn check_compensated_copies(scope: &str, dataset: &FcsDataset) -> Check {
+    let copies = dataset
+        .parameters
+        .iter()
+        .filter_map(|parameter| {
+            let name = parameter.name.as_str();
+            name.get(..COMPENSATED_PREFIX.len())
+                .filter(|prefix| prefix.eq_ignore_ascii_case(COMPENSATED_PREFIX))
+                .map(|_| (name, &name[COMPENSATED_PREFIX.len()..]))
+        })
+        .collect::<Vec<_>>();
+    if copies.is_empty() {
+        return Check::new(
+            scope,
+            "signal_state",
+            CheckStatus::Pass,
+            "declared raw; no `Comp-` channels".to_owned(),
+        );
+    }
+    let names = copies
+        .iter()
+        .map(|(name, _)| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let has_detector = |detector: &str| {
+        dataset
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == detector)
+    };
+    if copies.iter().all(|(_, detector)| has_detector(detector)) {
+        Check::new(
+            scope,
+            "signal_state",
+            CheckStatus::Warn,
+            format!(
+                "{names} hold values compensated by other software next to their uncompensated detectors; cytiq compensates the detectors, so point markers at them with `channel`"
+            ),
+        )
+    } else {
+        Check::new(
+            scope,
+            "signal_state",
+            CheckStatus::Fail,
+            format!(
+                "{names} hold values compensated by other software (FlowJo names them `Comp-<detector>`), without their uncompensated detectors: declare `signal_state: compensated` on the panel, or export uncompensated parameters"
+            ),
+        )
+    }
+}
+
 /// Every parameter is stored on a linear scale. `cytiq compensate`, `gate`
 /// and `clean` linearise log-amplified values; the other stages read stored
-/// values and refuse them. `log_amplified` is the status to report when that
-/// matters for this file.
+/// values and refuse them. `log_amplified` is the status to report: `Warn`
+/// for samples `cytiq compensate` processes first, `Fail` otherwise.
 pub(crate) fn check_linear_scale(
     scope: &str,
     dataset: &FcsDataset,
@@ -184,7 +273,7 @@ pub(crate) fn check_linear_scale(
         .collect::<Vec<_>>()
         .join(", ");
     let consequence = if log_amplified == CheckStatus::Fail {
-        "`cytiq autospill` and `cytiq autospectral` read stored values and refuse them"
+        "no stage writes them linear before `cytiq autospill`, `autospectral`, `transform`, `peacoqc`, `flowsom` and `cytoscan`, which read stored values and refuse them"
     } else {
         "`cytiq compensate`, `gate` and `clean` linearise them, but `transform`, `peacoqc`, `flowsom` and `cytoscan` refuse them: run those on the output of `cytiq compensate`"
     };
@@ -721,16 +810,61 @@ mod tests {
     use super::*;
 
     fn dataset(parameters: &[FcsWriteParameter]) -> FcsDataset {
+        dataset_with(parameters, &FcsWriteOptions::new())
+    }
+
+    fn dataset_with(parameters: &[FcsWriteParameter], options: &FcsWriteOptions) -> FcsDataset {
         let columns = vec![vec![1.0_f32, 2.0]; parameters.len()];
         let mut bytes = Vec::new();
         cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
-            &mut bytes,
-            parameters,
-            &columns,
-            &FcsWriteOptions::new(),
+            &mut bytes, parameters, &columns, options,
         )
         .unwrap();
         FcsReader::new(std::io::Cursor::new(bytes)).read().unwrap()
+    }
+
+    fn signal_status(names: &[&str], spillover: bool, declared: SignalState) -> CheckStatus {
+        let parameters = names
+            .iter()
+            .map(|name| FcsWriteParameter::new(*name))
+            .collect::<Vec<_>>();
+        let mut options = FcsWriteOptions::new();
+        if spillover {
+            options = options.with_text_keyword("$SPILLOVER", "1,FITC-A,1");
+        }
+        check_signal_state("sample S01", &dataset_with(&parameters, &options), declared).status
+    }
+
+    #[test]
+    fn flags_compensated_copies_in_raw_files() {
+        let raw = SignalState::Raw;
+        assert_eq!(signal_status(&["FITC-A"], true, raw), CheckStatus::Pass);
+        assert_eq!(
+            signal_status(&["FITC-A", "Comp-FITC-A"], true, raw),
+            CheckStatus::Warn,
+            "the uncompensated detector is still there"
+        );
+        assert_eq!(
+            signal_status(&["FSC-A", "comp-FITC-A"], false, raw),
+            CheckStatus::Fail
+        );
+    }
+
+    #[test]
+    fn compensated_files_must_not_carry_a_spillover_keyword() {
+        let compensated = SignalState::Compensated;
+        assert_eq!(
+            signal_status(&["FITC-A"], true, compensated),
+            CheckStatus::Fail
+        );
+        assert_eq!(
+            signal_status(&["FITC-A"], false, compensated),
+            CheckStatus::Pass
+        );
+        assert_eq!(
+            signal_status(&["FITC-A"], true, SignalState::Unmixed),
+            CheckStatus::Warn
+        );
     }
 
     fn loaded(scope: &str, dataset: FcsDataset) -> LoadedFile {

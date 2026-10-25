@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cytiq_manifest::{
-    CompensationSource, ControlEntry, Cytometry, Panel, RunManifest, SampleEntry,
+    CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry, SignalState,
 };
 use log::{debug, info};
 use serde::Serialize;
@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::checks::{
     Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
     check_file, check_linear_scale, check_markers, check_matrix, check_primary_channel,
-    check_spillover, panel_scope,
+    check_signal_state, check_spillover, panel_scope,
 };
 use crate::error::PreflightError;
 
@@ -49,7 +49,10 @@ pub struct PanelSummary {
     pub samples: Vec<String>,
     /// Control dyes, including controls shared by every panel.
     pub controls: Vec<String>,
-    /// Compensation source of a conventional panel; `None` for spectral.
+    /// What the samples hold, as the manifest declares it.
+    pub signal_state: SignalState,
+    /// Compensation source of a conventional panel of raw files; `None` for
+    /// spectral panels and compensated samples.
     pub compensation: Option<CompensationSource>,
 }
 
@@ -138,6 +141,7 @@ impl PreflightRunner {
                         .controls_of(panel)
                         .map(|control| control.dye.clone())
                         .collect(),
+                    signal_state: panel.signal_state,
                     compensation: manifest.compensation_of(panel).cloned(),
                 })
                 .collect(),
@@ -178,21 +182,11 @@ impl PreflightReport {
 fn run_checks(manifest: &RunManifest) -> Vec<Check> {
     let mut checks = Vec::new();
     // Each file is read once; panels refer to them by position.
-    // `cytiq compensate` linearises conventional samples before the stages
-    // that read stored values; `cytiq autospectral` reads spectral samples and
-    // controls as stored.
-    let sample_log_status = match manifest.cytometry {
-        Cytometry::Conventional => CheckStatus::Warn,
-        Cytometry::Spectral => CheckStatus::Fail,
-    };
     let mut samples = Vec::with_capacity(manifest.samples.len());
     for sample in &manifest.samples {
         let scope = format!("sample {}", sample.id);
         let (file_checks, loaded) = check_file(&scope, &sample.file);
         checks.extend(file_checks);
-        if let Some(dataset) = &loaded.dataset {
-            checks.push(check_linear_scale(&scope, dataset, sample_log_status));
-        }
         samples.push(loaded);
     }
     let mut controls = Vec::with_capacity(manifest.controls.len());
@@ -201,6 +195,8 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
         let (file_checks, loaded) = check_file(&scope, &control.file);
         checks.extend(file_checks);
         if let Some(dataset) = &loaded.dataset {
+            // Controls calibrate raw detector values, whatever the samples hold.
+            checks.push(check_signal_state(&scope, dataset, SignalState::Raw));
             checks.push(check_linear_scale(&scope, dataset, CheckStatus::Fail));
             if let Some(channel) = &control.primary_channel {
                 checks.push(check_primary_channel(&scope, dataset, channel));
@@ -226,7 +222,8 @@ fn samples_of<'a>(
     })
 }
 
-/// Markers, calibration and detector configuration of one panel's files.
+/// Signal state, markers, calibration and detector configuration of one
+/// panel's files.
 fn check_panel(
     manifest: &RunManifest,
     panel: &Panel,
@@ -253,8 +250,21 @@ fn check_panel(
             control.panel.is_none() || control.panel.as_deref() == panel.name.as_deref()
         })
         .collect::<Vec<(&ControlEntry, &LoadedFile)>>();
+    // `cytiq compensate` linearises the samples it compensates; every other
+    // stage reads stored values.
+    let log_amplified = if manifest.compensation_of(panel).is_some() {
+        CheckStatus::Warn
+    } else {
+        CheckStatus::Fail
+    };
     for loaded in &panel_samples {
         if let Some(dataset) = &loaded.dataset {
+            checks.push(check_signal_state(
+                &loaded.scope,
+                dataset,
+                panel.signal_state,
+            ));
+            checks.push(check_linear_scale(&loaded.scope, dataset, log_amplified));
             checks.extend(check_markers(&loaded.scope, dataset, panel));
         }
     }
@@ -265,6 +275,9 @@ fn check_panel(
     if !panel_controls.is_empty() {
         checks.extend(check_control_dyes(&scope, &panel_controls));
     }
+    // Samples compensated or unmixed elsewhere need no calibration, and their
+    // channels need not match the raw controls.
+    let raw = panel.signal_state == SignalState::Raw;
     match manifest.compensation_of(panel) {
         Some(CompensationSource::Fcs) => {
             for loaded in &panel_samples {
@@ -285,7 +298,7 @@ fn check_panel(
                 CheckStatus::Fail,
             ));
         }
-        None => {
+        None if raw => {
             checks.push(check_control_coverage(
                 &scope,
                 panel,
@@ -294,11 +307,17 @@ fn check_panel(
                 CheckStatus::Warn,
             ));
         }
+        None => {}
     }
     let files = panel_samples
         .iter()
         .copied()
-        .chain(panel_controls.iter().map(|(_, loaded)| *loaded))
+        .chain(
+            panel_controls
+                .iter()
+                .filter(|_| raw)
+                .map(|(_, loaded)| *loaded),
+        )
         .collect::<Vec<_>>();
     checks.extend(check_detectors(&files));
     checks

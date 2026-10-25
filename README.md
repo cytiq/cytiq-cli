@@ -357,13 +357,15 @@ Rules:
   that `cytiq autospectral` unmixed, or whose matrix channels `cytiq
   transform` transformed, is rejected
 - compensation mixes channels, so raw detector margins cannot be identified
-  afterwards. `margin_pass` in the mask flags events at or beyond a detector
-  limit (`$PnR - 1`, or flowCore's low bound, −111 by default) on the raw
-  values, and compensated channels are dropped from `CYTIQ_MARGINS`. Unlike
-  `cytiq peacoqc --remove-margins`, which follows `PeacoQC::RemoveMargins` and
-  also removes every event equal to a channel's observed minimum or maximum,
-  only detector limits count, so discrete data (beads) keeps its extreme
-  levels. Pass the mask on with `--mask` (or combine
+  afterwards. `margin_pass` in the mask flags events at or above the detector
+  limit (`$PnR - 1`) on the raw values, and compensated channels are dropped
+  from `CYTIQ_MARGINS`. Unlike `cytiq peacoqc --remove-margins`, which follows
+  `PeacoQC::RemoveMargins` and also removes every event equal to a channel's
+  observed minimum or maximum and every value at or below flowCore's low
+  bound (−111), only the detector limit counts: discrete data (beads) keeps
+  its extreme levels, and float data keeps the noise of negative populations,
+  which on a real FACSDiva sample is 31% of events below −111. Pass the mask
+  on with `--mask` (or combine
   it with `cytiq mask combine`) instead of removing margins after compensation
 - existing outputs are not replaced unless `--overwrite` is passed
 
@@ -732,7 +734,10 @@ Rules:
   identifiers like `$PnN [$PnS]`
 - `--method` can be `all`, `mad`, `it`, or `peaks-only`
 - `--remove-margins` removes detector-boundary events before PeacoQC, using
-  flowCore's raw-detector bounds (`$PnR - 1` and the low bound). On files from
+  flowCore's raw-detector bounds (`$PnR - 1` and the low bound, −111) as
+  `PeacoQC::RemoveMargins` does. On float data
+  the low bound flags ordinary noise around zero; the `margin_pass` mask of
+  `cytiq compensate` uses the upper limit only. On files from
   `cytiq transform` the bounds come from `CYTIQ_MARGINS`, already mapped
   through the transform, so the same events are removed as on the raw file.
   A transformed file without `CYTIQ_MARGINS` (written by an older cytiq) is
@@ -915,13 +920,26 @@ panels:
   - name: B
     markers: [{ marker: CD19 }]
     compensation: { source: controls }   # autospill from the panel's single stains
+  - name: NK
+    markers: [{ marker: CD56 }]
+    signal_state: compensated     # raw (default) | compensated | unmixed
 samples:
   - { id: S01-T, file: fcs/s01_t.fcs, panel: T, specimen: S01 }
   - { id: S01-B, file: fcs/s01_b.fcs, panel: B, specimen: S01 }
+  - { id: S01-NK, file: export/s01_nk.fcs, panel: NK, specimen: S01 }
 controls:
   - { file: fcs/unstained.fcs, dye: Autofluorescence }
   - { file: fcs/cd19_pe.fcs, dye: PE, primary_channel: FL2-A, panel: B }
 ```
+
+`signal_state` says what a panel's sample files hold. cytiq stages recognise
+only their own processing (the `CYTIQ_*` keywords), and FCS has no keyword for
+compensation or unmixing done by other software, so files exported already
+compensated (for example from FlowJo) or unmixed (by spectral acquisition
+software) must be declared: `compensated` for conventional panels, `unmixed`
+for spectral ones.
+Such panels take no `compensation` and need no controls; controls are always
+raw.
 
 ```bash
 cytiq preflight --manifest run.yaml --output preflight.json
@@ -931,14 +949,22 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
 [`cytiq-preflight`](crates/cytiq-preflight/README.md)):
 - every file parses, has events, and is raw: files already processed by
   `cytiq transform`, `compensate` or `autospectral` fail
-- log-amplified parameters (`$PnE` other than `0,0`) fail in controls and in
-  spectral samples, which `autospill` and `autospectral` read as stored, and
-  warn in conventional samples, which `cytiq compensate` writes linear
+- every file fits its declared `signal_state`: a raw file with `Comp-<detector>`
+  channels (FlowJo's name for compensated values) fails without the detector
+  itself and warns next to it; a `compensated` file that still carries
+  `$SPILLOVER`/`$SPILL` fails, because `cytiq compensate`, the viability
+  filter of `cytiq clean`, `FCS` references in `cytiq gate` and `cytiq
+  cytoscan` would compensate it again; an `unmixed` file with one warns
+- log-amplified parameters (`$PnE` other than `0,0`) warn in raw samples of a
+  conventional panel, which `cytiq compensate` writes linear, and fail
+  everywhere else (controls, spectral samples, samples declared compensated),
+  because the stages that read them refuse them
 - every required marker of a sample's panel maps to exactly one channel
   (`$PnS` or `$PnN`; a marker found on several channels fails)
 - the samples and controls of each panel share one detector set (`$PnN`);
-  different `$PnV` voltages warn
-- conventional compensation, by the panel's `compensation.source`:
+  different `$PnV` voltages warn. Panels of compensated or unmixed samples
+  compare their samples only
+- conventional compensation of raw samples, by the panel's `compensation.source`:
   - `fcs` (default): each sample carries a spillover matrix over existing
     channels that is invertible; a 1-norm condition number above 100 warns
   - `matrix`: the matrix file (for example from `cytiq autospill`) is square
@@ -946,8 +972,8 @@ Checks, each reported as `pass`, `warn` or `fail` (full table in
     sample has its channels; the samples need no `$SPILLOVER`
   - `controls`: every marker channel has a single-stain control with that
     `primary_channel`
-- spectral panels: every marker with a `channel` has a single-stain control
-  (warns otherwise)
+- spectral panels of raw samples: every marker with a `channel` has a
+  single-stain control (warns otherwise)
 - a panel's controls have distinct dyes
 - missing `$CYT`/`$DATE` warns
 

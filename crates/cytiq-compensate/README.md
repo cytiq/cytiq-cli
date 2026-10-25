@@ -48,10 +48,11 @@ println!("{} events on a raw detector margin", result.margin_event_count);
   unmixed input (`CYTIQ_UNMIXING`) and input whose matrix channels were
   transformed are rejected.
 - `<output>.masks.parquet` holds `margin_pass` per event: whether the raw
-  values of the matrix channels stay inside the detector limits
-  (`cytiq_fcs::raw_margin_pass`, `MarginBounds::detector_thresholds`). Unlike
-  `PeacoQC::RemoveMargins`, observed minima and maxima are not removed. Compensated and linearised channels are dropped from
-  `CYTIQ_MARGINS`.
+  values of the matrix channels stay below the detector limit `$PnR - 1`
+  (`cytiq_fcs::raw_margin_pass`, `MarginBounds::detector_limit`). Unlike
+  `PeacoQC::RemoveMargins`, observed minima and maxima and values below
+  flowCore's −111 floor are not removed. Compensated and linearised channels
+  are dropped from `CYTIQ_MARGINS`.
 - Data is written as f32, or f64 when an unchanged channel would lose
   precision in f32 (for example `Original_ID` above 2^24).
 - Existing outputs are replaced only with `overwrite`.

@@ -1,6 +1,6 @@
 //! Mask metrics and the policy rules evaluated on them.
 
-use cytiq_manifest::{FilterPolicy, QcPolicy, Severity};
+use cytiq_manifest::{AssessedOf, FilterPolicy, QcPolicy, Severity};
 use cytiq_mask::EventMask;
 use serde::Serialize;
 
@@ -68,6 +68,11 @@ pub struct FilterMetrics {
     pub assessed: usize,
     /// `assessed` over the mask's rows, every raw event.
     pub assessed_fraction: f64,
+    /// Events no other filter removed.
+    pub eligible: usize,
+    /// Share of `eligible` the filter assessed; `None` when other filters
+    /// removed every event.
+    pub eligible_assessed_fraction: Option<f64>,
     /// Events at least one column failed.
     pub removed: usize,
     /// `removed / assessed`; `None` when the filter assessed nothing.
@@ -122,7 +127,8 @@ fn filter_metrics(mask: &EventMask) -> Vec<FilterMetrics> {
             names.push(name);
         }
     }
-    names
+    // Per filter and row: assessed by any of its columns, removed by any.
+    let flags = names
         .into_iter()
         .map(|name| {
             let columns = mask
@@ -130,21 +136,42 @@ fn filter_metrics(mask: &EventMask) -> Vec<FilterMetrics> {
                 .iter()
                 .filter(|(column, _)| base_name(column) == name)
                 .collect::<Vec<_>>();
-            let (mut assessed, mut removed) = (0, 0);
-            for row in 0..mask.len() {
-                let values = columns.iter().map(|(_, values)| values[row]);
-                if values.clone().any(|value| value.is_some()) {
-                    assessed += 1;
-                }
-                if values.into_iter().any(|value| value == Some(false)) {
-                    removed += 1;
+            let (assessed, removed) = (0..mask.len())
+                .map(|row| {
+                    let mut values = columns.iter().map(|(_, values)| values[row]);
+                    let assessed = values.clone().any(|value| value.is_some());
+                    (assessed, values.any(|value| value == Some(false)))
+                })
+                .unzip::<_, _, Vec<_>, Vec<_>>();
+            (name, columns, assessed, removed)
+        })
+        .collect::<Vec<_>>();
+    // A row is eligible for a filter when no other filter removed it.
+    let mut removers = vec![0_usize; mask.len()];
+    for (_, _, _, removed) in &flags {
+        for (count, removed) in removers.iter_mut().zip(removed) {
+            *count += usize::from(*removed);
+        }
+    }
+    flags
+        .into_iter()
+        .map(|(name, columns, assessed, removed)| {
+            let (mut eligible, mut eligible_assessed) = (0, 0);
+            for (row, others) in removers.iter().enumerate() {
+                if *others == usize::from(removed[row]) {
+                    eligible += 1;
+                    eligible_assessed += usize::from(assessed[row]);
                 }
             }
+            let assessed = assessed.iter().filter(|assessed| **assessed).count();
+            let removed = removed.iter().filter(|removed| **removed).count();
             FilterMetrics {
                 name: name.to_owned(),
                 columns: columns.iter().map(|(column, _)| column.clone()).collect(),
                 assessed,
                 assessed_fraction: fraction(assessed, mask.len()).unwrap_or(0.0),
+                eligible,
+                eligible_assessed_fraction: fraction(eligible_assessed, eligible),
                 removed,
                 removed_fraction: fraction(removed, assessed),
             }
@@ -254,9 +281,15 @@ fn evaluate_filter(name: &str, rule: &FilterPolicy, metrics: &QcMetrics) -> Vec<
     // A filter in the mask must cover its share of events even when it is
     // optional: `required` only asks that it ran.
     if let Some(limit) = rule.min_assessed_fraction {
-        let value = filter.assessed_fraction;
-        checks.push(
-            QcCheck::new(
+        let (value, of) = match rule.assessed_of {
+            AssessedOf::Raw => (Some(filter.assessed_fraction), "raw events"),
+            AssessedOf::Eligible => (
+                filter.eligible_assessed_fraction,
+                "the events no other filter removed",
+            ),
+        };
+        checks.push(match value {
+            Some(value) => QcCheck::new(
                 &scope,
                 "filter_assessed_fraction",
                 if value >= limit {
@@ -265,13 +298,19 @@ fn evaluate_filter(name: &str, rule: &FilterPolicy, metrics: &QcMetrics) -> Vec<
                     violated
                 },
                 format!(
-                    "`{name}` assessed {} of raw events (minimum {})",
+                    "`{name}` assessed {} of {of} (minimum {})",
                     percent(value),
                     percent(limit)
                 ),
             )
             .compared(value, limit),
-        );
+            None => QcCheck::new(
+                &scope,
+                "filter_assessed_fraction",
+                CheckStatus::Pass,
+                format!("other filters removed every event, so none was left for `{name}`"),
+            ),
+        });
     }
     if let (Some(limit), Some(removed_fraction)) =
         (rule.max_removed_fraction, filter.removed_fraction)
@@ -348,6 +387,39 @@ mod tests {
     }
 
     #[test]
+    fn eligible_events_are_those_no_other_filter_removed() {
+        // `singlets` ran beside the others but skipped event 9, which no
+        // filter removed.
+        let singlets = (0..10).map(|row| (row != 9).then_some(true)).collect();
+        let metrics = QcMetrics::of(&mask().with_filter("singlets", singlets), 10, 6);
+        let filter = |name: &str| {
+            metrics
+                .filters
+                .iter()
+                .find(|filter| filter.name == name)
+                .unwrap()
+        };
+        // Event 0, removed by margins, never reached `PeacoQC`.
+        let peacoqc = filter("peacoqc_pass");
+        assert_eq!(peacoqc.eligible, 9);
+        assert_eq!(peacoqc.eligible_assessed_fraction, Some(1.0));
+        // The events `PeacoQC` removed are no longer eligible for margins.
+        let margin = filter("margin_pass");
+        assert_eq!(margin.eligible, 7);
+        assert_eq!(margin.eligible_assessed_fraction, Some(1.0));
+        assert_eq!(filter("live").eligible_assessed_fraction, Some(0.0));
+        let singlets = filter("singlets");
+        assert_eq!(singlets.eligible, 6);
+        assert!((singlets.eligible_assessed_fraction.unwrap() - 5.0 / 6.0).abs() < 1e-12);
+
+        let all_removed = EventMask::new(RAW, vec![false; 2], None)
+            .with_filter("margin_pass", vec![Some(false); 2])
+            .with_filter("live", vec![None; 2]);
+        let live = &QcMetrics::of(&all_removed, 2, 0).filters[1];
+        assert_eq!((live.eligible, live.eligible_assessed_fraction), (0, None));
+    }
+
+    #[test]
     fn checks_counts_and_overall_loss() {
         let checks = evaluate("sample S01", &policy(&[]), &QcMetrics::of(&mask(), 10, 6));
         let status = |name: &str| {
@@ -365,9 +437,9 @@ mod tests {
     fn checks_filters_with_their_severity() {
         let rule = |required, max: Option<f64>, severity| FilterPolicy {
             required,
-            min_assessed_fraction: None,
             max_removed_fraction: max,
             severity,
+            ..FilterPolicy::default()
         };
         let checks = evaluate(
             "sample S01",
@@ -438,5 +510,46 @@ mod tests {
             "an optional filter in the mask that assessed nothing"
         );
         assert!(find("filter singlets").is_none(), "optional and absent");
+    }
+
+    #[test]
+    fn checks_the_share_of_eligible_events_a_filter_assessed() {
+        let rule = |min: f64| FilterPolicy {
+            min_assessed_fraction: Some(min),
+            assessed_of: AssessedOf::Eligible,
+            ..FilterPolicy::default()
+        };
+        let singlets = (0..10).map(|row| (row != 9).then_some(true)).collect();
+        let checks = evaluate(
+            "sample S01",
+            &policy(&[
+                ("peacoqc_pass", rule(1.0)),
+                ("singlets", rule(0.9)),
+                ("live", rule(0.5)),
+            ]),
+            &QcMetrics::of(&mask().with_filter("singlets", singlets), 10, 6),
+        );
+        let find = |scope: &str| {
+            checks
+                .iter()
+                .find(|check| check.scope == scope && check.check == "filter_assessed_fraction")
+                .unwrap_or_else(|| panic!("{scope}: {checks:?}"))
+        };
+        let peacoqc = find("filter peacoqc_pass");
+        assert_eq!(
+            peacoqc.status,
+            CheckStatus::Pass,
+            "9 of 10 raw events, but every one margins left"
+        );
+        assert!(
+            peacoqc
+                .message
+                .contains("100.0% of the events no other filter removed"),
+            "{}",
+            peacoqc.message
+        );
+        let singlets = find("filter singlets");
+        assert_eq!(singlets.status, CheckStatus::Fail, "5 of 6 < 90%");
+        assert_eq!(find("filter live").status, CheckStatus::Fail);
     }
 }

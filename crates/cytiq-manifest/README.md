@@ -48,7 +48,7 @@ is the only way they learn about processing done elsewhere.
 | `RunManifest`, `Cytometry`, `Panel`, `Marker`, `SampleEntry`, `ControlEntry`, `CompensationSource`, `MatrixKind`, `SignalState` | The document; a single `panel` is read as one entry of `panels` |
 | `RunManifest::panel_of`, `controls_of`, `compensation_of` | A sample's panel, a panel's controls, the compensation source of a conventional panel of raw samples (`fcs` by default) |
 | `Panel::label` | `name`, or `panel` when unnamed |
-| `QcPolicy`, `FilterPolicy`, `Severity` | A panel's `qc` section, checked by [`cytiq qc`](../cytiq-qc) |
+| `QcPolicy`, `FilterPolicy`, `AssessedOf`, `Severity` | A panel's `qc` section, checked by [`cytiq qc`](../cytiq-qc) |
 | `ControlEntry::is_unstained` | `dye` is `Autofluorescence`, `AF` or `unstained` |
 | `ManifestError` | Error type |
 
@@ -68,7 +68,8 @@ is the only way they learn about processing done elsewhere.
 - `signal_state: compensated` is for conventional panels and excludes
   `compensation`; `unmixed` is for spectral panels.
 - QC fractions (`max_removed_fraction`, `min_assessed_fraction`) lie
-  between 0 and 1; filter names are not empty.
+  between 0 and 1; filter names are not empty; `assessed_of` other than
+  `raw` comes with `min_assessed_fraction`.
 - Files themselves are not opened here; `cytiq preflight` checks them.
 
 ## Dependencies

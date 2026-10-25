@@ -185,17 +185,20 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
     let mut samples = Vec::with_capacity(manifest.samples.len());
     for sample in &manifest.samples {
         let scope = format!("sample {}", sample.id);
-        let (file_checks, loaded) = check_file(&scope, &sample.file);
+        let declared = manifest
+            .panel_of(sample)
+            .map_or(SignalState::Raw, |panel| panel.signal_state);
+        let (file_checks, loaded) = check_file(&scope, &sample.file, declared);
         checks.extend(file_checks);
         samples.push(loaded);
     }
     let mut controls = Vec::with_capacity(manifest.controls.len());
     for control in &manifest.controls {
         let scope = format!("control {}", control.dye);
-        let (file_checks, loaded) = check_file(&scope, &control.file);
+        // Controls calibrate raw detector values, whatever the samples hold.
+        let (file_checks, loaded) = check_file(&scope, &control.file, SignalState::Raw);
         checks.extend(file_checks);
         if let Some(dataset) = &loaded.dataset {
-            // Controls calibrate raw detector values, whatever the samples hold.
             checks.push(check_signal_state(&scope, dataset, SignalState::Raw));
             checks.push(check_linear_scale(&scope, dataset, CheckStatus::Fail));
             if let Some(channel) = &control.primary_channel {

@@ -318,6 +318,11 @@ enum Commands {
         /// Replace an existing report.
         #[arg(long)]
         overwrite: bool,
+        /// Fail when the sample's panel has no `qc` policy instead of
+        /// warning; use it where the report decides whether a sample is
+        /// released.
+        #[arg(long)]
+        require_policy: bool,
     },
     /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
     Meta {
@@ -1328,6 +1333,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             mask,
             output,
             overwrite,
+            require_policy,
         } => {
             info!(
                 "starting qc: manifest={}, sample={sample}, mask={}",
@@ -1340,6 +1346,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 mask,
                 output,
                 overwrite,
+                require_policy,
             };
             recorder.snapshot_roles(&QcRunner::input_files(&config)?)?;
             let report = QcRunner::run(&config)?;

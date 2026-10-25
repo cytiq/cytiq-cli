@@ -160,15 +160,31 @@ pub struct FilterPolicy {
     /// The filter must have assessed at least one event.
     #[serde(default)]
     pub required: bool,
-    /// Minimum fraction of the raw events the filter assessed (non-null).
+    /// Minimum fraction of the events `assessed_of` names that the filter
+    /// assessed (non-null).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_assessed_fraction: Option<f64>,
+    /// The events `min_assessed_fraction` is a share of.
+    #[serde(default)]
+    pub assessed_of: AssessedOf,
     /// Maximum fraction of the events it assessed that the filter removes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_removed_fraction: Option<f64>,
     /// What a violated rule of this filter reports.
     #[serde(default)]
     pub severity: Severity,
+}
+
+/// The events a filter's `min_assessed_fraction` counts against.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssessedOf {
+    /// Every raw event.
+    #[default]
+    Raw,
+    /// The events no other filter removed: what the filter saw when it ran
+    /// after the others, or all it had to assess when it ran beside them.
+    Eligible,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -567,6 +583,13 @@ fn check_qc_policy(panel: &str, qc: &QcPolicy) -> Result<(), String> {
             ));
         }
     }
+    if let Some((name, _)) = qc.filters.iter().find(|(_, filter)| {
+        filter.assessed_of != AssessedOf::Raw && filter.min_assessed_fraction.is_none()
+    }) {
+        return Err(format!(
+            "panel `{panel}`: qc `filters.{name}.assessed_of` needs `min_assessed_fraction`"
+        ));
+    }
     if qc.filters.keys().any(|name| name.trim().is_empty()) {
         return Err(format!(
             "panel `{panel}`: qc filter names must not be empty"
@@ -833,7 +856,7 @@ controls:
     fn reads_a_qc_policy() {
         let with_qc = YAML.replace(
             "  name: T cells\n",
-            "  name: T cells\n  qc:\n    min_events: 1000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n      live: { min_assessed_fraction: 0.95, max_removed_fraction: 0.4, severity: warn }\n",
+            "  name: T cells\n  qc:\n    min_events: 1000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n      live: { min_assessed_fraction: 0.95, max_removed_fraction: 0.4, severity: warn }\n      singlets: { min_assessed_fraction: 1.0, assessed_of: eligible }\n",
         );
         let manifest = RunManifest::load(&write("qc.yaml", &with_qc)).unwrap();
         let qc = manifest.panels[0].qc.as_ref().unwrap();
@@ -842,6 +865,17 @@ controls:
         assert_eq!(qc.filters["peacoqc_pass"].severity, Severity::Fail);
         assert_eq!(qc.filters["live"].severity, Severity::Warn);
         assert_eq!(qc.filters["live"].min_assessed_fraction, Some(0.95));
+        assert_eq!(qc.filters["live"].assessed_of, AssessedOf::Raw);
+        assert_eq!(qc.filters["singlets"].assessed_of, AssessedOf::Eligible);
+
+        let unbounded = with_qc.replace("min_assessed_fraction: 1.0, ", "");
+        let error = RunManifest::load(&write("qc-of.yaml", &unbounded)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("`filters.singlets.assessed_of` needs `min_assessed_fraction`"),
+            "{error}"
+        );
 
         let out_of_range = with_qc.replace("max_removed_fraction: 0.5", "max_removed_fraction: 50");
         let error = RunManifest::load(&write("qc-range.yaml", &out_of_range)).unwrap_err();

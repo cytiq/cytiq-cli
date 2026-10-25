@@ -514,3 +514,55 @@ fn declared_compensated_samples_must_not_keep_their_spillover() {
     assert_eq!(report["panels"][0]["signal_state"], "compensated");
     assert_eq!(report["panels"][0]["compensation"], Value::Null);
 }
+
+#[test]
+fn accepts_samples_compensated_by_cytiq_only_where_declared() {
+    let directory = create_temp_dir("cytiq-cli-preflight-cytiq-compensated");
+    let compensated = directory.join("sample.comp.fcs");
+    let compensate = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "compensate",
+            "--input",
+            utf8(&fixture("sample.fcs")),
+            "--output",
+            utf8(&compensated),
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        compensate.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&compensate.stderr)
+    );
+    let samples = sample("S01", &compensated);
+
+    // `cytiq compensate` also moved the `$SPILLOVER` a raw panel needs aside.
+    let (output, report, _) = preflight(&directory, "raw.yaml", &manifest(&samples, MARKERS));
+    assert!(!output.status.success());
+    assert_eq!(
+        failed_checks(&report),
+        [
+            r#""sample S01" "raw_signal""#,
+            r#""sample S01" "spillover""#
+        ]
+    );
+
+    let (output, report, _) = preflight(
+        &directory,
+        "compensated.yaml",
+        &manifest(&samples, MARKERS).replace(
+            "  name: test\n",
+            "  name: test\n  signal_state: compensated\n",
+        ),
+    );
+    assert!(output.status.success(), "{:?}", failed_checks(&report));
+    let raw_signal = checks_named(&report, "raw_signal")
+        .into_iter()
+        .find(|check| check["scope"] == "sample S01")
+        .expect("sample raw_signal check");
+    assert_eq!(raw_signal["status"], "pass");
+    assert_eq!(
+        raw_signal["message"],
+        "compensated by `cytiq compensate`, as `signal_state: compensated` declares"
+    );
+}

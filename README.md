@@ -441,7 +441,8 @@ Each stage reads the `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` and
 
 | Stage | Expects | Otherwise |
 | --- | --- | --- |
-| `autospill`, `autospread`, `autospectral`, `cytoscan`, `preflight` | raw files | error |
+| `autospill`, `autospread`, `autospectral`, `cytoscan` | raw files | error |
+| `preflight` | raw files; for samples of a `compensated` or `unmixed` panel, also files `cytiq compensate` or `cytiq autospectral` processed, untransformed | failed check |
 | `compensate` | raw matrix channels | error when already compensated, unmixed, or a matrix channel is transformed |
 | `transform` | compensated or unmixed channels | error when a selected channel's spillover is still pending (`--allow-uncompensated`), or the file is already transformed (`--allow-retransform`) |
 | `clean` | raw scatter and viability channels | error |
@@ -964,8 +965,10 @@ cytiq preflight --manifest run.yaml --output preflight.json
 
 Checks, each reported as `pass`, `warn` or `fail` (full table in
 [`cytiq-preflight`](crates/cytiq-preflight/README.md)):
-- every file parses, has events, and is raw: files already processed by
-  `cytiq transform`, `compensate` or `autospectral` fail
+- every file parses and has events, and the processing cytiq recorded in it
+  fits its panel's `signal_state`: none for `raw` panels and for controls;
+  `cytiq compensate` alone for `compensated`, `cytiq autospectral` alone for
+  `unmixed`; files `cytiq transform` processed always fail
 - every file fits its declared `signal_state`: a raw file with `Comp-<detector>`
   channels (FlowJo's name for compensated values) fails without the detector
   itself and warns next to it; a `compensated` file that still carries
@@ -1014,14 +1017,16 @@ panel:
     max_removed_fraction: 0.6     # 1 - kept / raw events
     filters:                      # key = mask filter column
       margin_pass:  { required: true, max_removed_fraction: 0.05 }
-      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }
+      peacoqc_pass: { required: true, max_removed_fraction: 0.3,
+                      min_assessed_fraction: 0.99, assessed_of: eligible }
       non_debris:   { required: true }
       singlets:     { required: true }
       live:         { required: true, min_assessed_fraction: 0.95, max_removed_fraction: 0.5, severity: warn }
 ```
 
 ```bash
-cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json
+cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json \
+  --require-policy               # where the report releases samples
 ```
 
 Rules:
@@ -1036,15 +1041,19 @@ Rules:
   events it assessed (non-null)
 - `required: true` fails when the filter is missing or assessed nothing (a
   `not_assessed` clean filter). `min_assessed_fraction` fails when it
-  assessed a smaller share of the raw events, which catches a filter that ran
-  on part of them only. The share is of raw events: the mask cannot tell an
-  event that never reached a filter from one it skipped, so a filter that only
-  saw what an earlier stage kept needs a bound that allows for it.
+  assessed a smaller share of events, which catches a filter that ran on part
+  of them only. `assessed_of` says of which events: `raw` (default), every
+  raw event, so a filter that only saw what an earlier stage kept needs a
+  bound that allows for it; or `eligible`, the events no other filter
+  removed, which is what a filter saw when it ran after the others, whatever
+  the stage order.
   `severity: warn` turns that filter's failures into warnings. `min_events`,
   `min_kept_events` and `max_removed_fraction` always fail
-- a panel without `qc` passes with a note
+- a panel without `qc` warns that no threshold was checked, and fails with
+  `--require-policy`
 - `qc.json` holds `metrics` (raw and kept events, removed fraction, per
-  filter: columns, assessed, assessed fraction, removed, removed fraction)
+  filter: columns, assessed, assessed fraction, eligible, eligible assessed
+  fraction, removed, removed fraction)
   and `checks` (`scope`, `check`, `status`, `message`, `value`, `limit`). It
   is always written; the command exits with `1` when any check fails
 

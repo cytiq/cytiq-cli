@@ -23,6 +23,9 @@ pub struct QcConfig {
     /// JSON report path.
     pub output: PathBuf,
     pub overwrite: bool,
+    /// A panel without a `qc` policy fails instead of warning: release
+    /// decisions need thresholds that were checked.
+    pub require_policy: bool,
 }
 
 /// The `qc.json` report.
@@ -113,12 +116,7 @@ impl QcRunner {
         if let Some(metrics) = &metrics {
             match &panel.qc {
                 Some(policy) => checks.extend(evaluate(&scope, policy, metrics)),
-                None => checks.push(QcCheck::new(
-                    &scope,
-                    "policy",
-                    CheckStatus::Pass,
-                    format!("panel `{}` has no `qc` policy", panel.label()),
-                )),
+                None => checks.push(missing_policy(&scope, panel.label(), config.require_policy)),
             }
         }
         let count = |status| checks.iter().filter(|check| check.status == status).count();
@@ -162,6 +160,25 @@ impl QcReport {
             })
         }
     }
+}
+
+/// A mask that passes without a policy met no quality threshold, so it is
+/// never a plain pass.
+fn missing_policy(scope: &str, panel: &str, required: bool) -> QcCheck {
+    let (status, consequence) = if required {
+        (CheckStatus::Fail, "`--require-policy` asks for one")
+    } else {
+        (
+            CheckStatus::Warn,
+            "only the mask itself was checked; pass `--require-policy` to fail instead",
+        )
+    };
+    QcCheck::new(
+        scope,
+        "policy",
+        status,
+        format!("panel `{panel}` has no `qc` policy: {consequence}"),
+    )
 }
 
 fn find_sample<'a>(

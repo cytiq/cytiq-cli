@@ -45,8 +45,13 @@ pub(crate) struct LoadedFile {
 }
 
 /// Readability, event count, signal state and acquisition metadata of one
-/// file.
-pub(crate) fn check_file(scope: &str, path: &Path) -> (Vec<Check>, LoadedFile) {
+/// file. `declared` is the signal state its panel declares: always `raw` for
+/// controls.
+pub(crate) fn check_file(
+    scope: &str,
+    path: &Path,
+    declared: SignalState,
+) -> (Vec<Check>, LoadedFile) {
     let mut checks = Vec::new();
     let dataset = match FcsReader::open(path).and_then(FcsReader::read) {
         Ok(dataset) => dataset,
@@ -85,7 +90,7 @@ pub(crate) fn check_file(scope: &str, path: &Path) -> (Vec<Check>, LoadedFile) {
             "the file has no events".to_owned(),
         ));
     }
-    checks.push(signal_state(scope, &dataset));
+    checks.push(cytiq_processing(scope, &dataset, declared));
     let missing = ["$CYT", "$DATE"]
         .into_iter()
         .filter(|key| {
@@ -119,44 +124,58 @@ pub(crate) fn check_file(scope: &str, path: &Path) -> (Vec<Check>, LoadedFile) {
     )
 }
 
-fn signal_state(scope: &str, dataset: &FcsDataset) -> Check {
-    let text = &dataset.text;
-    let processed = [
-        (
-            cytiq_fcs::transform_state(text).map(|state| state.is_some()),
-            "cytiq transform",
-        ),
-        (
-            cytiq_fcs::compensation_state(text).map(|state| state.is_some()),
-            "cytiq compensate",
-        ),
-        (
-            cytiq_fcs::unmixing_state(text).map(|state| state.is_some()),
-            "cytiq autospectral",
-        ),
-    ];
-    let by = processed
-        .iter()
-        .filter(|(state, _)| !matches!(state, Ok(false)))
-        .map(|(_, tool)| *tool)
-        .collect::<Vec<_>>();
-    if by.is_empty() {
-        Check::new(
-            scope,
-            "raw_signal",
+/// The processing cytiq recorded in the file (`CYTIQ_*` keywords) fits the
+/// declared signal state: none for `raw`; `cytiq compensate` alone for
+/// `compensated`, `cytiq autospectral` alone for `unmixed`. Transformed
+/// files never fit: every stage that reads a run's samples expects linear
+/// values.
+fn cytiq_processing(scope: &str, dataset: &FcsDataset, declared: SignalState) -> Check {
+    let check = |status, message: String| Check::new(scope, "raw_signal", status, message);
+    let state = match cytiq_fcs::SignalState::of(&dataset.text) {
+        Ok(state) => state,
+        Err(error) => {
+            return check(
+                CheckStatus::Fail,
+                format!("the cytiq signal keywords cannot be read: {error}"),
+            );
+        }
+    };
+    if state.is_raw() {
+        return check(
             CheckStatus::Pass,
             "raw values (no cytiq transform, compensation or unmixing)".to_owned(),
+        );
+    }
+    let (fits, expected) = match declared {
+        SignalState::Raw => (false, "raw acquisition files"),
+        SignalState::Compensated => (
+            state.transform.is_none() && state.unmixing.is_none(),
+            "files compensated by other software or by `cytiq compensate` alone",
+        ),
+        SignalState::Unmixed => (
+            state.transform.is_none() && state.compensation.is_none(),
+            "files unmixed by other software or by `cytiq autospectral` alone",
+        ),
+    };
+    let declared = declared_name(declared);
+    if fits {
+        check(
+            CheckStatus::Pass,
+            format!("{state}, as `signal_state: {declared}` declares"),
         )
     } else {
-        Check::new(
-            scope,
-            "raw_signal",
+        check(
             CheckStatus::Fail,
-            format!(
-                "the file was already processed by {}; preflight expects raw acquisition files",
-                by.join(", ")
-            ),
+            format!("the file is {state}; `signal_state: {declared}` expects {expected}"),
         )
+    }
+}
+
+const fn declared_name(state: SignalState) -> &'static str {
+    match state {
+        SignalState::Raw => "raw",
+        SignalState::Compensated => "compensated",
+        SignalState::Unmixed => "unmixed",
     }
 }
 
@@ -864,6 +883,53 @@ mod tests {
         assert_eq!(
             signal_status(&["FITC-A"], true, SignalState::Unmixed),
             CheckStatus::Warn
+        );
+    }
+
+    #[test]
+    fn cytiq_processing_fits_the_declared_signal_state() {
+        let compensated = (
+            cytiq_fcs::COMPENSATION_KEYWORD,
+            r#"{"source":"fcs","channels":["FITC-A"]}"#,
+        );
+        let unmixed = (
+            cytiq_fcs::UNMIXING_KEYWORD,
+            r#"{"components":["FITC"],"detectors":["B1-A"]}"#,
+        );
+        let transformed = (cytiq_fcs::TRANSFORM_KEYWORD, r#"{"method":"arcsinh"}"#);
+        let status = |keywords: &[(&str, &str)], declared| {
+            let options = keywords
+                .iter()
+                .fold(FcsWriteOptions::new(), |options, (key, value)| {
+                    options.with_text_keyword(*key, *value)
+                });
+            let dataset = dataset_with(&[FcsWriteParameter::new("FITC-A")], &options);
+            cytiq_processing("sample S01", &dataset, declared).status
+        };
+        let (raw, comp, unmix) = (
+            SignalState::Raw,
+            SignalState::Compensated,
+            SignalState::Unmixed,
+        );
+        for declared in [raw, comp, unmix] {
+            assert_eq!(status(&[], declared), CheckStatus::Pass, "{declared:?}");
+            assert_eq!(
+                status(&[transformed], declared),
+                CheckStatus::Fail,
+                "{declared:?}"
+            );
+        }
+        assert_eq!(status(&[compensated], raw), CheckStatus::Fail);
+        assert_eq!(status(&[compensated], comp), CheckStatus::Pass);
+        assert_eq!(status(&[compensated, transformed], comp), CheckStatus::Fail);
+        assert_eq!(status(&[compensated], unmix), CheckStatus::Fail);
+        assert_eq!(status(&[unmixed], raw), CheckStatus::Fail);
+        assert_eq!(status(&[unmixed], unmix), CheckStatus::Pass);
+        assert_eq!(status(&[unmixed], comp), CheckStatus::Fail);
+        assert_eq!(
+            status(&[(cytiq_fcs::UNMIXING_KEYWORD, "not json")], unmix),
+            CheckStatus::Fail,
+            "an unreadable keyword"
         );
     }
 

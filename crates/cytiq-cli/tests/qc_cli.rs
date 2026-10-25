@@ -63,6 +63,15 @@ fn write_mask(directory: &Path, acquisition: String, peacoqc_removed: usize) -> 
 }
 
 fn qc(directory: &Path, manifest: &Path, mask: &Path) -> (Output, Option<Value>) {
+    qc_with(directory, manifest, mask, &[])
+}
+
+fn qc_with(
+    directory: &Path,
+    manifest: &Path,
+    mask: &Path,
+    flags: &[&str],
+) -> (Output, Option<Value>) {
     let report = directory.join("qc.json");
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -75,7 +84,9 @@ fn qc(directory: &Path, manifest: &Path, mask: &Path) -> (Output, Option<Value>)
             utf8(mask),
             "--output",
             utf8(&report),
+            "--overwrite",
         ])
+        .args(flags)
         .output()
         .expect("command should run");
     let report = fs::read_to_string(report)
@@ -214,6 +225,50 @@ fn fails_when_a_required_filter_assessed_few_events() {
 }
 
 #[test]
+fn counts_a_later_filter_against_the_events_left_to_it() {
+    let directory = create_temp_dir("cytiq-cli-qc-eligible");
+    let rule = |of: &str| {
+        format!(
+            "  qc:\n    filters:\n      peacoqc_pass: {{ min_assessed_fraction: 0.99, assessed_of: {of} }}\n"
+        )
+    };
+    // The margin mask removed the first 2,000 events; `PeacoQC` ran on the
+    // other 8,000, all it saw.
+    let mask = directory.join("analysis.parquet");
+    let margin = (0..EVENTS).map(|row| row >= 2_000).collect::<Vec<_>>();
+    EventMask::new(
+        common::acquisition_of(&fixture("sample.fcs")),
+        margin.clone(),
+        None,
+    )
+    .with_filter("margin_pass", margin.iter().copied().map(Some).collect())
+    .with_filter(
+        "peacoqc_pass",
+        margin.iter().map(|kept| kept.then_some(true)).collect(),
+    )
+    .write_parquet(&mask)
+    .expect("mask should write");
+
+    let (output, report) = qc(&directory, &write_manifest(&directory, &rule("raw")), &mask);
+    assert!(!output.status.success(), "80% of raw events < 99%");
+    assert_eq!(
+        failed(&report.expect("report")),
+        [r#""filter peacoqc_pass" "filter_assessed_fraction""#]
+    );
+
+    let (output, report) = qc(
+        &directory,
+        &write_manifest(&directory, &rule("eligible")),
+        &mask,
+    );
+    let report = report.expect("report");
+    assert!(output.status.success(), "{:?}", failed(&report));
+    let peacoqc = &report["metrics"]["filters"][1];
+    assert_eq!(peacoqc["eligible"], 8_000);
+    assert_eq!(peacoqc["eligible_assessed_fraction"], 1.0);
+}
+
+#[test]
 fn fails_when_the_mask_has_rows_beyond_the_raw_file() {
     let directory = create_temp_dir("cytiq-cli-qc-extra-rows");
     let manifest = write_manifest(
@@ -269,7 +324,7 @@ fn fails_when_the_mask_belongs_to_another_sample() {
 }
 
 #[test]
-fn passes_without_a_policy_and_rejects_an_unknown_sample() {
+fn warns_without_a_policy_unless_one_is_required() {
     let directory = create_temp_dir("cytiq-cli-qc-no-policy");
     let manifest = write_manifest(&directory, "");
     let mask = write_mask(
@@ -278,9 +333,31 @@ fn passes_without_a_policy_and_rejects_an_unknown_sample() {
         0,
     );
 
+    // No threshold was checked, so the mask is never a plain pass.
     let (output, report) = qc(&directory, &manifest, &mask);
     assert!(output.status.success());
-    assert_eq!(report.expect("report")["checks"][1]["check"], "policy");
+    let report = report.expect("report");
+    assert_eq!(report["status"], "warn");
+    assert_eq!(report["checks"][1]["check"], "policy");
+    assert_eq!(report["checks"][1]["status"], "warn");
+
+    let (output, report) = qc_with(&directory, &manifest, &mask, &["--require-policy"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        failed(&report.expect("report")),
+        [r#""sample S01" "policy""#]
+    );
+}
+
+#[test]
+fn rejects_an_unknown_sample() {
+    let directory = create_temp_dir("cytiq-cli-qc-unknown-sample");
+    let manifest = write_manifest(&directory, "");
+    let mask = write_mask(
+        &directory,
+        common::acquisition_of(&fixture("sample.fcs")),
+        0,
+    );
 
     let unknown = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([

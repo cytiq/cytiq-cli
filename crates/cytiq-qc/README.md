@@ -7,6 +7,9 @@ the run manifest. Backs `cytiq qc`.
 cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json
 ```
 
+Add `--require-policy` where the report decides whether a sample is released:
+a panel without a policy then fails instead of warning.
+
 The policy is the panel's `qc` section (`cytiq_manifest::QcPolicy`):
 
 ```yaml
@@ -15,7 +18,7 @@ qc:
   min_kept_events: 3000
   max_removed_fraction: 0.6
   filters:
-    peacoqc_pass: { required: true, max_removed_fraction: 0.3 }
+    peacoqc_pass: { required: true, min_assessed_fraction: 0.99, assessed_of: eligible, max_removed_fraction: 0.3 }
     live: { min_assessed_fraction: 0.95, max_removed_fraction: 0.5, severity: warn }
 ```
 
@@ -25,22 +28,28 @@ qc:
 | --- | --- | --- | --- |
 | `mask_acquisition` | sample | the mask belongs to another raw acquisition | |
 | `mask_coverage` | sample | the mask has no row for a raw event, or rows for events the raw file does not have | |
-| `policy` | sample | | (passes with a note when the panel has no `qc`) |
+| `policy` | sample | the panel has no `qc` and `--require-policy` is set | the panel has no `qc` |
 | `min_events` | sample | the raw file has fewer events | |
 | `min_kept_events` | sample | the mask keeps fewer events | |
 | `max_removed_fraction` | sample | `1 - kept / raw events` is larger | |
 | `filter_assessed` | `filter <name>` | a `required` filter is missing or assessed no event (`severity: fail`) | the same with `severity: warn` |
-| `filter_assessed_fraction` | `filter <name>` in the mask | the filter assessed a smaller share of raw events than `min_assessed_fraction` (`severity: fail`) | the same with `severity: warn` |
+| `filter_assessed_fraction` | `filter <name>` in the mask | the filter assessed a smaller share of the events `assessed_of` names than `min_assessed_fraction` (`severity: fail`); passes when no event was eligible | the same with `severity: warn` |
 | `filter_removed_fraction` | `filter <name>` | the filter removed more of the events it assessed (`severity: fail`) | the same with `severity: warn` |
 
 Columns `cytiq mask combine` prefixed after a repeated name (`2.live`) count
 as the same filter: an event is assessed when any column is non-null and
 removed when any is `false`.
 
-`min_assessed_fraction` is relative to every raw event. A filter that only
-saw the events an earlier stage kept (`peacoqc_pass` after the margin mask)
-assesses fewer, so its bound has to allow for them: the mask cannot tell an
-event that never reached the filter from one the filter skipped.
+`min_assessed_fraction` is a share of the events `assessed_of` names:
+- `raw` (default): every raw event. A filter that only saw the events an
+  earlier stage kept (`peacoqc_pass` after the margin mask) assesses fewer,
+  so its bound has to allow for them.
+- `eligible`: the events no other filter removed. The mask has no stage
+  order, but an event that never reached a later filter was removed by an
+  earlier one, so this is what a filter saw when it ran after the others,
+  and all it had to assess when it ran beside them. An event it skipped that
+  another filter removed is not counted against it: that event is dropped
+  anyway.
 
 ## Public API
 
@@ -49,7 +58,7 @@ event that never reached the filter from one the filter skipped.
 | `QcRunner::run` / `QcConfig` | Run the checks and write `qc.json` |
 | `QcRunner::input_files` | The manifest, the sample FCS and the mask, for provenance |
 | `QcReport` (`ensure_passed`) | The report: status, counts, metrics, checks |
-| `QcMetrics`, `FilterMetrics` | Raw and kept events; per filter: columns, assessed (count and share of raw events), removed |
+| `QcMetrics`, `FilterMetrics` | Raw and kept events; per filter: columns, assessed (count and share of raw events), eligible events and the share of them assessed, removed |
 | `evaluate` | The policy rules over metrics, without files |
 | `QcCheck`, `CheckStatus` | One finding: `pass`, `warn`, `fail`, with `value` and `limit` |
 | `QcError` | Error type |

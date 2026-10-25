@@ -19,6 +19,7 @@ fails; failures and warnings are also logged.
 | `raw_signal` | every file | `cytiq transform`, `compensate` or `autospectral` already processed it | |
 | `acquisition_metadata` | every file | | `$CYT` or `$DATE` is missing |
 | `signal_state` | samples, by their panel's `signal_state`; controls, always as `raw` | `raw`: `Comp-<detector>` channels without the detector; `compensated`: the file carries `$SPILLOVER`/`$SPILL`, which stages would apply again | `raw`: `Comp-<detector>` channels next to their detectors; `unmixed`: the file carries a spillover keyword |
+| `linear_scale` | every file | a control, or a sample `cytiq compensate` does not process (spectral, or declared compensated), has a log-amplified parameter (`$PnE` other than `0,0`): the stages that read it refuse it | a raw sample of a conventional panel has one: `cytiq compensate` writes it linear, the other stages refuse it raw |
 | `panel_marker` | samples | a required marker matches no channel, or several | an optional marker is missing; `channel`'s `$PnS` names another marker |
 | `unique_labels` | samples | | two channels share a `$PnS` |
 | `spillover` | raw samples of a conventional panel with `source: fcs` (the default) | no, invalid, mismatched or singular spillover matrix | its 1-norm condition number exceeds `SPILLOVER_CONDITION_WARN` (100) |

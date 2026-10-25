@@ -301,3 +301,31 @@ fn cli_clean_controls_reports_a_degenerate_scatter_gate() {
         "stderr: {stderr}"
     );
 }
+
+#[test]
+fn cli_rejects_log_amplified_autospectral_controls() {
+    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-log");
+    common::set_log_amplified(&directory.join("fitc.fcs"), "FITC");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "autospectral",
+            "--controls",
+            utf8(&directory.join("controls.csv")),
+            "--samples",
+            utf8(&directory.join("samples.csv")),
+            "--input-dir",
+            utf8(&directory),
+            "--output",
+            utf8(&directory.join("out")),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("fitc.fcs") && stderr.contains("`FITC` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+}

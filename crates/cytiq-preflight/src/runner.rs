@@ -9,8 +9,8 @@ use serde::Serialize;
 
 use crate::checks::{
     Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
-    check_file, check_markers, check_matrix, check_primary_channel, check_signal_state,
-    check_spillover, panel_scope,
+    check_file, check_linear_scale, check_markers, check_matrix, check_primary_channel,
+    check_signal_state, check_spillover, panel_scope,
 };
 use crate::error::PreflightError;
 
@@ -184,7 +184,8 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
     // Each file is read once; panels refer to them by position.
     let mut samples = Vec::with_capacity(manifest.samples.len());
     for sample in &manifest.samples {
-        let (file_checks, loaded) = check_file(&format!("sample {}", sample.id), &sample.file);
+        let scope = format!("sample {}", sample.id);
+        let (file_checks, loaded) = check_file(&scope, &sample.file);
         checks.extend(file_checks);
         samples.push(loaded);
     }
@@ -196,6 +197,7 @@ fn run_checks(manifest: &RunManifest) -> Vec<Check> {
         if let Some(dataset) = &loaded.dataset {
             // Controls calibrate raw detector values, whatever the samples hold.
             checks.push(check_signal_state(&scope, dataset, SignalState::Raw));
+            checks.push(check_linear_scale(&scope, dataset, CheckStatus::Fail));
             if let Some(channel) = &control.primary_channel {
                 checks.push(check_primary_channel(&scope, dataset, channel));
             }
@@ -248,6 +250,13 @@ fn check_panel(
             control.panel.is_none() || control.panel.as_deref() == panel.name.as_deref()
         })
         .collect::<Vec<(&ControlEntry, &LoadedFile)>>();
+    // `cytiq compensate` linearises the samples it compensates; every other
+    // stage reads stored values.
+    let log_amplified = if manifest.compensation_of(panel).is_some() {
+        CheckStatus::Warn
+    } else {
+        CheckStatus::Fail
+    };
     for loaded in &panel_samples {
         if let Some(dataset) = &loaded.dataset {
             checks.push(check_signal_state(
@@ -255,6 +264,7 @@ fn check_panel(
                 dataset,
                 panel.signal_state,
             ));
+            checks.push(check_linear_scale(&loaded.scope, dataset, log_amplified));
             checks.extend(check_markers(&loaded.scope, dataset, panel));
         }
     }

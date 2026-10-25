@@ -249,6 +249,42 @@ fn check_compensated_copies(scope: &str, dataset: &FcsDataset) -> Check {
     }
 }
 
+/// Every parameter is stored on a linear scale. `cytiq compensate`, `gate`
+/// and `clean` linearise log-amplified values; the other stages read stored
+/// values and refuse them. `log_amplified` is the status to report: `Warn`
+/// for samples `cytiq compensate` processes first, `Fail` otherwise.
+pub(crate) fn check_linear_scale(
+    scope: &str,
+    dataset: &FcsDataset,
+    log_amplified: CheckStatus,
+) -> Check {
+    let parameters = cytiq_fcs::log_amplified_parameters(dataset);
+    if parameters.is_empty() {
+        return Check::new(
+            scope,
+            "linear_scale",
+            CheckStatus::Pass,
+            "every parameter is stored linear (`$PnE=0,0`)".to_owned(),
+        );
+    }
+    let names = parameters
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let consequence = if log_amplified == CheckStatus::Fail {
+        "no stage writes them linear before `cytiq autospill`, `autospectral`, `transform`, `peacoqc`, `flowsom` and `cytoscan`, which read stored values and refuse them"
+    } else {
+        "`cytiq compensate`, `gate` and `clean` linearise them, but `transform`, `peacoqc`, `flowsom` and `cytoscan` refuse them: run those on the output of `cytiq compensate`"
+    };
+    Check::new(
+        scope,
+        "linear_scale",
+        log_amplified,
+        format!("{names} store log-amplified values (`$PnE` other than `0,0`); {consequence}"),
+    )
+}
+
 /// Scope of panel-level checks: `panel T`, or `panel` for an unnamed one.
 pub(crate) fn panel_scope(panel: &Panel) -> String {
     panel

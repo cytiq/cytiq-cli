@@ -435,3 +435,31 @@ fn fails_when_mask_belongs_to_another_file() {
     assert!(stderr.contains("was computed on acquisition"), "{stderr}");
     assert!(!output_path.exists());
 }
+
+#[test]
+fn cli_rejects_log_amplified_flowsom_input() {
+    let directory = create_temp_dir("cytiq-cli-flowsom-log");
+    let input = directory.join("sample.fcs");
+    write_flowsom_fixture_fcs(&input);
+    common::set_log_amplified(&input, "FL1-A");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "flowsom",
+            "--input",
+            utf8(&input),
+            "--output",
+            utf8(&directory.join("sample.flowsom.csv")),
+            "--channels",
+            "CD3,CD4",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`FL1-A` store log-amplified values"),
+        "stderr: {stderr}"
+    );
+}

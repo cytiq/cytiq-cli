@@ -451,6 +451,7 @@ fn load_dataset(path: &Path) -> Result<FcsDataset, PeacoQcError> {
     debug!("loading FCS file {}", path.display());
     let dataset = FcsReader::open(path)
         .and_then(FcsReader::read)
+        .and_then(|dataset| cytiq_fcs::ensure_linear_scale(&dataset).map(|()| dataset))
         .map_err(|source| PeacoQcError::FcsRead {
             path: path.to_path_buf(),
             source,
@@ -1267,7 +1268,9 @@ fn write_cleaned_fcs(
     }
 
     // Values are written unchanged, so every source keyword, `$PnR` and the
-    // spillover matrix stay valid for the cleaned file.
+    // spillover matrix stay valid for the cleaned file. The writer declares
+    // `$PnE=0,0`, which holds because `load_dataset` rejects log-amplified
+    // input.
     let mut parameters = dataset
         .parameters
         .iter()

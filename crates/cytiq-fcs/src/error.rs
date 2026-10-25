@@ -62,4 +62,8 @@ pub enum FcsError {
     SingularMatrix,
     #[error("invalid FCS writer input: {0}")]
     InvalidWriterInput(&'static str),
+    #[error(
+        "{parameters} store log-amplified values (`$PnE` other than `0,0`), which this command would read as channel numbers; `cytiq compensate` writes them linear"
+    )]
+    LogAmplified { parameters: String },
 }

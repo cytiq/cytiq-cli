@@ -431,6 +431,56 @@ fn checks_each_sample_against_its_own_panel() {
 }
 
 #[test]
+fn reports_log_amplified_samples_and_controls() {
+    let directory = create_temp_dir("cytiq-cli-preflight-log");
+    let sample_path = directory.join("sample.fcs");
+    let control_path = directory.join("control.fcs");
+    fs::copy(fixture("sample.fcs"), &sample_path).expect("fixture should copy");
+    fs::copy(fixture("control.fcs"), &control_path).expect("fixture should copy");
+    common::set_log_amplified(&sample_path, "FL1-A");
+    common::set_log_amplified(&control_path, "FL1-A");
+    let text = manifest(&sample("S01", &sample_path), MARKERS)
+        .replace(utf8(&fixture("control.fcs")), utf8(&control_path));
+
+    let (output, report, _) = preflight(&directory, "run.yaml", &text);
+
+    // `cytiq compensate` linearises conventional samples; controls are read
+    // as stored by `cytiq autospill`.
+    assert!(!output.status.success());
+    assert_eq!(
+        failed_checks(&report),
+        [r#""control Autofluorescence" "linear_scale""#]
+    );
+    let sample_check = checks_named(&report, "linear_scale")
+        .into_iter()
+        .find(|check| check["scope"] == "sample S01")
+        .expect("sample linear_scale check");
+    assert_eq!(sample_check["status"], "warn");
+    assert!(
+        sample_check["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("`FL1-A` store log-amplified values")),
+        "{sample_check}"
+    );
+
+    // Samples compensated elsewhere skip `cytiq compensate`, so nothing writes
+    // them linear before the stages that refuse them.
+    let stripped = directory.join("sample.nospill.fcs");
+    without_spillover(&fixture("sample.fcs"), &stripped);
+    common::set_log_amplified(&stripped, "FL1-A");
+    let (output, report, _) = preflight(
+        &directory,
+        "compensated.yaml",
+        &manifest(&sample("S01", &stripped), MARKERS).replace(
+            "  name: test\n",
+            "  name: test\n  signal_state: compensated\n",
+        ),
+    );
+    assert!(!output.status.success());
+    assert_eq!(failed_checks(&report), [r#""sample S01" "linear_scale""#]);
+}
+
+#[test]
 fn declared_compensated_samples_must_not_keep_their_spillover() {
     let directory = create_temp_dir("cytiq-cli-preflight-compensated");
     let stripped = directory.join("sample.nospill.fcs");

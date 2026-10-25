@@ -348,6 +348,7 @@ fn load_dataset(path: &Path) -> Result<FcsDataset, AutoSpectralError> {
     debug!("loading FCS file {}", path.display());
     let dataset = FcsReader::open(path)
         .and_then(FcsReader::read)
+        .and_then(|dataset| cytiq_fcs::ensure_linear_scale(&dataset).map(|()| dataset))
         .map_err(|source| AutoSpectralError::FcsRead {
             path: path.to_path_buf(),
             source,

@@ -132,8 +132,15 @@ enum Commands {
         /// Worker thread limit; defaults to all available logical CPUs.
         #[arg(long, value_parser = parse_threads)]
         threads: Option<usize>,
-        /// Clean controls before building spectra: drop raw detector-margin
-        /// events and gate FSC/SSC with the same KDE gate as `autospill`.
+        /// Gate control FSC/SSC with the 1-99% quantile box instead of
+        /// cleaning them (drop raw detector-margin events, then the
+        /// `autospill` KDE gate), for controls too small for the KDE gate. On
+        /// real cell controls the box keeps debris and saturated events that
+        /// bias the spectra.
+        #[arg(long, conflicts_with = "clean_controls")]
+        quantile_gate: bool,
+        /// Clean controls before building spectra (the default; kept for
+        /// existing scripts).
         #[arg(long)]
         clean_controls: bool,
     },
@@ -906,7 +913,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             fsc,
             ssc,
             threads,
-            clean_controls,
+            quantile_gate,
+            clean_controls: _,
         } => {
             info!(
                 "starting autospectral: controls={}, samples={}, input_dir={}, output={}",
@@ -957,7 +965,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output_dir: output.clone(),
                 debug_dir,
                 threads,
-                clean_controls,
+                clean_controls: !quantile_gate,
             };
             let summary =
                 AutoSpectralRunner::run(&control_manifest, &sample_manifest, &input_dir, &config)?;

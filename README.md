@@ -51,7 +51,8 @@ cytiq autospill \
   --debug-dir ./debug \
   --fsc FSC-A \
   --ssc SSC-A \
-  --threads 4
+  --threads 4 \
+  --quantile-gate
 ```
 
 `cytiq autospread` uses the same manifest/input model:
@@ -159,7 +160,8 @@ cytiq autospectral \
   --debug-dir ./debug \
   --fsc FSC-A \
   --ssc SSC-A \
-  --threads 4
+  --threads 4 \
+  --quantile-gate
 ```
 
 Controls manifest:
@@ -188,11 +190,12 @@ Rules:
 - AutoSpectral-style `fluorophore` and `channel` headers are accepted as aliases for `dye` and `primary_channel`
 - if `--detectors` is omitted, spectral detectors are inferred as shared non-scatter, non-time channels
 - independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
-- reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
-- positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
+- reference spectra are AutoSpectral's: 1 on the peak detector and, on every other detector, the robust slope (`MASS::rlm`, Huber) of that detector on the peak detector, divided by the largest value, so unmixed abundances are in units of each fluorophore's peak detector
+- positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required); their negatives are the autofluorescence control's 3 nearest events on raw FSC/SSC (at most 1,000), as `clean.controls` matches them on scatter, and the slopes run over both
+- the autofluorescence spectrum is the same slopes over the gated autofluorescence control, against its detector with the highest mean
 - the OLS solution is computed with a Householder QR solve (`R⁻¹Qᵀ`), not the normal equations `(MᵀM)⁻¹Mᵀ`, which square the condition number; `run.json` records `solver_method`
 - autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
-- `--clean-controls` drops control events on a raw detector margin and gates FSC/SSC with the same KDE gate as `autospill` instead of the 1–99% quantile box; `run.json` records `control_gate`. It needs enough events for the KDE gate (a few hundred per control)
+- controls are cleaned by default: events on a raw detector margin are dropped and FSC/SSC is gated with the same KDE gate as `autospill`, which needs a few hundred events per control. `--quantile-gate` keeps the 1–99% FSC/SSC quantile box instead, for smaller controls; on real cell controls it keeps debris and saturated events that bias the spectra (cosine down to 0.42 against AutoSpectral on an Aurora panel, `parity/REPORT.md` §2.10). `--clean-controls` is accepted for existing scripts; `run.json` records `control_gate`
 - unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced, except `CYTIQ_ACQUISITION`
 - passed-through channels keep their exact values (the file uses doubles when one does not fit f32, for example `Original_ID` above 2^24); components are rounded to f32. `Time` and `Original_ID` are never inferred as detectors, and `Original_ID` is rejected as an explicit detector
 - unmixed files record `CYTIQ_UNMIXING` (components and detectors) and the margin bounds of passed-through channels in `CYTIQ_MARGINS`. Components have no detector margins: `cytiq peacoqc --remove-margins` refuses them, and `cytiq gate` refuses to compensate them. Raw detector margins are written instead as `margin_pass` in `unmixed/<sample>.unmixed.masks.parquet`
@@ -505,11 +508,25 @@ Rules:
   `flowFP` probability binning with 4 recursions
 - outlier scores follow `isotree::isolation.forest(sample_size = 1, ntrees =
   1000, ndim = 1)`; files with score `>= 0.5` are outliers
-- novelty fits Gaussian mixtures (`linfa-clustering`, full covariance,
-  `G = 1..9`, mclust-style BIC) on the reference features; test files at or
-  below the 5% quantile of reference log-densities are novelties. When there
-  are no more reference files than features, a single diagonal Gaussian is
-  used instead and reported as a warning
+- novelty fits a Gaussian mixture on the reference features as
+  `mclust::Mclust` does by default: `G = 1..9`, EM started from Ward's
+  hierarchical clustering of the SVD-whitened features (`hc(modelName =
+  "EII", use = "SVD")`), and the best BIC over the covariance structures
+  `EII`, `VII`, `EEI`, `VEI`, `EVI`, `VVI` and, with more reference files
+  than features, `EEE` and `VVV`. Test files at or below the 5% quantile of
+  reference log-densities are novelties. `cytoscan_config.json` records the
+  structure (`novelty_model`, mclust's name), `G` and BIC
+- with no more reference files than features (`summary` has 4 per channel,
+  `quantiles` 9, `binning` 10) only spherical and diagonal structures fit, as
+  in mclust, and the threshold rests on a handful of log-densities: the run
+  warns. Use more reference files than features for a reliable novelty flag
+- the mixture differs from mclust in two ways: it does not try mclust's
+  other full-covariance structures (`VEV`, `EVE`, ...) and starts EM from
+  Ward's clustering where mclust starts from `hcVVV` when there are more
+  files than features; and it rejects a one-component full covariance that is
+  singular up to rounding, which mclust keeps. Binning and fingerprint
+  features sum to 1 per channel, so mclust then fits that covariance and
+  flags every test file
 - low-level algorithm settings such as event sampling, aggregate size,
   isolation tree count, novelty quantile, and fingerprint recursions are fixed
   internal constants for the first public CLI; random draws use `rand` with a
@@ -1000,7 +1017,7 @@ panel:
       peacoqc_pass: { required: true, max_removed_fraction: 0.3 }
       non_debris:   { required: true }
       singlets:     { required: true }
-      live:         { required: false, max_removed_fraction: 0.5, severity: warn }
+      live:         { required: true, min_assessed_fraction: 0.95, max_removed_fraction: 0.5, severity: warn }
 ```
 
 ```bash
@@ -1008,23 +1025,28 @@ cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --outpu
 ```
 
 Rules:
-- the mask must belong to the sample's raw acquisition and cover every raw
-  event (`cytiq mask combine` follows the rows of its first mask, so put the
-  `compensate` or `clean` mask first); otherwise the check fails and no
+- the mask must belong to the sample's raw acquisition and hold exactly one
+  row per raw event: none missing (`cytiq mask combine` follows the rows of
+  its first mask, so put the `compensate` or `clean` mask first) and none for
+  events the raw file does not have; otherwise the check fails and no
   metrics are computed
 - a filter counts as removing an event when any of its columns is `false`;
   `2.margin_pass` and `margin_pass` (the names `cytiq mask combine` gives a
   repeated filter) are one filter. Its removed fraction is relative to the
   events it assessed (non-null)
 - `required: true` fails when the filter is missing or assessed nothing (a
-  `not_assessed` clean filter); `severity: warn` turns that filter's failures
-  into warnings. `min_events`, `min_kept_events` and `max_removed_fraction`
-  always fail
+  `not_assessed` clean filter). `min_assessed_fraction` fails when it
+  assessed a smaller share of the raw events, which catches a filter that ran
+  on part of them only. The share is of raw events: the mask cannot tell an
+  event that never reached a filter from one it skipped, so a filter that only
+  saw what an earlier stage kept needs a bound that allows for it.
+  `severity: warn` turns that filter's failures into warnings. `min_events`,
+  `min_kept_events` and `max_removed_fraction` always fail
 - a panel without `qc` passes with a note
 - `qc.json` holds `metrics` (raw and kept events, removed fraction, per
-  filter: columns, assessed, removed, removed fraction) and `checks`
-  (`scope`, `check`, `status`, `message`, `value`, `limit`). It is always
-  written; the command exits with `1` when any check fails
+  filter: columns, assessed, assessed fraction, removed, removed fraction)
+  and `checks` (`scope`, `check`, `status`, `message`, `value`, `limit`). It
+  is always written; the command exits with `1` when any check fails
 
 ## Provenance
 
@@ -1146,6 +1168,7 @@ real acquisitions are stored in the repository.
 | [`data/fixtures/autospread/`](data/fixtures/autospread/) | `cytiq autospread` | two controls, [`controls.csv`](data/fixtures/autospread/controls.csv), [`detectors.csv`](data/fixtures/autospread/detectors.csv), expected [spread matrix](data/fixtures/autospread/expected_spread.csv) ([README](data/fixtures/autospread/README.md)) |
 | [`data/fixtures/autospectral/`](data/fixtures/autospectral/) | `cytiq autospectral` | unstained + FITC + PE controls, fully stained `sample.fcs`, [`controls.csv`](data/fixtures/autospectral/controls.csv), [`samples.csv`](data/fixtures/autospectral/samples.csv) ([README](data/fixtures/autospectral/README.md)) |
 | [`data/fixtures/clean/`](data/fixtures/clean/) | `cytiq clean` tests | synthetic `sample.fcs` with known debris, doublets and dead cells, `no_viability.fcs`, an unstained `control.fcs`, and per-event [`truth.json`](data/fixtures/clean/truth.json) ([README](data/fixtures/clean/README.md)) |
+| [`data/fixtures/parity/`](data/fixtures/parity/) | scientific smoke test against upstream (`crates/cytiq-cli/tests/parity_smoke.rs`) | small synthetic autospill, AutoSpectral, PeacoQC and CytoScan datasets with the R outputs on them, so CI checks cytiq against upstream without R ([README](data/fixtures/parity/README.md)) |
 | [`data/fixtures/pipeline/`](data/fixtures/pipeline/) | end-to-end chain test (`crates/cytiq-cli/tests/pipeline_cli.rs`) | golden raw `sample.fcs` (15,000 events, 6×6 spillover, seven populations incl. a rare one, debris, doublets, dead cells, an unstable interval, saturation), per-event truth, population gates, a run manifest and acceptance [`thresholds.json`](data/fixtures/pipeline/thresholds.json) ([README](data/fixtures/pipeline/README.md)) |
 | [`data/fixtures/gating/`](data/fixtures/gating/) | `cytiq-gating` / `cytiq gate` tests | synthetic `sample.fcs`, a Gating-ML 2.0 [`gates.xml`](data/fixtures/gating/gates.xml) covering every supported gate and transform, and FlowKit [reference membership](data/fixtures/gating/flowkit_reference.json) ([README](data/fixtures/gating/README.md)) |
 | [`data/fixtures/peacoqc/`](data/fixtures/peacoqc/) | `cytiq peacoqc` tests | [`sample_events.csv`](data/fixtures/peacoqc/sample_events.csv) (turned into FCS by the CLI tests), R reference values for the [`density`](data/fixtures/peacoqc/density_reference.rs) and [`smooth.spline`](data/fixtures/peacoqc/smooth_spline_reference.rs) ports ([README](data/fixtures/peacoqc/README.md)) |
@@ -1166,7 +1189,7 @@ cytiq autospread --controls data/fixtures/autospread/controls.csv \
   --input-dir data/fixtures/autospread \
   --detectors data/fixtures/autospread/detectors.csv --output spread.csv
 
-cytiq autospectral --controls data/fixtures/autospectral/controls.csv \
+cytiq autospectral --quantile-gate --controls data/fixtures/autospectral/controls.csv \
   --samples data/fixtures/autospectral/samples.csv \
   --input-dir data/fixtures/autospectral --output ./autospectral-out
 
@@ -1216,7 +1239,10 @@ just parity-real         # real acquisitions -> parity/results/metrics_real.json
 ```
 
 The same end-to-end chain runs in CI on the committed golden fixture
-(`data/fixtures/pipeline`).
+(`data/fixtures/pipeline`), and CI checks autospill, AutoSpectral, PeacoQC
+and CytoScan against R outputs committed with small synthetic datasets
+(`data/fixtures/parity`, regenerated by `just parity-smoke-fixture`), without
+installing R.
 
 ## Docker
 

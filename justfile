@@ -30,6 +30,11 @@ parity-real:
 parity-ci-fixture:
     parity/.env/py/bin/python parity/gen/pipeline.py data/fixtures/pipeline ci
 
+# ---- Regenerate the CI parity smoke fixture: small datasets plus upstream R outputs
+[group('validation')]
+parity-smoke-fixture:
+    parity/make_smoke.sh
+
 # ---- Run the application
 [group('build')]
 run *args:

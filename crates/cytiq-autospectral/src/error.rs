@@ -122,7 +122,9 @@ pub enum AutoSpectralError {
         positive: usize,
         minimum: usize,
     },
-    #[error("control `{path}` produced a zero reference spectrum")]
+    #[error(
+        "control `{path}` produced no reference spectrum: the slopes against its peak detector are zero or undefined (no spread on the peak detector)"
+    )]
     ZeroSpectrum { path: PathBuf },
     #[error("reference matrix is singular")]
     SingularReferenceMatrix,

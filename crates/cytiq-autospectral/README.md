@@ -17,25 +17,37 @@ Follows the OLS path of AutoSpectral ([Burton et al., bioRxiv 2025](https://doi.
 2. Resolve spectral detectors: the `--detectors` manifest, or every channel of
    the first control present in all files, excluding FSC/SSC (any `fsc*` /
    `ssc*` name) and `Time`.
-3. Scatter gate each control at the 1st–99th percentile box on FSC and SSC,
-   or with `clean_controls` (CLI `--clean-controls`) drop raw detector-margin
-   events and keep the `AutoSpill` KDE scatter gate (`cytiq_density::gate_events`).
-4. Autofluorescence spectrum = mean of the gated AF control, divided by
-   `max |x|`.
-5. For each single stain, positives are events above the 99th percentile
+3. Clean each control (`clean_controls`, the default): drop raw
+   detector-margin events and keep the `AutoSpill` KDE scatter gate
+   (`cytiq_density::gate_events`). CLI `--quantile-gate` keeps the 1st–99th
+   percentile box on FSC and SSC instead, for controls too small for the KDE
+   gate; on real cell controls it keeps debris and saturated events that bias
+   the spectra.
+4. Every spectrum is `get.fluorophore.spectra`'s: on its peak detector 1, on
+   every other detector the slope of `MASS::rlm` (Huber, MAD scale, at most
+   100 IRLS steps, `lm` when it does not converge) of that detector on the
+   peak detector, divided by the largest value.
+5. Autofluorescence: the slopes over the gated AF control, against the
+   detector with the highest mean.
+6. For each single stain, positives are events above the 99th percentile
    (R type 7) of the AF control's primary channel, keeping the brightest 500
-   (at least 20). Spectrum = mean of positives − AF mean, divided by its
-   maximum (peak normalisation, as in `get.fluorophore.spectra`).
-6. Check conditioning: warn when the fluorophore-only condition number exceeds
+   (at least 20). Negatives are the AF control's 3 nearest events to each
+   positive on raw FSC/SSC (`clean.controls`' scatter matching), at most
+   1,000, evenly spaced where upstream samples at random. The slopes run over
+   positives and negatives together.
+7. Check conditioning: warn when the fluorophore-only condition number exceeds
    the number of fluorophores; fail above `1e8` for the full matrix.
-7. Unmix each sample with the least-squares matrix `M⁺ = R⁻¹Qᵀ` (Householder
+8. Unmix each sample with the least-squares matrix `M⁺ = R⁻¹Qᵀ` (Householder
    QR; equal to `(MᵀM)⁻¹Mᵀ` but without squaring the condition number) in event
    chunks of 8192 and record per-sample residual and negative-fraction QC.
 
 Abundances are in units of each fluorophore's peak detector. Known gaps against
-upstream (box gate instead of the KDE gate, mean instead of `rlm` slope, no
-WLS/Poisson/per-cell AF) are listed in the parity report. Solver, gate
-quantiles and event limits are fixed public constants, not configuration.
+upstream (the `AutoSpill` KDE gate instead of AutoSpectral's density gates, no
+autofluorescence removal from the cell controls, no WLS/Poisson/per-cell AF)
+are listed in the parity report: on real Aurora controls the fluorophore
+spectra still match AutoSpectral's to a cosine of 0.9998 (§2.10). Solver,
+gate quantiles and event limits are fixed public constants, not
+configuration.
 
 ## Usage
 
@@ -44,7 +56,7 @@ cytiq autospectral \
   --controls controls.csv --samples samples.csv \
   --input-dir ./fcs --output ./autospectral-out \
   [--detectors detectors.csv] [--debug-dir ./debug] \
-  [--fsc FSC-A] [--ssc SSC-A] [--threads 4]
+  [--fsc FSC-A] [--ssc SSC-A] [--threads 4] [--quantile-gate]
 ```
 
 From Rust:
@@ -74,7 +86,7 @@ Manifest formats are documented in the root
 | `read_controls_manifest`, `read_samples_manifest`, `read_detectors_manifest` | CSV readers with validation |
 | `ControlManifestRow`, `SampleManifestRow`, `DetectorSpec` | Manifest rows |
 | `write_outputs` | Output writer used by the runner |
-| `SOLVER`, `POSITIVITY_THRESHOLD`, `POSITIVE_EVENT_LIMIT`, `MIN_*`, `CONDITION_NUMBER_LIMIT`, `SCATTER_GATE_*`, `AUTO_EXCLUDED_CHANNELS`, ... | Fixed algorithm constants |
+| `SOLVER`, `POSITIVITY_THRESHOLD`, `POSITIVE_EVENT_LIMIT`, `NEGATIVE_EVENT_LIMIT`, `RLM_MAX_ITERATIONS`, `SCATTER_NEIGHBOURS`, `MIN_*`, `CONDITION_NUMBER_LIMIT`, `SCATTER_GATE_*`, `AUTO_EXCLUDED_CHANNELS`, ... | Fixed algorithm constants |
 | `AutoSpectralError` | Error type for every failure mode |
 
 ## Manifest rules

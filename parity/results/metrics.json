@@ -222,82 +222,82 @@
       "BV421": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000222291
+        "max_abs_diff_after_peak_norm": 0.000384981
       },
       "BV510": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000180906
+        "max_abs_diff_after_peak_norm": 0.000297399
       },
       "FITC": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000357944
+        "max_abs_diff_after_peak_norm": 0.000445347
       },
       "PE": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000148609
+        "max_abs_diff_after_peak_norm": 0.000295634
       },
       "PE-Cy5": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000274472
+        "max_abs_diff_after_peak_norm": 0.000326518
       },
       "APC": {
         "cosine": 1.0,
         "rust_peak_value": 1.0,
-        "max_abs_diff_after_peak_norm": 0.000195323
+        "max_abs_diff_after_peak_norm": 0.000343595
       }
     },
     "unmixing": {
       "BV421": {
-        "rust_rmse": 861.662,
-        "rust_scale_vs_truth": 0.992021,
-        "rust_pearson": 0.9979,
+        "rust_rmse": 880.503,
+        "rust_scale_vs_truth": 0.992317,
+        "rust_pearson": 0.997805,
         "upstream_ols_truth_spectra_rmse": 859.651,
         "upstream_ols_truth_spectra_pearson": 0.997909,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 3.62039e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 3.53023e-08
       },
       "BV510": {
-        "rust_rmse": 340.735,
-        "rust_scale_vs_truth": 1.00029,
-        "rust_pearson": 0.999685,
+        "rust_rmse": 352.05,
+        "rust_scale_vs_truth": 1.00002,
+        "rust_pearson": 0.999664,
         "upstream_ols_truth_spectra_rmse": 339.379,
         "upstream_ols_truth_spectra_pearson": 0.999687,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 4.56782e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.36657e-08
       },
       "FITC": {
-        "rust_rmse": 263.345,
-        "rust_scale_vs_truth": 1.00006,
-        "rust_pearson": 0.999802,
+        "rust_rmse": 265.625,
+        "rust_scale_vs_truth": 1.00001,
+        "rust_pearson": 0.999799,
         "upstream_ols_truth_spectra_rmse": 262.672,
         "upstream_ols_truth_spectra_pearson": 0.999803,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 4.35928e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.32306e-08
       },
       "PE": {
-        "rust_rmse": 129.678,
-        "rust_scale_vs_truth": 1.00012,
+        "rust_rmse": 129.832,
+        "rust_scale_vs_truth": 0.999959,
         "rust_pearson": 0.999953,
         "upstream_ols_truth_spectra_rmse": 129.563,
         "upstream_ols_truth_spectra_pearson": 0.999953,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 4.08232e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 3.39861e-08
       },
       "PE-Cy5": {
-        "rust_rmse": 119.217,
-        "rust_scale_vs_truth": 1.00007,
+        "rust_rmse": 119.228,
+        "rust_scale_vs_truth": 1.0002,
         "rust_pearson": 0.99996,
         "upstream_ols_truth_spectra_rmse": 119.119,
         "upstream_ols_truth_spectra_pearson": 0.99996,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 3.25467e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 2.74581e-08
       },
       "APC": {
-        "rust_rmse": 89.0615,
+        "rust_rmse": 89.0732,
         "rust_scale_vs_truth": 1.00007,
         "rust_pearson": 0.999977,
         "upstream_ols_truth_spectra_rmse": 89.0445,
         "upstream_ols_truth_spectra_pearson": 0.999977,
-        "rust_vs_upstream_ols_same_spectra_max_rel": 3.671e-08
+        "rust_vs_upstream_ols_same_spectra_max_rel": 4.14375e-08
       }
     }
   },
@@ -547,18 +547,54 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 9,
+            "flagged": 10,
             "tp": 3,
-            "fp": 6,
+            "fp": 7,
             "fn": 0,
-            "precision": 0.3333,
-            "recall": 1.0
+            "precision": 0.3,
+            "recall": 1.0,
+            "model": "EEI",
+            "G": 9
           },
           "upstream_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 811.233,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 1.18115e-06,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           },
-          "upstream_VVV": {
+          "upstream_on_rust_features_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 811.233,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 0.0010911,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -593,18 +629,54 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 9,
+            "flagged": 10,
             "tp": 3,
-            "fp": 6,
+            "fp": 7,
             "fn": 0,
-            "precision": 0.3333,
-            "recall": 1.0
+            "precision": 0.3,
+            "recall": 1.0,
+            "model": "EEI",
+            "G": 9
           },
           "upstream_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 1434.35,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 4.52576e-06,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           },
-          "upstream_VVV": {
+          "upstream_on_rust_features_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 1434.35,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 0.000940036,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -644,17 +716,68 @@
             "fp": 7,
             "fn": 0,
             "precision": 0.3,
-            "recall": 1.0
+            "recall": 1.0,
+            "model": "EEI",
+            "G": 9
           },
           "upstream_default": {
-            "model": null,
-            "note": "Mclust returned no model"
+            "model": "EEI",
+            "G": 9,
+            "bic": 238.179,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 3.10456e-05,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
           },
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
+            "bic": 75.3562,
+            "ll_spearman_vs_rust": 0.5152,
+            "ll_max_abs_diff": 772881.0,
+            "ll_underflow_in_r": 2,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 238.179,
             "ll_spearman_vs_rust": 1.0,
-            "ll_max_abs_diff": Infinity,
+            "ll_max_abs_diff": 6.36106e-05,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 75.3562,
+            "ll_spearman_vs_rust": 0.5152,
+            "ll_max_abs_diff": 772881.0,
+            "ll_underflow_in_r": 2,
             "flag_agreement_with_rust": 1.0,
             "flags": {
               "flagged": 10,
@@ -701,13 +824,49 @@
             "fp": 7,
             "fn": 0,
             "precision": 0.3,
-            "recall": 1.0
+            "recall": 1.0,
+            "model": "EEI",
+            "G": 9
           },
           "upstream_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 4496.12,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 6.51926e-09,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           },
-          "upstream_VVV": {
+          "upstream_on_rust_features_default": {
+            "model": "EEI",
+            "G": 9,
+            "bic": 4496.12,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 0.00887226,
+            "ll_underflow_in_r": 10,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -747,13 +906,17 @@
             "fp": 7,
             "fn": 0,
             "precision": 0.3,
-            "recall": 1.0
+            "recall": 1.0,
+            "model": "EII",
+            "G": 9
           },
           "upstream_default": {
             "model": "EII",
             "G": 9,
-            "ll_spearman_vs_rust": 0.7,
-            "ll_max_abs_diff": Infinity,
+            "bic": 1037.53,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 3.63798e-12,
+            "ll_underflow_in_r": 1,
             "flag_agreement_with_rust": 1.0,
             "flags": {
               "flagged": 10,
@@ -765,6 +928,27 @@
             }
           },
           "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_on_rust_features_default": {
+            "model": "EII",
+            "G": 9,
+            "bic": 1037.53,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 3.63798e-12,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 10,
+              "tp": 3,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.3,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -802,19 +986,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 11,
+            "flagged": 15,
             "tp": 5,
-            "fp": 6,
+            "fp": 10,
             "fn": 0,
-            "precision": 0.4545,
-            "recall": 1.0
+            "precision": 0.3333,
+            "recall": 1.0,
+            "model": "EEI",
+            "G": 2
           },
           "upstream_default": {
             "model": "EEI",
             "G": 2,
-            "ll_spearman_vs_rust": 0.6225,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 0.75,
+            "bic": 323.328,
+            "ll_spearman_vs_rust": 0.8391,
+            "ll_max_abs_diff": 1025.57,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 0.65,
             "flags": {
               "flagged": 8,
               "tp": 5,
@@ -825,6 +1013,27 @@
             }
           },
           "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_on_rust_features_default": {
+            "model": "EEI",
+            "G": 2,
+            "bic": 379.641,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 2.69301e-09,
+            "ll_underflow_in_r": 4,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 15,
+              "tp": 5,
+              "fp": 10,
+              "fn": 0,
+              "precision": 0.3333,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -860,19 +1069,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 9,
+            "flagged": 19,
             "tp": 5,
-            "fp": 4,
+            "fp": 14,
             "fn": 0,
-            "precision": 0.5556,
-            "recall": 1.0
+            "precision": 0.2632,
+            "recall": 1.0,
+            "model": "VEI",
+            "G": 5
           },
           "upstream_default": {
             "model": "VEI",
             "G": 6,
-            "ll_spearman_vs_rust": 0.5765,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 0.5,
+            "bic": 101.382,
+            "ll_spearman_vs_rust": 0.8466,
+            "ll_max_abs_diff": 805.974,
+            "ll_underflow_in_r": 4,
+            "flag_agreement_with_rust": 0.9,
             "flags": {
               "flagged": 19,
               "tp": 5,
@@ -883,6 +1096,27 @@
             }
           },
           "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_on_rust_features_default": {
+            "model": "VEI",
+            "G": 5,
+            "bic": 258.293,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 2.9861e-09,
+            "ll_underflow_in_r": 4,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 19,
+              "tp": 5,
+              "fp": 14,
+              "fn": 0,
+              "precision": 0.2632,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -918,19 +1152,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 12,
+            "flagged": 7,
             "tp": 5,
-            "fp": 7,
+            "fp": 2,
             "fn": 0,
-            "precision": 0.4167,
-            "recall": 1.0
+            "precision": 0.7143,
+            "recall": 1.0,
+            "model": "XII",
+            "G": 1
           },
           "upstream_default": {
             "model": "XII",
             "G": 1,
-            "ll_spearman_vs_rust": 0.7429,
-            "ll_max_abs_diff": 42.2548,
-            "flag_agreement_with_rust": 0.75,
+            "bic": 154.864,
+            "ll_spearman_vs_rust": 0.8015,
+            "ll_max_abs_diff": 21.7684,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.8,
             "flags": {
               "flagged": 11,
               "tp": 5,
@@ -943,15 +1181,51 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.7233,
-            "ll_max_abs_diff": 181.852,
-            "flag_agreement_with_rust": 0.65,
+            "bic": 128.24,
+            "ll_spearman_vs_rust": 0.8331,
+            "ll_max_abs_diff": 217.381,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.5,
             "flags": {
               "flagged": 17,
               "tp": 5,
               "fp": 12,
               "fn": 0,
               "precision": 0.2941,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XII",
+            "G": 1,
+            "bic": 142.922,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 3.93001e-11,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 7,
+              "tp": 5,
+              "fp": 2,
+              "fn": 0,
+              "precision": 0.7143,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 101.491,
+            "ll_spearman_vs_rust": 0.9113,
+            "ll_max_abs_diff": 48.734,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.75,
+            "flags": {
+              "flagged": 12,
+              "tp": 5,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.4167,
               "recall": 1.0
             }
           }
@@ -987,18 +1261,22 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 9,
+            "flagged": 11,
             "tp": 5,
-            "fp": 4,
+            "fp": 6,
             "fn": 0,
-            "precision": 0.5556,
-            "recall": 1.0
+            "precision": 0.4545,
+            "recall": 1.0,
+            "model": "VII",
+            "G": 2
           },
           "upstream_default": {
             "model": "VII",
             "G": 3,
-            "ll_spearman_vs_rust": 0.7317,
-            "ll_max_abs_diff": Infinity,
+            "bic": 6615.82,
+            "ll_spearman_vs_rust": 0.8617,
+            "ll_max_abs_diff": 137.0,
+            "ll_underflow_in_r": 2,
             "flag_agreement_with_rust": 0.7,
             "flags": {
               "flagged": 15,
@@ -1010,6 +1288,27 @@
             }
           },
           "upstream_VVV": {
+            "model": null,
+            "note": "Mclust returned no model"
+          },
+          "upstream_on_rust_features_default": {
+            "model": "VII",
+            "G": 2,
+            "bic": 6600.25,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 3.70299e-10,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 11,
+              "tp": 5,
+              "fp": 6,
+              "fn": 0,
+              "precision": 0.4545,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
             "model": null,
             "note": "Mclust returned no model"
           }
@@ -1045,19 +1344,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 20,
-            "tp": 5,
-            "fp": 15,
-            "fn": 0,
-            "precision": 0.25,
-            "recall": 1.0
+            "flagged": 10,
+            "tp": 4,
+            "fp": 6,
+            "fn": 1,
+            "precision": 0.4,
+            "recall": 0.8,
+            "model": "EII",
+            "G": 3
           },
           "upstream_default": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5377,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 1.0,
+            "bic": 3091.99,
+            "ll_spearman_vs_rust": 0.6511,
+            "ll_max_abs_diff": 10367.6,
+            "ll_underflow_in_r": 2,
+            "flag_agreement_with_rust": 0.5,
             "flags": {
               "flagged": 20,
               "tp": 5,
@@ -1070,9 +1373,45 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5377,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 1.0,
+            "bic": 3091.99,
+            "ll_spearman_vs_rust": 0.6511,
+            "ll_max_abs_diff": 10367.6,
+            "ll_underflow_in_r": 2,
+            "flag_agreement_with_rust": 0.5,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 3061.26,
+            "ll_spearman_vs_rust": 0.8571,
+            "ll_max_abs_diff": 2144.56,
+            "ll_underflow_in_r": 2,
+            "flag_agreement_with_rust": 0.5,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 3061.26,
+            "ll_spearman_vs_rust": 0.8571,
+            "ll_max_abs_diff": 2144.56,
+            "ll_underflow_in_r": 2,
+            "flag_agreement_with_rust": 0.5,
             "flags": {
               "flagged": 20,
               "tp": 5,
@@ -1120,13 +1459,17 @@
             "fp": 7,
             "fn": 0,
             "precision": 0.4167,
-            "recall": 1.0
+            "recall": 1.0,
+            "model": "XXX",
+            "G": 1
           },
           "upstream_default": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5123,
-            "ll_max_abs_diff": Infinity,
+            "bic": 3909.88,
+            "ll_spearman_vs_rust": 0.6992,
+            "ll_max_abs_diff": 800.081,
+            "ll_underflow_in_r": 3,
             "flag_agreement_with_rust": 0.65,
             "flags": {
               "flagged": 9,
@@ -1140,8 +1483,10 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5123,
-            "ll_max_abs_diff": Infinity,
+            "bic": 3909.88,
+            "ll_spearman_vs_rust": 0.6992,
+            "ll_max_abs_diff": 800.081,
+            "ll_underflow_in_r": 3,
             "flag_agreement_with_rust": 0.65,
             "flags": {
               "flagged": 9,
@@ -1149,6 +1494,40 @@
               "fp": 4,
               "fn": 0,
               "precision": 0.5556,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 3868.88,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 2.99701e-09,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 12,
+              "tp": 5,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.4167,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 3868.88,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 2.99701e-09,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 12,
+              "tp": 5,
+              "fp": 7,
+              "fn": 0,
+              "precision": 0.4167,
               "recall": 1.0
             }
           }
@@ -1188,13 +1567,17 @@
             "fp": 15,
             "fn": 0,
             "precision": 0.25,
-            "recall": 1.0
+            "recall": 1.0,
+            "model": "XXX",
+            "G": 1
           },
           "upstream_default": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": -0.1571,
-            "ll_max_abs_diff": Infinity,
+            "bic": 6374.37,
+            "ll_spearman_vs_rust": 0.5083,
+            "ll_max_abs_diff": 4247.79,
+            "ll_underflow_in_r": 5,
             "flag_agreement_with_rust": 0.95,
             "flags": {
               "flagged": 19,
@@ -1208,8 +1591,10 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": -0.1571,
-            "ll_max_abs_diff": Infinity,
+            "bic": 6374.37,
+            "ll_spearman_vs_rust": 0.5083,
+            "ll_max_abs_diff": 4247.79,
+            "ll_underflow_in_r": 5,
             "flag_agreement_with_rust": 0.95,
             "flags": {
               "flagged": 19,
@@ -1217,6 +1602,40 @@
               "fp": 14,
               "fn": 0,
               "precision": 0.2632,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 6178.52,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 1.50521e-08,
+            "ll_underflow_in_r": 5,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 6178.52,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 1.50521e-08,
+            "ll_underflow_in_r": 5,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
               "recall": 1.0
             }
           }
@@ -1251,19 +1670,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 7,
+            "flagged": 6,
             "tp": 5,
-            "fp": 2,
+            "fp": 1,
             "fn": 0,
-            "precision": 0.7143,
-            "recall": 1.0
+            "precision": 0.8333,
+            "recall": 1.0,
+            "model": "XII",
+            "G": 1
           },
           "upstream_default": {
             "model": "XII",
             "G": 1,
-            "ll_spearman_vs_rust": 0.6045,
-            "ll_max_abs_diff": 13.6975,
-            "flag_agreement_with_rust": 0.9,
+            "bic": 862.594,
+            "ll_spearman_vs_rust": 0.6421,
+            "ll_max_abs_diff": 10.7492,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.95,
             "flags": {
               "flagged": 5,
               "tp": 5,
@@ -1276,15 +1699,51 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5654,
-            "ll_max_abs_diff": 43.0978,
-            "flag_agreement_with_rust": 0.9,
+            "bic": 786.49,
+            "ll_spearman_vs_rust": 0.5925,
+            "ll_max_abs_diff": 57.8118,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.95,
             "flags": {
               "flagged": 5,
               "tp": 5,
               "fp": 0,
               "fn": 0,
               "precision": 1.0,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XII",
+            "G": 1,
+            "bic": 869.59,
+            "ll_spearman_vs_rust": 1.0,
+            "ll_max_abs_diff": 8.31051e-11,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 1.0,
+            "flags": {
+              "flagged": 6,
+              "tp": 5,
+              "fp": 1,
+              "fn": 0,
+              "precision": 0.8333,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 789.006,
+            "ll_spearman_vs_rust": 0.994,
+            "ll_max_abs_diff": 14.714,
+            "ll_underflow_in_r": 0,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 7,
+              "tp": 5,
+              "fp": 2,
+              "fn": 0,
+              "precision": 0.7143,
               "recall": 1.0
             }
           }
@@ -1319,19 +1778,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 20,
+            "flagged": 6,
             "tp": 5,
-            "fp": 15,
+            "fp": 1,
             "fn": 0,
-            "precision": 0.25,
-            "recall": 1.0
+            "precision": 0.8333,
+            "recall": 1.0,
+            "model": "VII",
+            "G": 4
           },
           "upstream_default": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.3015,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 1.0,
+            "bic": 71675.9,
+            "ll_spearman_vs_rust": 0.5624,
+            "ll_max_abs_diff": 4717.99,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 0.3,
             "flags": {
               "flagged": 20,
               "tp": 5,
@@ -1344,9 +1807,45 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.3015,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 1.0,
+            "bic": 71675.9,
+            "ll_spearman_vs_rust": 0.5624,
+            "ll_max_abs_diff": 4717.99,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 0.3,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 60558.0,
+            "ll_spearman_vs_rust": 0.7729,
+            "ll_max_abs_diff": 2370.16,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 0.3,
+            "flags": {
+              "flagged": 20,
+              "tp": 5,
+              "fp": 15,
+              "fn": 0,
+              "precision": 0.25,
+              "recall": 1.0
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 60558.0,
+            "ll_spearman_vs_rust": 0.7729,
+            "ll_max_abs_diff": 2370.16,
+            "ll_underflow_in_r": 3,
+            "flag_agreement_with_rust": 0.3,
             "flags": {
               "flagged": 20,
               "tp": 5,
@@ -1387,19 +1886,23 @@
         },
         "novelty": {
           "rust": {
-            "flagged": 5,
+            "flagged": 6,
             "tp": 4,
-            "fp": 1,
+            "fp": 2,
             "fn": 1,
-            "precision": 0.8,
-            "recall": 0.8
+            "precision": 0.6667,
+            "recall": 0.8,
+            "model": "EII",
+            "G": 6
           },
           "upstream_default": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5526,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 0.95,
+            "bic": 15966.9,
+            "ll_spearman_vs_rust": 0.5955,
+            "ll_max_abs_diff": 535.57,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 1.0,
             "flags": {
               "flagged": 6,
               "tp": 4,
@@ -1412,15 +1915,51 @@
           "upstream_VVV": {
             "model": "XXX",
             "G": 1,
-            "ll_spearman_vs_rust": 0.5526,
-            "ll_max_abs_diff": Infinity,
-            "flag_agreement_with_rust": 0.95,
+            "bic": 15966.9,
+            "ll_spearman_vs_rust": 0.5955,
+            "ll_max_abs_diff": 535.57,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 1.0,
             "flags": {
               "flagged": 6,
               "tp": 4,
               "fp": 2,
               "fn": 1,
               "precision": 0.6667,
+              "recall": 0.8
+            }
+          },
+          "upstream_on_rust_features_default": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 15915.2,
+            "ll_spearman_vs_rust": 0.7008,
+            "ll_max_abs_diff": 331.013,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 5,
+              "tp": 4,
+              "fp": 1,
+              "fn": 1,
+              "precision": 0.8,
+              "recall": 0.8
+            }
+          },
+          "upstream_on_rust_features_VVV": {
+            "model": "XXX",
+            "G": 1,
+            "bic": 15915.2,
+            "ll_spearman_vs_rust": 0.7008,
+            "ll_max_abs_diff": 331.013,
+            "ll_underflow_in_r": 1,
+            "flag_agreement_with_rust": 0.95,
+            "flags": {
+              "flagged": 5,
+              "tp": 4,
+              "fp": 1,
+              "fn": 1,
+              "precision": 0.8,
               "recall": 0.8
             }
           }
@@ -1655,42 +2194,42 @@
   "timing": {
     "autospill": {
       "rust": {
-        "seconds": 2.82,
-        "max_rss_mb": 60.81
+        "seconds": 2.5,
+        "max_rss_mb": 60.22
       },
-      "upstream_seconds": 9.153
+      "upstream_seconds": 9.296
     },
     "peacoqc_all": {
       "rust": {
-        "seconds": 0.28,
-        "max_rss_mb": 101.8
+        "seconds": 0.21,
+        "max_rss_mb": 103.9
       },
-      "upstream_seconds": 1.5
+      "upstream_seconds": 1.442
     },
     "flowsom": {
       "rust": {
-        "seconds": 0.66,
-        "max_rss_mb": 46.22
+        "seconds": 0.53,
+        "max_rss_mb": 45.66
       },
-      "upstream_seconds": 4.635
+      "upstream_seconds": 3.989
     },
     "flowsom_hard": {
       "rust": {
-        "seconds": 0.59,
-        "max_rss_mb": 46.73
+        "seconds": 0.54,
+        "max_rss_mb": 48.73
       },
-      "upstream_seconds": 3.963
+      "upstream_seconds": 4.048
     },
     "autospectral": {
       "rust": {
-        "seconds": 0.09,
-        "max_rss_mb": 62.19
+        "seconds": 3.82,
+        "max_rss_mb": 78.12
       }
     },
     "gating": {
       "rust": {
         "seconds": 0.01,
-        "max_rss_mb": 9.484
+        "max_rss_mb": 9.359
       }
     }
   }

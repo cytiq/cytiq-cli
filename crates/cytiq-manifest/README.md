@@ -67,8 +67,8 @@ is the only way they learn about processing done elsewhere.
 - Every spectral panel of raw samples needs an unstained control.
 - `signal_state: compensated` is for conventional panels and excludes
   `compensation`; `unmixed` is for spectral panels.
-- QC fractions (`max_removed_fraction`) lie between 0 and 1; filter names
-  are not empty.
+- QC fractions (`max_removed_fraction`, `min_assessed_fraction`) lie
+  between 0 and 1; filter names are not empty.
 - Files themselves are not opened here; `cytiq preflight` checks them.
 
 ## Dependencies

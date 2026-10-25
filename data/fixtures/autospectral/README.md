@@ -3,7 +3,9 @@
 This directory contains a small spectral-flow fixture set for testing
 `cytiq autospectral`.
 
-- `unstained.fcs`: autofluorescence/background control
+- `unstained.fcs`: autofluorescence/background control; its autofluorescence
+  varies from event to event along one spectrum (20, 12, 8 scaled by
+  0.75-1.25), since spectra are slopes against the peak detector
 - `fitc.fcs`: single-stain FITC control
 - `pe.fcs`: single-stain PE control
 - `sample.fcs`: fully stained sample containing FITC, PE, and AF signal

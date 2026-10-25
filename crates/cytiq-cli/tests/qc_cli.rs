@@ -181,6 +181,76 @@ fn fails_when_a_required_filter_was_not_assessed() {
 }
 
 #[test]
+fn fails_when_a_required_filter_assessed_few_events() {
+    let directory = create_temp_dir("cytiq-cli-qc-assessed");
+    let manifest = write_manifest(
+        &directory,
+        "  qc:\n    filters:\n      live: { required: true, min_assessed_fraction: 0.95 }\n",
+    );
+    // `live` ran on 100 of 10,000 events: enough for `required`, not for
+    // the policy.
+    let mask = directory.join("analysis.parquet");
+    EventMask::new(
+        common::acquisition_of(&fixture("sample.fcs")),
+        vec![true; EVENTS],
+        None,
+    )
+    .with_filter(
+        "live",
+        (0..EVENTS).map(|row| (row < 100).then_some(true)).collect(),
+    )
+    .write_parquet(&mask)
+    .expect("mask should write");
+
+    let (output, report) = qc(&directory, &manifest, &mask);
+
+    assert!(!output.status.success());
+    let report = report.expect("report");
+    assert_eq!(
+        failed(&report),
+        [r#""filter live" "filter_assessed_fraction""#]
+    );
+    assert_eq!(report["metrics"]["filters"][0]["assessed_fraction"], 0.01);
+}
+
+#[test]
+fn fails_when_the_mask_has_rows_beyond_the_raw_file() {
+    let directory = create_temp_dir("cytiq-cli-qc-extra-rows");
+    let manifest = write_manifest(
+        &directory,
+        "  qc:\n    filters:\n      live: { max_removed_fraction: 0.3 }\n",
+    );
+    // Every raw event is there, plus 5,000 rows `live` removed that belong to
+    // no raw event: counted, they would double `live`'s removed fraction.
+    let rows = EVENTS + 5_000;
+    let mask = directory.join("analysis.parquet");
+    EventMask::new(
+        common::acquisition_of(&fixture("sample.fcs")),
+        vec![true; rows],
+        None,
+    )
+    .with_filter("live", (0..rows).map(|row| Some(row < 7_500)).collect())
+    .write_parquet(&mask)
+    .expect("mask should write");
+
+    let (output, report) = qc(&directory, &manifest, &mask);
+
+    assert!(!output.status.success());
+    let report = report.expect("report");
+    assert_eq!(failed(&report), [r#""sample S01" "mask_coverage""#]);
+    assert!(report["metrics"].is_null());
+    assert!(
+        report["checks"][0]["message"]
+            .as_str()
+            .is_some_and(
+                |message| message.contains("5000 row(s)") && message.contains("for example 10000")
+            ),
+        "{}",
+        report["checks"][0]
+    );
+}
+
+#[test]
 fn fails_when_the_mask_belongs_to_another_sample() {
     let directory = create_temp_dir("cytiq-cli-qc-acquisition");
     let manifest = write_manifest(&directory, "");

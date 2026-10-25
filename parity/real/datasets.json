@@ -1,5 +1,5 @@
 {
-  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
+  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill), `autospectral` (spectral single-stain controls under `controls/` with AutoSpectral's `control_file.csv`, stained samples under `sample/`, `autospectral_cytometer` naming the get.autospectral.param cytometer; spectra and unmixed abundances vs R AutoSpectral) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
   "datasets": [
     {
       "name": "flowsom_68983",
@@ -135,6 +135,31 @@
         {"filename": "ctrl_apccy7.fcs", "dye": "APC-Cy7-A", "antigen": "APC-Cy7", "wavelength": 785}
       ],
       "slow": true
+    },
+    {
+      "name": "aurora_pbmc_spectral",
+      "chain": "autospectral",
+      "cytometry": "spectral",
+      "autospectral_cytometer": "aurora",
+      "instrument": "Cytek Aurora, 5 lasers (UV16-V16-B14-YG10-R8, 64 detectors)",
+      "panel": "human PBMC, 9 colours: single-stain cell controls with an unstained control (60-81k events each) and one fully stained sample (418,152 events); AutoSpectral's own example data and control file",
+      "source": "https://doi.org/10.17632/xzt3h3gnx9.1",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "files": {
+        "control_file.csv": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/221c52e3-c303-496a-82b4-00e2a4d95fc4/file_downloaded", "sha256": "1a563e41087a7b22164cf44223fc925c0ab5a1c7dd0978e498fe34d842e0dee9"},
+        "controls/D1 Unstained (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/f643b00e-ef9d-4e8e-a53b-37c2b430e9dd/file_downloaded", "sha256": "d79f41c87dfd981a93f7ffc1230b0d3744845024371634b7aeb3bd8e76854fdc"},
+        "controls/D2 CD8 fresh Spark UV 387 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/cddf90ef-bcc1-4edc-9bac-ffdb438ed763/file_downloaded", "sha256": "5313869fab35da50a52e979ef4539b32e66c5a47061388fd0c4f40641e78b0b3"},
+        "controls/D3 CD3 fresh Pacific Blue (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/2fdb2f2b-c649-4a00-bbdc-875107ec216d/file_downloaded", "sha256": "8f5361f8e87c9aa22f1fc249c77c8fde30fcdc434a3b210dc10ba08638630151"},
+        "controls/D4 CD14 fresh BV510 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/b699bfea-6925-4f39-91a6-4802e0ecb323/file_downloaded", "sha256": "2566fad291e2f5dee6fd013f375a813d41d89ab4233f751cd0c41ce3fea6f668"},
+        "controls/D5 CD127 fresh BV605 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/6e334f4e-9018-4031-acc4-540728946c4e/file_downloaded", "sha256": "712b0121f0bc7266040abf4341341e314d05a9fed25723d64ac16dd5feb62b5f"},
+        "controls/D6 CXCR3 fresh BV785 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/b54c4af6-968f-4ec8-8f9c-52cac08f0d9e/file_downloaded", "sha256": "0eb57328f7f824b23a366746f4809df0b88f52d38595e7d4e8e5d50aa584ffac"},
+        "controls/D7 KLRG1 fresh PerCP Fire 806 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/85f6c698-19ca-4581-86b8-49de10902115/file_downloaded", "sha256": "a475cabd2c2b18ac1d5cfe144c33d11e4f187d0bda4175560c3d2677258b3c08"},
+        "controls/D8 TIGIT fresh PE-Fire 810 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/1cb2dfba-29e4-49d5-be9a-38fefecba971/file_downloaded", "sha256": "3ea30db470b74e5371d1c1c277f966e3cdbb213f71397fb051621eaf495c5d6d"},
+        "controls/D9 CD56 fresh Spark NIR 685 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/58ed0b18-ddb9-4117-8ec7-137575f7115b/file_downloaded", "sha256": "92116d193b0818368ddb8d663e825f381970745df276eba363857a01e36fca20"},
+        "controls/D10 CCR6 fresh APC-Fire 810 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/9a2859a6-5534-43f5-8432-d1926745b86a/file_downloaded", "sha256": "bc1a314b389a96b0933b7106198260aa1a624e0fcf1763a94d51420f342b6a93"},
+        "sample/E1 Fresh_100ul_TS_BS_005.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/af871446-f746-4fc3-b6e4-02fab01863ec/file_downloaded", "sha256": "d9fa4cdd1e10a8d6d4f1d4d1b866358584e732bb3b78f10b6e6bf6915f5b895f"}
+      }
     }
   ]
 }

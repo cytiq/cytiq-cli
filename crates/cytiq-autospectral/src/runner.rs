@@ -24,6 +24,7 @@ use crate::manifest::{
     ControlManifestRow, DetectorSpec, SampleManifestRow, is_autofluorescence_dye,
     normalize_identifier,
 };
+use crate::spectrum;
 
 pub const SOLVER: &str = "ols";
 /// How the OLS solution is computed: a Householder QR solve, which avoids the
@@ -39,6 +40,8 @@ pub const SCATTER_GATE_UPPER_QUANTILE: f64 = 0.99;
 pub const POSITIVITY_THRESHOLD: f64 = 0.99;
 /// `asp$positive.n`: the brightest positives used for each spectrum.
 pub const POSITIVE_EVENT_LIMIT: usize = 500;
+/// `asp$negative.n`: scatter-matched negatives used for each spectrum.
+pub const NEGATIVE_EVENT_LIMIT: usize = 1_000;
 pub const MIN_RETAINED_EVENTS: usize = 20;
 /// `asp$min.cell.stop.n`.
 pub const MIN_POSITIVE_EVENTS: usize = 20;
@@ -57,9 +60,11 @@ pub struct AutoSpectralConfig {
     pub output_dir: PathBuf,
     pub debug_dir: Option<PathBuf>,
     pub threads: Option<usize>,
-    /// Clean controls before building spectra: drop events on raw detector
-    /// margins and gate FSC/SSC with the `AutoSpill` KDE gate instead of the
-    /// 1-99% quantile box.
+    /// Clean controls before building spectra (the default): drop events on
+    /// raw detector margins and gate FSC/SSC with the `AutoSpill` KDE gate.
+    /// `false` keeps the 1-99% quantile box, for controls too small for the
+    /// KDE gate; on real cell controls it keeps debris and saturated events
+    /// that bias the spectra.
     pub clean_controls: bool,
 }
 
@@ -77,7 +82,7 @@ impl AutoSpectralConfig {
             output_dir,
             debug_dir: None,
             threads: None,
-            clean_controls: false,
+            clean_controls: true,
         }
     }
 }
@@ -104,6 +109,9 @@ pub struct ControlQc {
     pub total_events: usize,
     pub retained_events: usize,
     pub positive_events: Option<usize>,
+    /// Events of the autofluorescence control matched to the positives on
+    /// scatter, the spectrum's negatives.
+    pub negative_events: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -486,8 +494,25 @@ fn build_references(
         &af_columns,
         config,
     )?;
-    let af_raw = mean_spectrum(&af_columns, &af_gate);
-    let af_spectrum = normalize_spectrum(&af_raw, &autofluorescence.path, PeakNorm::Absolute)?;
+    // The AF component is a spectrum like the others, on the detector with
+    // the highest mean (`define.flow.control`).
+    let af_peak = mean_spectrum(&af_columns, &af_gate)
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+        .map_or(0, |(index, _)| index);
+    let af_spectrum =
+        estimate_spectrum(&autofluorescence.path, &[(&af_columns, &af_gate)], af_peak)?;
+    let negatives = Negatives {
+        columns: &af_columns,
+        events: &af_gate,
+        scatter: scatter_points(
+            &autofluorescence.path,
+            &autofluorescence.dataset,
+            &af_gate,
+            config,
+        )?,
+    };
 
     let single_stain_controls = controls
         .iter()
@@ -496,9 +521,7 @@ fn build_references(
     let built_single_stains = parallel_try_map(
         &single_stain_controls,
         "single-stain reference spectra",
-        |_, control| {
-            build_single_stain_reference(control, detectors, config, &af_raw, &af_columns, &af_gate)
-        },
+        |_, control| build_single_stain_reference(control, detectors, config, &negatives),
     )?;
     let mut components = built_single_stains
         .iter()
@@ -515,6 +538,7 @@ fn build_references(
         total_events: event_count(&autofluorescence.dataset),
         retained_events: af_gate.len(),
         positive_events: None,
+        negative_events: None,
     });
     components.push(SpectralComponent {
         name: "Autofluorescence".to_owned(),
@@ -553,13 +577,20 @@ fn build_references(
     })
 }
 
+/// The autofluorescence control's gated events, which every single stain
+/// draws its negatives from.
+struct Negatives<'a> {
+    columns: &'a [Vec<f64>],
+    events: &'a [usize],
+    /// FSC/SSC of `events`, in the same order.
+    scatter: Vec<[f64; 2]>,
+}
+
 fn build_single_stain_reference(
     control: &LoadedControl,
     detectors: &[String],
     config: &AutoSpectralConfig,
-    af_raw: &[f64],
-    af_columns: &[Vec<f64>],
-    af_gate: &[usize],
+    negatives: &Negatives<'_>,
 ) -> Result<BuiltControlReference, AutoSpectralError> {
     let primary_channel = control
         .primary_channel
@@ -574,9 +605,10 @@ fn build_single_stain_reference(
         })?;
     let columns = detector_columns(&control.path, &control.dataset, detectors)?;
     let retained = retained_indices(&control.path, &control.dataset, detectors, &columns, config)?;
-    let negative_primary = af_gate
+    let negative_primary = negatives
+        .events
         .iter()
-        .map(|&index| af_columns[primary_detector_index][index])
+        .map(|&index| negatives.columns[primary_detector_index][index])
         .collect::<Vec<_>>();
     let positive = positive_indices(
         &control.path,
@@ -585,8 +617,20 @@ fn build_single_stain_reference(
         primary_detector_index,
         negative_primary,
     )?;
-    let raw = subtract_background(&mean_spectrum(&columns, &positive), af_raw);
-    let spectrum = normalize_spectrum(&raw, &control.path, PeakNorm::Signed)?;
+    // `clean.controls`: negatives are the autofluorescence events nearest the
+    // positives on FSC/SSC, so the spectrum is not biased by the scatter (and
+    // autofluorescence) of a different cell mix.
+    let positive_scatter = scatter_points(&control.path, &control.dataset, &positive, config)?;
+    let matched = spectrum::scatter_neighbours(&positive_scatter, &negatives.scatter)
+        .into_iter()
+        .map(|position| negatives.events[position])
+        .collect::<Vec<_>>();
+    let matched = spectrum::evenly_spaced(&matched, NEGATIVE_EVENT_LIMIT);
+    let spectrum = estimate_spectrum(
+        &control.path,
+        &[(&columns, &positive), (negatives.columns, &matched)],
+        primary_detector_index,
+    )?;
 
     Ok(BuiltControlReference {
         component: SpectralComponent {
@@ -601,6 +645,7 @@ fn build_single_stain_reference(
             total_events: event_count(&control.dataset),
             retained_events: retained.len(),
             positive_events: Some(positive.len()),
+            negative_events: Some(matched.len()),
         },
     })
 }
@@ -1063,42 +1108,42 @@ fn mean_spectrum(columns: &[Vec<f64>], indices: &[usize]) -> Vec<f64> {
         .collect()
 }
 
-fn subtract_background(values: &[f64], background: &[f64]) -> Vec<f64> {
-    values
-        .iter()
-        .zip(background)
-        .map(|(value, background)| value - background)
-        .collect()
-}
-
-#[derive(Clone, Copy, Debug)]
-enum PeakNorm {
-    /// `spectrum / max(spectrum)` (`get.fluorophore.spectra`).
-    Signed,
-    /// `spectrum / max(abs(spectrum))` (autofluorescence spectra).
-    Absolute,
-}
-
-/// Peak (L-infinity) normalisation as in upstream `AutoSpectral`, so unmixed
-/// abundances are expressed in units of the peak detector.
-fn normalize_spectrum(
-    values: &[f64],
+/// The peak-normalised spectrum (`get.fluorophore.spectra`) of the events
+/// `sets` select, each a pair of detector columns and event indices: robust
+/// slopes against the `peak` detector, so unmixed abundances are in units of
+/// the peak detector.
+fn estimate_spectrum(
     path: &Path,
-    norm: PeakNorm,
+    sets: &[(&[Vec<f64>], &[usize])],
+    peak: usize,
 ) -> Result<Vec<f64>, AutoSpectralError> {
-    let peak = match norm {
-        PeakNorm::Signed => values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-        PeakNorm::Absolute => values
-            .iter()
-            .fold(0.0_f64, |peak, value| peak.max(value.abs())),
-    };
-    if peak <= SPECTRUM_EPSILON || !peak.is_finite() {
-        return Err(AutoSpectralError::ZeroSpectrum {
-            path: path.to_path_buf(),
-        });
-    }
+    let detectors = sets.first().map_or(0, |(columns, _)| columns.len());
+    let values = (0..detectors)
+        .map(|detector| {
+            sets.iter()
+                .flat_map(|(columns, events)| events.iter().map(|&event| columns[detector][event]))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let columns = values.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    spectrum::spectrum(&columns, peak).ok_or_else(|| AutoSpectralError::ZeroSpectrum {
+        path: path.to_path_buf(),
+    })
+}
 
-    Ok(values.iter().map(|value| value / peak).collect())
+/// FSC/SSC of `events`, the coordinates negatives are matched on.
+fn scatter_points(
+    path: &Path,
+    dataset: &FcsDataset,
+    events: &[usize],
+    config: &AutoSpectralConfig,
+) -> Result<Vec<[f64; 2]>, AutoSpectralError> {
+    let fsc = channel_column(path, dataset, &config.fsc)?;
+    let ssc = channel_column(path, dataset, &config.ssc)?;
+    Ok(events
+        .iter()
+        .map(|&event| [fsc[event], ssc[event]])
+        .collect())
 }
 
 fn infer_primary_channel(

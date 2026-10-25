@@ -1,0 +1,8 @@
+filename,dye,primary_channel
+unstained.fcs,Autofluorescence,
+bv421.fcs,BV421,D02-A
+bv510.fcs,BV510,D04-A
+fitc.fcs,FITC,D06-A
+pe.fcs,PE,D09-A
+pecy5.fcs,PE-Cy5,D11-A
+apc.fcs,APC,D14-A

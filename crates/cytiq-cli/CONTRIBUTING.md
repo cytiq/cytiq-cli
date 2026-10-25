@@ -84,8 +84,10 @@ cargo test -p cytiq-cli --test <command>_cli
 
 Test files: `autospill_cli.rs`, `autospectral_cli.rs`, `clean_cli.rs`,
 `compensate_cli.rs`, `cytoscan_cli.rs`, `flowsom_cli.rs`, `gate_cli.rs`,
-`mask_cli.rs`, `meta_cli.rs`, `peacoqc_cli.rs`, `pipeline_cli.rs` (the whole
-chain on `data/fixtures/pipeline` against per-event truth), `preflight_cli.rs`,
+`mask_cli.rs`, `meta_cli.rs`, `parity_smoke.rs` (autospill, AutoSpectral,
+PeacoQC and CytoScan against the R outputs in `data/fixtures/parity`),
+`peacoqc_cli.rs`, `pipeline_cli.rs` (the whole chain on
+`data/fixtures/pipeline` against per-event truth), `preflight_cli.rs`,
 `qc_cli.rs`, `transform_cli.rs`. `tests/common/mod.rs` holds `assert_provenance`,
 `assert_provenance_chain` and `adjusted_rand_index`.
 `main.rs` has no unit tests; logic worth unit-testing usually belongs in a

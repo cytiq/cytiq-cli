@@ -328,29 +328,48 @@ def compare_cytoscan_dataset(data: Path, rust: Path, upstream: Path, dataset: st
             "upstream": _flag_metrics(r_out_flags, truth),
         }
 
-        novelty = pd.read_csv(up_dir / f"novelty_{method}.csv").set_index("filename").loc[summary.index]
-        meta = json.loads((up_dir / f"novelty_{method}.json").read_text())
         rust_ll = summary["novelty_log_likelihood"].to_numpy(dtype=float)
         rust_nov = summary["is_novelty"].astype(str).str.lower().eq("true").to_numpy()
-        nov = {"rust": _flag_metrics(rust_nov, truth)}
-        for key in ("default", "VVV"):
-            info = meta.get(key, {})
-            ll = pd.to_numeric(novelty[f"ll_{key}"], errors="coerce").to_numpy(dtype=float)
-            threshold = info.get("threshold")
-            if threshold is None or not np.isfinite(ll).any():
-                nov[f"upstream_{key}"] = {"model": None, "note": "Mclust returned no model"}
+        rust_config = json.loads((rust_dir / "cytoscan_config.json").read_text())["diagnostics"]
+        nov = {"rust": {**_flag_metrics(rust_nov, truth), "model": rust_config.get("novelty_model"),
+                        "G": rust_config.get("novelty_components")}}
+        # `upstream_*`: Mclust on R's features (subsamples differ on large files);
+        # `upstream_on_rust_features_*`: Mclust on cytiq's features, the model
+        # choice alone.
+        for prefix, tag in (("upstream", method), ("upstream_on_rust_features", f"rust_features_{method}")):
+            if not (up_dir / f"novelty_{tag}.csv").exists():
                 continue
-            r_flags = ll <= threshold
-            nov[f"upstream_{key}"] = {
-                "model": info.get("model"), "G": info.get("G"),
-                "ll_spearman_vs_rust": _spearman(rust_ll, ll),
-                "ll_max_abs_diff": _r(float(np.nanmax(np.abs(rust_ll - ll)))),
-                "flag_agreement_with_rust": _r((rust_nov == r_flags).mean(), 4),
-                "flags": _flag_metrics(r_flags, truth),
-            }
+            novelty = pd.read_csv(up_dir / f"novelty_{tag}.csv").set_index("filename").loc[summary.index]
+            meta = json.loads((up_dir / f"novelty_{tag}.json").read_text())
+            for key in ("default", "VVV"):
+                nov[f"{prefix}_{key}"] = _novelty_vs_rust(novelty, meta.get(key, {}), key, rust_ll, rust_nov,
+                                                          truth)
         entry["novelty"] = nov
         out[method] = entry
     return out
+
+
+def _novelty_vs_rust(novelty: pd.DataFrame, info: dict, key: str, rust_ll: np.ndarray, rust_nov: np.ndarray,
+                     truth: np.ndarray) -> dict:
+    """R's novelty flags and log-densities against cytiq's. CytoScan flags
+    `log(dens()) <= threshold`, which is -Inf where dens() underflows; the
+    differences use dens(logarithm = TRUE) instead."""
+    if info.get("model") is None:
+        return {"model": None, "note": "Mclust returned no model"}
+    ll = pd.to_numeric(novelty[f"ll_{key}"], errors="coerce").to_numpy(dtype=float)
+    column = f"logll_{key}" if f"logll_{key}" in novelty else f"ll_{key}"
+    log_ll = pd.to_numeric(novelty[column], errors="coerce").to_numpy(dtype=float)
+    r_flags = ll <= info["threshold"]
+    finite = np.isfinite(log_ll) & np.isfinite(rust_ll)
+    return {
+        "model": info.get("model"), "G": info.get("G"),
+        "bic": _r(info["bic"]) if info.get("bic") is not None else None,
+        "ll_spearman_vs_rust": _spearman(rust_ll[finite], log_ll[finite]),
+        "ll_max_abs_diff": _r(float(np.max(np.abs(rust_ll - log_ll)[finite]))) if finite.any() else None,
+        "ll_underflow_in_r": int((~np.isfinite(ll)).sum()),
+        "flag_agreement_with_rust": _r((rust_nov == r_flags).mean(), 4),
+        "flags": _flag_metrics(r_flags, truth),
+    }
 
 
 def compare_cytoscan(data: Path, rust: Path, upstream: Path) -> dict:

@@ -22,8 +22,9 @@ this crate.
   `Severity`); new rules are optional fields there, documented in the root
   README `## QC` and this crate's check table.
 - Metrics are only computed when the mask belongs to the sample's
-  acquisition and covers every raw event; otherwise the report says why and
-  holds no metrics.
+  acquisition and has exactly one row per raw event; otherwise the report
+  says why and holds no metrics. Filter metrics count mask rows, so they are
+  raw-event counts only under that rule.
 - The report is written even when checks fail; the CLI turns failures into
   exit code 1 through `ensure_passed`.
 - Never modifies inputs.

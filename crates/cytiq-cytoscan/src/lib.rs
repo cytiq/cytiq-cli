@@ -9,11 +9,12 @@
 
 mod error;
 mod export;
+mod mixture;
 mod novelty;
 mod runner;
 
 pub use crate::error::CytoScanError;
-pub use crate::novelty::NoveltyModelKind;
+pub use crate::mixture::MclustModel;
 pub use crate::runner::{
     CytoScanConfig, CytoScanConstants, CytoScanDiagnostics, CytoScanFeatureMatrix,
     CytoScanFeatureRow, CytoScanParameters, CytoScanResult, CytoScanRunner, CytoScanSummaryRow,

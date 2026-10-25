@@ -30,6 +30,8 @@ fn cli_runs_autospectral() {
             utf8(&debug_dir),
             "--threads",
             "1",
+            // 80 events per control: too few for the default KDE gate.
+            "--quantile-gate",
         ])
         .output()
         .expect("command should run");
@@ -205,6 +207,7 @@ fn preserves_large_original_ids_exactly() {
             utf8(&output_dir),
             "--threads",
             "1",
+            "--quantile-gate",
         ])
         .output()
         .expect("command should run");
@@ -275,10 +278,36 @@ fn utf8(path: &Path) -> &str {
 }
 
 #[test]
-fn cli_clean_controls_reports_a_degenerate_scatter_gate() {
-    // The fixture controls hold 80 events, too few for the KDE scatter gate.
+fn cleaning_controls_by_default_reports_a_degenerate_scatter_gate() {
+    // The fixture controls hold 80 events, too few for the KDE scatter gate
+    // that cleans controls by default; `--clean-controls` asks for it too.
     let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-clean");
-    let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+    for flags in [&[][..], &["--clean-controls"][..]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+            .args([
+                "autospectral",
+                "--controls",
+                utf8(&directory.join("controls.csv")),
+                "--samples",
+                utf8(&directory.join("samples.csv")),
+                "--input-dir",
+                utf8(&directory),
+                "--output",
+                utf8(&directory.join("out")),
+            ])
+            .args(flags)
+            .output()
+            .expect("command should run");
+
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("FSC/SSC gate of control") && stderr.contains("failed"),
+            "stderr: {stderr}"
+        );
+    }
+
+    let conflicting = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "autospectral",
             "--controls",
@@ -290,16 +319,11 @@ fn cli_clean_controls_reports_a_degenerate_scatter_gate() {
             "--output",
             utf8(&directory.join("out")),
             "--clean-controls",
+            "--quantile-gate",
         ])
         .output()
         .expect("command should run");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("FSC/SSC gate of control") && stderr.contains("not enough"),
-        "stderr: {stderr}"
-    );
+    assert!(!conflicting.status.success());
 }
 
 #[test]

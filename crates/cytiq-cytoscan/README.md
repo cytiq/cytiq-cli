@@ -30,11 +30,14 @@ against a separate high-quality reference cohort.
    - `outlier` (default): isolation forest as
      `isotree::isolation.forest(sample_size = 1, ntrees = 1000, ndim = 1)`;
      score `>= 0.5` is an outlier.
-   - `novelty`: Gaussian mixtures (`linfa-clustering`, full covariance,
-     `G = 1..9`, mclust-style BIC) fitted on reference features; test files at
-     or below the 5% quantile of reference log-densities are novelties. With no
-     more reference files than features, a diagonal Gaussian is used and a
-     warning is recorded.
+   - `novelty`: a Gaussian mixture fitted on reference features as
+     `mclust::Mclust` does by default (`G = 1..9`, best BIC over the
+     covariance structures `EII`, `VII`, `EEI`, `VEI`, `EVI`, `VVI`, and with
+     more reference files than features also `EEE`, `VVV`; EM from Ward's
+     hierarchical clustering, as `hc(modelName = "EII", use = "SVD")`); test
+     files at or below the 5% quantile of reference log-densities are
+     novelties. With no more reference files than features a warning is
+     recorded: only spherical and diagonal structures fit, as in mclust.
    - `both`.
 
 Full rules are in the root [README](../../README.md#cytoscan). Measured
@@ -79,7 +82,7 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 | `CytoScanResult` | `parameters`, test/reference `CytoScanFeatureMatrix`, `summary_rows`, `diagnostics` |
 | `CytoScanParameters`, `CytoScanConstants` | Effective settings, serialized into `cytoscan_config.json`; the constants also go into provenance `constants` |
 | `CytoScanFeatureMatrix`, `CytoScanFeatureRow`, `CytoScanSummaryRow`, `CytoScanDiagnostics` | Result rows and model diagnostics |
-| `NoveltyModelKind` | Which novelty model was fitted (mixture or diagonal fallback) |
+| `MclustModel` | mclust's name of the fitted novelty structure (`VVI`, `XXX`, ...) |
 | `DEFAULT_*` constants | Fixed algorithm settings (seed 42, 1,000 events, 10,000 aggregate, 1,000 trees, 0.5 / 0.05 thresholds, cofactor 150, 4 recursions) |
 | `parse_channel_list` | Parse a comma-separated `--channels` value |
 | `CytoScanError` | Error type for every failure mode |
@@ -103,8 +106,8 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 ## Dependencies
 
 - [`cytiq-fcs`](../cytiq-fcs) for reading and compensation
-- `linfa` / `linfa-clustering` (GMM), `nalgebra` / `ndarray`, `rand` /
-  `rand_distr` / `rand_xoshiro`, `rayon`, `csv`, `serde_json`, `plotly`
+- `nalgebra` (Cholesky, SVD, PCA), `rand` / `rand_distr`, `rayon`, `csv`,
+  `serde_json`, `plotly`
 
 ## Tests
 
@@ -113,5 +116,6 @@ cargo test -p cytiq-cytoscan
 cargo test -p cytiq-cli --test cytoscan_cli
 ```
 
-Unit tests in `src/runner.rs` and `src/novelty.rs` pin behaviour to the R
-packages (transport, `cut()`, flowFP, isotree, mclust).
+Unit tests in `src/runner.rs`, `src/mixture.rs` and `src/novelty.rs` pin
+behaviour to the R packages (transport, `cut()`, flowFP, isotree, mclust's
+BIC table, `hclass` partitions and densities).

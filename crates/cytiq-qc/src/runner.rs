@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -177,8 +178,8 @@ fn find_sample<'a>(
         })
 }
 
-/// The mask belongs to the sample's acquisition and covers every raw event;
-/// metrics only when both hold.
+/// The mask belongs to the sample's acquisition and has exactly one row per
+/// raw event; metrics only when both hold.
 fn mask_checks(
     scope: &str,
     mask: &EventMask,
@@ -212,11 +213,42 @@ fn mask_checks(
         }
         Err(error) => return Err(error.into()),
     };
+    // Source event ids are unique in a mask, so with every raw event found,
+    // a longer mask holds rows of events the raw file does not have. Filter
+    // metrics count every row, so they would count those too.
+    if mask.len() != keep.len() {
+        let raw = cytiq_fcs::source_event_ids(dataset)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| (0..dataset.event_count() as u64).collect())
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let extra = mask
+            .source_event_ids
+            .iter()
+            .find(|source_event_id| !raw.contains(source_event_id))
+            .map_or_else(String::new, |id| format!(", for example {id}"));
+        checks.push(QcCheck::new(
+            scope,
+            "mask_coverage",
+            CheckStatus::Fail,
+            format!(
+                "the mask has {} row(s) for events the raw file does not have ({} rows, {} raw events{extra}): build it from masks of this acquisition only",
+                mask.len() - keep.len(),
+                mask.len(),
+                keep.len()
+            ),
+        ));
+        return Ok(None);
+    }
     checks.push(QcCheck::new(
         scope,
         "mask_coverage",
         CheckStatus::Pass,
-        format!("the mask covers all {} raw event(s)", keep.len()),
+        format!(
+            "the mask has one row for each of the {} raw event(s)",
+            keep.len()
+        ),
     ));
     let kept = keep.iter().filter(|kept| **kept).count();
     Ok(Some(QcMetrics::of(mask, keep.len(), kept)))

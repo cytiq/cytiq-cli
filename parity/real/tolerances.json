@@ -30,6 +30,14 @@
     {"path": ["real", "*", "autospill", "rust_vs_upstream", "max_abs"], "max": 1e-9, "optional": true,
      "why": "the spillover matrix equals R autospill to round-off on real single-stain controls, values above $PnR capped as flowCore::read.FCS does"},
     {"path": ["real", "*", "autospill", "gates", "*", "delta"], "equals": 0, "optional": true,
-     "why": "the FSC/SSC gate keeps the same number of events as R autospill on every control"}
+     "why": "the FSC/SSC gate keeps the same number of events as R autospill on every control"},
+    {"path": ["real", "*", "autospectral", "spectra", "*", "cosine"], "min": 0.9995, "optional": true,
+     "why": "fluorophore spectra (rlm slopes over positives and scatter-matched negatives of the KDE-gated controls) match AutoSpectral's (lowest today: Spark NIR 685, 0.99983); AutoSpectral's own spectra move to a cosine of 0.9993 without clean.controls (r_uncleaned_cosine)"},
+    {"path": ["real", "*", "autospectral", "unmixing", "*", "*", "*", "solver_max_rel"], "max": 1e-6, "optional": true,
+     "why": "the unmixed FCS equals AutoSpectral's unmix.ols on the same spectra, up to f32 storage"},
+    {"path": ["real", "*", "autospectral", "unmixing", "*", "fluorophores", "*", "r_af_spectrum", "correlation"], "min": 0.999, "optional": true,
+     "why": "with AutoSpectral's AF spectrum, cytiq's fluorophore spectra give AutoSpectral's abundances: the rest of the abundance difference is the AF spectrum"},
+    {"path": ["real", "*", "autospectral", "unmixing", "*", "fluorophores", "*", "correlation"], "min": 0.97, "optional": true,
+     "why": "regression floor (lowest today: BV605, 0.976). The AF spectra differ: AutoSpectral takes its AF peak detector from the mean of a different gate (UV7-A against cytiq's V7-A, means within 1%) and fits 1,000 random events, between which its own AF spectrum moves to a cosine of 0.91-0.94"}
   ]
 }

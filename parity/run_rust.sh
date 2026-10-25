@@ -63,9 +63,12 @@ done
 for dataset in cytoscan_exact cytoscan cytoscan_ref100; do
   [[ -d "$DATA/$dataset" ]] || continue
   for method in summary quantiles emd binning fingerprint; do
+    # The debug directory holds the reference features run_upstream.R fits
+    # Mclust on.
     timed "${dataset}_$method" "$BIN" cytoscan --input "$DATA/$dataset/test" \
       --reference "$DATA/$dataset/reference" --output "$OUT/$dataset/$method" \
-      --channels "$(cat "$DATA/$dataset/channels.txt")" --method "$method" --flag-method both
+      --channels "$(cat "$DATA/$dataset/channels.txt")" --method "$method" --flag-method both \
+      --debug-dir "$OUT/${dataset}_debug/$method"
   done
 done
 

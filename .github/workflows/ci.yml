@@ -82,9 +82,14 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Set up Python for ONNX Runtime
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
       - name: Install CPU ONNX Runtime for inference tests
         run: |
-          python3 -m venv "$RUNNER_TEMP/ort-venv"
+          python -m venv "$RUNNER_TEMP/ort-venv"
           "$RUNNER_TEMP/ort-venv/bin/pip" install onnxruntime==1.25.1
           "$RUNNER_TEMP/ort-venv/bin/python" - <<'PYTHON'
           import os

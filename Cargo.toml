@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cytiq-classify",
     "crates/cytiq-autospectral",
     "crates/cytiq-autospill",
     "crates/cytiq-clean",

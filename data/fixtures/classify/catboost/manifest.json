@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "threshold": 0.5,
+  "profile": {
+    "panel": "P1",
+    "instrument": "FACSCantoII",
+    "recipe": "cytiq-fcm-arcsinh-v1",
+    "cofactor": 150.0,
+    "features": [
+      {
+        "name": "FSC_A",
+        "channel": "FSC-A",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "FSC_H",
+        "channel": "FSC-H",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "SSC_A",
+        "channel": "SSC-A",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "SSC_H",
+        "channel": "SSC-H",
+        "labels": [],
+        "fluorescence": false
+      },
+      {
+        "name": "CD7",
+        "channel": "FITC-A",
+        "labels": [
+          "CD7"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD56",
+        "channel": "PE-A",
+        "labels": [
+          "CD56"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD34",
+        "channel": "PerCP-A",
+        "labels": [
+          "CD34",
+          "CD34 Cy55"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD117",
+        "channel": "PC7-A",
+        "labels": [
+          "CD117"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD33",
+        "channel": "APC-A",
+        "labels": [
+          "CD33"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "HLA_DR",
+        "channel": "APC-H7-A",
+        "labels": [
+          "HLA-DR"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD13",
+        "channel": "Horizon V450-A",
+        "labels": [
+          "CD13",
+          "CD13 BV421"
+        ],
+        "fluorescence": true
+      },
+      {
+        "name": "CD45",
+        "channel": "Horizon V500-A",
+        "labels": [
+          "CD45 KO",
+          "CD45"
+        ],
+        "fluorescence": true
+      }
+    ]
+  },
+  "run_id": "synthetic-fixture",
+  "model_kind": "catboost",
+  "classes": [
+    "non_blast",
+    "blast"
+  ],
+  "input": "features",
+  "output": "probabilities",
+  "model_sha256": "2fe9623854ad1b72a627a8b90cefc7ad7b920524ccb3350204eda8ed25b31983",
+  "parity": {
+    "status": "ok",
+    "max_probability_error": 8.81964533627766e-08,
+    "same_labels": true,
+    "events": 128,
+    "tolerance": 1e-05,
+    "cpu_seconds_per_1000": 0.00019615940800576936,
+    "float32_thresholds_corrected": 0
+  }
+}

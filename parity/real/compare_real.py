@@ -157,6 +157,54 @@ def compare_autospill_chain(directory: Path) -> dict:
     }
 
 
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    return float(a @ b / np.linalg.norm(a) / np.linalg.norm(b))
+
+
+def compare_autospectral_chain(directory: Path) -> dict:
+    """Spectra and unmixed abundances against R AutoSpectral. The AF spectrum
+    is reported apart: it is AutoSpectral's least stable estimate."""
+    theirs = pd.read_csv(directory / "r_spectra.csv", index_col=0)
+    uncleaned = pd.read_csv(directory / "r_spectra_uncleaned.csv", index_col=0)
+    mine = pd.read_csv(directory / "autospectral" / "references" / "fluorophore_spectra.csv", index_col=0)
+    mine = mine.drop(columns=["kind"]).rename(index={"Autofluorescence": "AF"}).loc[theirs.index, theirs.columns]
+
+    def spectrum(name: str) -> dict:
+        a, b = theirs.loc[name].to_numpy(), mine.loc[name].to_numpy()
+        return {"cosine": _r(_cosine(a, b)), "max_abs_diff": _r(float(np.max(np.abs(a - b)))),
+                "r_uncleaned_cosine": _r(_cosine(a, uncleaned.loc[name].to_numpy())),
+                "peak": {"rust": str(mine.columns[np.argmax(b)]), "upstream": str(theirs.columns[np.argmax(a)])}}
+
+    fluorophores = [name for name in theirs.index if name != "AF"]
+    unmixing = {}
+    for table in sorted(directory.glob("r_unmixed_*.csv")):
+        reference = pd.read_csv(table)
+        sample = table.stem.removeprefix("r_unmixed_")
+        flow = flowio.FlowData(str(directory / "autospectral" / "unmixed" / f"{sample}.unmixed.fcs"),
+                               ignore_offset_discrepancy=True)
+        names = [flow.text[f"p{i + 1}n"] for i in range(flow.channel_count)]
+        events = np.reshape(np.asarray(flow.events, dtype=np.float64), (-1, flow.channel_count))
+        rows = reference["event"].to_numpy(dtype=np.int64)
+        per_component = {}
+        for name in theirs.index:
+            ours = events[rows, names.index("Autofluorescence" if name == "AF" else name)]
+            upstream = reference[f"r_{name}"].to_numpy()
+            same_spectra = reference[f"cytiq_{name}"].to_numpy()
+            r_af = reference[f"cytiq_r_af_{name}"].to_numpy()
+            per_component[name] = {
+                "solver_max_rel": _r(float(np.max(np.abs(ours - same_spectra)) / np.max(np.abs(same_spectra)))),
+                "correlation": _r(float(np.corrcoef(ours, upstream)[0, 1])),
+                "slope": _r(float(np.polyfit(upstream, ours, 1)[0])),
+                "r_af_spectrum": {"correlation": _r(float(np.corrcoef(r_af, upstream)[0, 1])),
+                                  "slope": _r(float(np.polyfit(upstream, r_af, 1)[0]))},
+            }
+        unmixing[sample] = {"events_compared": int(len(rows)),
+                            "fluorophores": {name: per_component[name] for name in fluorophores},
+                            "af": per_component["AF"]}
+    return {"spectra": {name: spectrum(name) for name in fluorophores}, "af_spectrum": spectrum("AF"),
+            "unmixing": unmixing}
+
+
 def main() -> None:
     out_dir, target = Path(sys.argv[1]), Path(sys.argv[2])
     metrics: dict = {"real": {}}
@@ -167,6 +215,8 @@ def main() -> None:
             metrics["real"][directory.name] = compare_qc_chain(directory)
         if (directory / "controls_full.csv").exists():
             metrics["real"][directory.name] = {"autospill": compare_autospill_chain(directory)}
+        if (directory / "control_file.csv").exists():
+            metrics["real"][directory.name] = {"autospectral": compare_autospectral_chain(directory)}
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(metrics, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))

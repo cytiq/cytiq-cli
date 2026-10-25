@@ -65,12 +65,26 @@ run_autospill_chain() {
     --output "$D/autospill_spillover.csv" --matrix-kind spillover --debug-dir "$D/autospill_debug"
 }
 
+# --- AutoSpectral chain (spectral single-stain controls, stained samples) ----
+run_autospectral_chain() {
+  local D="$1"
+  # AutoSpectral's control file is cytiq's controls manifest as well
+  # (`fluorophore` and `channel` columns, `AF` for the unstained control).
+  {
+    echo filename
+    for fcs in "$D"/sample/*.fcs; do echo "../sample/$(basename "$fcs")"; done
+  } > "$D/samples.csv"
+  "$BIN" autospectral --controls "$D/control_file.csv" --samples "$D/samples.csv" \
+    --input-dir "$D/controls" --output "$D/autospectral"
+}
+
 "$PY" "$PARITY/real/datasets.py" "$OUT" > "$OUT/datasets.tsv"
 while IFS=$'\t' read -r name chain; do
   case "$chain" in
     flowsom_gating) run_flowsom_chain "$OUT/$name" ;;
     qc) run_qc_chain "$OUT/$name" ;;
     autospill) run_autospill_chain "$OUT/$name" ;;
+    autospectral) run_autospectral_chain "$OUT/$name" ;;
     *) echo "unknown chain \`$chain\` for $name in datasets.json" >&2; exit 1 ;;
   esac
 done < "$OUT/datasets.tsv"

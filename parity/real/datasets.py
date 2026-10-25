@@ -8,7 +8,9 @@ SHA-256. A file comes from the R library in R_LIBS_USER (`r_package` +
 downloads and extracted members are cached in parity/.data/real-cache by
 SHA-256. A dataset's `controls` table (single-stain controls for the
 `autospill` chain) is written as `controls_full.csv` (R autospill: filename,
-dye, antigen, wavelength) and `controls.csv` (cytiq: filename, dye). Prints
+dye, antigen, wavelength) and `controls.csv` (cytiq: filename, dye); an
+`autospectral_cytometer` (the `autospectral` chain) is written to
+`cytometer.txt`. File names may hold a directory (`controls/x.fcs`). Prints
 one `name<TAB>chain` line per dataset that is ready. A missing or mismatching
 file fails the run, except for an `optional` dataset whose download fails,
 which is skipped with a warning. A `slow` dataset is skipped unless
@@ -82,9 +84,12 @@ def materialise(dataset: dict, out_dir: Path) -> None:
         actual = sha256(path)
         if actual != spec["sha256"]:
             raise ValueError(f"{path}: SHA-256 {actual}, expected {spec['sha256']}")
+        (target / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target / name)
     if "controls" in dataset:
         write_controls(dataset["controls"], target)
+    if "autospectral_cytometer" in dataset:
+        (target / "cytometer.txt").write_text(dataset["autospectral_cytometer"] + "\n")
 
 
 def write_controls(controls: list[dict], target: Path) -> None:

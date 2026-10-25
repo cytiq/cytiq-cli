@@ -51,7 +51,8 @@ cytiq autospill \
   --debug-dir ./debug \
   --fsc FSC-A \
   --ssc SSC-A \
-  --threads 4
+  --threads 4 \
+  --quantile-gate
 ```
 
 `cytiq autospread` uses the same manifest/input model:
@@ -159,7 +160,8 @@ cytiq autospectral \
   --debug-dir ./debug \
   --fsc FSC-A \
   --ssc SSC-A \
-  --threads 4
+  --threads 4 \
+  --quantile-gate
 ```
 
 Controls manifest:
@@ -188,11 +190,12 @@ Rules:
 - AutoSpectral-style `fluorophore` and `channel` headers are accepted as aliases for `dye` and `primary_channel`
 - if `--detectors` is omitted, spectral detectors are inferred as shared non-scatter, non-time channels
 - independent FCS loading, reference spectra, sample unmixing, and per-event unmixing use worker threads
-- reference spectra are peak-normalised (maximum detector = 1), as in upstream AutoSpectral, so unmixed abundances are in units of each fluorophore's peak detector
-- positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required)
+- reference spectra are AutoSpectral's: 1 on the peak detector and, on every other detector, the robust slope (`MASS::rlm`, Huber) of that detector on the peak detector, divided by the largest value, so unmixed abundances are in units of each fluorophore's peak detector
+- positive events are those above the 99th percentile of the autofluorescence control's primary channel, keeping the brightest 500 (at least 20 required); their negatives are the autofluorescence control's 3 nearest events on raw FSC/SSC (at most 1,000), as `clean.controls` matches them on scatter, and the slopes run over both
+- the autofluorescence spectrum is the same slopes over the gated autofluorescence control, against its detector with the highest mean
 - the OLS solution is computed with a Householder QR solve (`R⁻¹Qᵀ`), not the normal equations `(MᵀM)⁻¹Mᵀ`, which square the condition number; `run.json` records `solver_method`
 - autofluorescence component count, gate thresholds, minimum event counts, and condition-number limit are fixed internal constants for the MVP
-- `--clean-controls` drops control events on a raw detector margin and gates FSC/SSC with the same KDE gate as `autospill` instead of the 1–99% quantile box; `run.json` records `control_gate`. It needs enough events for the KDE gate (a few hundred per control)
+- controls are cleaned by default: events on a raw detector margin are dropped and FSC/SSC is gated with the same KDE gate as `autospill`, which needs a few hundred events per control. `--quantile-gate` keeps the 1–99% FSC/SSC quantile box instead, for smaller controls; on real cell controls it keeps debris and saturated events that bias the spectra (cosine down to 0.42 against AutoSpectral on an Aurora panel, `parity/REPORT.md` §2.10). `--clean-controls` is accepted for existing scripts; `run.json` records `control_gate`
 - unmixed FCS files keep the sample's acquisition keywords (`$CYT`, `$DATE`, ...) and the `$Pn*` keywords of passed-through channels such as scatter and time; the spillover matrix and earlier `CYTIQ_*` keywords are dropped because the detector channels they describe were replaced, except `CYTIQ_ACQUISITION`
 - passed-through channels keep their exact values (the file uses doubles when one does not fit f32, for example `Original_ID` above 2^24); components are rounded to f32. `Time` and `Original_ID` are never inferred as detectors, and `Original_ID` is rejected as an explicit detector
 - unmixed files record `CYTIQ_UNMIXING` (components and detectors) and the margin bounds of passed-through channels in `CYTIQ_MARGINS`. Components have no detector margins: `cytiq peacoqc --remove-margins` refuses them, and `cytiq gate` refuses to compensate them. Raw detector margins are written instead as `margin_pass` in `unmixed/<sample>.unmixed.masks.parquet`
@@ -1175,7 +1178,7 @@ cytiq autospread --controls data/fixtures/autospread/controls.csv \
   --input-dir data/fixtures/autospread \
   --detectors data/fixtures/autospread/detectors.csv --output spread.csv
 
-cytiq autospectral --controls data/fixtures/autospectral/controls.csv \
+cytiq autospectral --quantile-gate --controls data/fixtures/autospectral/controls.csv \
   --samples data/fixtures/autospectral/samples.csv \
   --input-dir data/fixtures/autospectral --output ./autospectral-out
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 # Upstream side of parity/real/run_real.sh: the same processing with flowCore,
-# PeacoQC, FlowSOM and autospill, written next to the cytiq outputs.
+# PeacoQC, FlowSOM, autospill and AutoSpectral, written next to the cytiq
+# outputs.
 # Usage: Rscript parity/real/real.R <out_dir>
 
 suppressPackageStartupMessages({
@@ -84,5 +85,47 @@ for (dir in list.dirs(out_dir, recursive = FALSE)) {
     data.frame(sample = s, event = as.integer(ids))
   }))
   write.csv(gates, file.path(dir, "r_autospill_gates.csv"), row.names = FALSE)
+}
+
+# AutoSpectral chains: spectral single-stain controls and stained samples -------
+# The vignette workflow: define.flow.control (density gates), clean.controls
+# (autofluorescence removal, scatter-matched universal negatives),
+# get.fluorophore.spectra (rlm slopes), then OLS unmixing. Abundances are
+# written for every 10th event: with R's spectra, with cytiq's spectra (the
+# solver check) and with cytiq's fluorophore spectra plus R's AF spectrum.
+for (dir in list.dirs(out_dir, recursive = FALSE)) {
+  if (!file.exists(file.path(dir, "control_file.csv"))) next
+  suppressPackageStartupMessages(library(AutoSpectral))
+  work <- file.path(dir, "r_autospectral_work")
+  dir.create(work, showWarnings = FALSE)
+  old <- setwd(work)
+  asp <- get.autospectral.param(cytometer = readLines(file.path(dir, "cytometer.txt")), figures = TRUE)
+  flow.control <- define.flow.control(file.path(dir, "controls"), file.path(dir, "control_file.csv"), asp)
+  spectra <- get.fluorophore.spectra(clean.controls(flow.control, asp, main.figures = FALSE), asp,
+                                     figures = FALSE)
+  # R's own spread: the same spectra without clean.controls.
+  uncleaned <- get.fluorophore.spectra(flow.control, asp, use.clean.expr = FALSE, figures = FALSE)
+  setwd(old)
+  write.csv(spectra, file.path(dir, "r_spectra.csv"))
+  write.csv(uncleaned[rownames(spectra), colnames(spectra)], file.path(dir, "r_spectra_uncleaned.csv"))
+  mine <- read.csv(file.path(dir, "autospectral", "references", "fluorophore_spectra.csv"),
+                   row.names = 1, check.names = FALSE)
+  rownames(mine)[rownames(mine) == "Autofluorescence"] <- "AF"
+  mine <- as.matrix(mine[rownames(spectra), colnames(spectra)])
+  with_r_af <- mine
+  with_r_af["AF", ] <- spectra["AF", ]
+  for (fcs in list.files(file.path(dir, "sample"), pattern = "\\.fcs$", full.names = TRUE)) {
+    raw <- exprs(read.FCS(fcs, transformation = FALSE, truncate_max_range = FALSE))[, colnames(spectra)]
+    rows <- seq(1, nrow(raw), by = 10)
+    unmixed <- function(matrix, prefix) {
+      values <- unmix.ols(raw[rows, ], matrix)
+      colnames(values) <- paste0(prefix, colnames(values))
+      values
+    }
+    write.csv(data.frame(event = as.integer(rows - 1), unmixed(spectra, "r_"), unmixed(mine, "cytiq_"),
+                         unmixed(with_r_af, "cytiq_r_af_"), check.names = FALSE),
+              file.path(dir, paste0("r_unmixed_", tools::file_path_sans_ext(basename(fcs)), ".csv")),
+              row.names = FALSE)
+  }
 }
 writeLines(capture.output(sessionInfo()), file.path(out_dir, "sessionInfo.txt"))

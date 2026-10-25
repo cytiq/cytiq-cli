@@ -13,8 +13,10 @@ fn runner_unmixes_synthetic_spectral_fixture() -> Result<(), Box<dyn Error>> {
     let controls = read_controls_manifest(directory.join("controls.csv"))?;
     let samples = read_samples_manifest(directory.join("samples.csv"))?;
     let output_dir = directory.join("out");
+    // 80 events per control: too few for the KDE gate.
     let config = AutoSpectralConfig {
         output_dir: output_dir.clone(),
+        clean_controls: false,
         ..AutoSpectralConfig::new(output_dir)
     };
 
@@ -58,6 +60,7 @@ fn runner_unmixes_with_explicit_thread_limit() -> Result<(), Box<dyn Error>> {
     let config = AutoSpectralConfig {
         output_dir: output_dir.clone(),
         threads: Some(1),
+        clean_controls: false,
         ..AutoSpectralConfig::new(output_dir)
     };
 

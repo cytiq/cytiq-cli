@@ -990,7 +990,7 @@ panel:
       peacoqc_pass: { required: true, max_removed_fraction: 0.3 }
       non_debris:   { required: true }
       singlets:     { required: true }
-      live:         { required: false, max_removed_fraction: 0.5, severity: warn }
+      live:         { required: true, min_assessed_fraction: 0.95, max_removed_fraction: 0.5, severity: warn }
 ```
 
 ```bash
@@ -998,23 +998,28 @@ cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --outpu
 ```
 
 Rules:
-- the mask must belong to the sample's raw acquisition and cover every raw
-  event (`cytiq mask combine` follows the rows of its first mask, so put the
-  `compensate` or `clean` mask first); otherwise the check fails and no
+- the mask must belong to the sample's raw acquisition and hold exactly one
+  row per raw event: none missing (`cytiq mask combine` follows the rows of
+  its first mask, so put the `compensate` or `clean` mask first) and none for
+  events the raw file does not have; otherwise the check fails and no
   metrics are computed
 - a filter counts as removing an event when any of its columns is `false`;
   `2.margin_pass` and `margin_pass` (the names `cytiq mask combine` gives a
   repeated filter) are one filter. Its removed fraction is relative to the
   events it assessed (non-null)
 - `required: true` fails when the filter is missing or assessed nothing (a
-  `not_assessed` clean filter); `severity: warn` turns that filter's failures
-  into warnings. `min_events`, `min_kept_events` and `max_removed_fraction`
-  always fail
+  `not_assessed` clean filter). `min_assessed_fraction` fails when it
+  assessed a smaller share of the raw events, which catches a filter that ran
+  on part of them only. The share is of raw events: the mask cannot tell an
+  event that never reached a filter from one it skipped, so a filter that only
+  saw what an earlier stage kept needs a bound that allows for it.
+  `severity: warn` turns that filter's failures into warnings. `min_events`,
+  `min_kept_events` and `max_removed_fraction` always fail
 - a panel without `qc` passes with a note
 - `qc.json` holds `metrics` (raw and kept events, removed fraction, per
-  filter: columns, assessed, removed, removed fraction) and `checks`
-  (`scope`, `check`, `status`, `message`, `value`, `limit`). It is always
-  written; the command exits with `1` when any check fails
+  filter: columns, assessed, assessed fraction, removed, removed fraction)
+  and `checks` (`scope`, `check`, `status`, `message`, `value`, `limit`). It
+  is always written; the command exits with `1` when any check fails
 
 ## Provenance
 

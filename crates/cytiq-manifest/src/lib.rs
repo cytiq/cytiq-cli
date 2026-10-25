@@ -160,6 +160,9 @@ pub struct FilterPolicy {
     /// The filter must have assessed at least one event.
     #[serde(default)]
     pub required: bool,
+    /// Minimum fraction of the raw events the filter assessed (non-null).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_assessed_fraction: Option<f64>,
     /// Maximum fraction of the events it assessed that the filter removes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_removed_fraction: Option<f64>,
@@ -547,10 +550,15 @@ fn check_qc_policy(panel: &str, qc: &QcPolicy) -> Result<(), String> {
         .max_removed_fraction
         .map(|value| ("max_removed_fraction".to_owned(), value))
         .into_iter()
-        .chain(qc.filters.iter().filter_map(|(name, filter)| {
-            filter
-                .max_removed_fraction
-                .map(|value| (format!("filters.{name}.max_removed_fraction"), value))
+        .chain(qc.filters.iter().flat_map(|(name, filter)| {
+            [
+                ("min_assessed_fraction", filter.min_assessed_fraction),
+                ("max_removed_fraction", filter.max_removed_fraction),
+            ]
+            .into_iter()
+            .filter_map(move |(key, value)| {
+                value.map(|value| (format!("filters.{name}.{key}"), value))
+            })
         }));
     for (key, value) in fractions {
         if !(0.0..=1.0).contains(&value) {
@@ -825,7 +833,7 @@ controls:
     fn reads_a_qc_policy() {
         let with_qc = YAML.replace(
             "  name: T cells\n",
-            "  name: T cells\n  qc:\n    min_events: 1000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n      live: { max_removed_fraction: 0.4, severity: warn }\n",
+            "  name: T cells\n  qc:\n    min_events: 1000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n      live: { min_assessed_fraction: 0.95, max_removed_fraction: 0.4, severity: warn }\n",
         );
         let manifest = RunManifest::load(&write("qc.yaml", &with_qc)).unwrap();
         let qc = manifest.panels[0].qc.as_ref().unwrap();
@@ -833,9 +841,20 @@ controls:
         assert!(qc.filters["peacoqc_pass"].required);
         assert_eq!(qc.filters["peacoqc_pass"].severity, Severity::Fail);
         assert_eq!(qc.filters["live"].severity, Severity::Warn);
+        assert_eq!(qc.filters["live"].min_assessed_fraction, Some(0.95));
 
         let out_of_range = with_qc.replace("max_removed_fraction: 0.5", "max_removed_fraction: 50");
         let error = RunManifest::load(&write("qc-range.yaml", &out_of_range)).unwrap_err();
         assert!(error.to_string().contains("between 0 and 1"), "{error}");
+
+        let out_of_range =
+            with_qc.replace("min_assessed_fraction: 0.95", "min_assessed_fraction: 95");
+        let error = RunManifest::load(&write("qc-assessed.yaml", &out_of_range)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("`filters.live.min_assessed_fraction` must be between 0 and 1"),
+            "{error}"
+        );
     }
 }

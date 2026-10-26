@@ -317,6 +317,16 @@ Upstream: CytoScan 0.1.0 (`AUMC-HEMA/CytoScan@c97f403`) with isotree 0.6.1.5,
 mclust 6.1.3, transport 0.15.4, flowFP 1.68.0. Baseline: the cytoscan branch
 before these fixes (`7b1e2f6`).
 
+**2026-10-26 dependency migration.** `rand` 0.10.3 and `rand_distr` 0.6.0 are
+updated together. The `StdRng` stream and floating-point uniform draws are
+unchanged, but integer range sampling changed. `sampling.rs` preserves rand
+0.8's event selections and tree-feature choices; golden tests cover every
+sampling algorithm, and 720 independent comparisons against rand 0.8.8 match
+exactly. On all 15 dataset/method combinations below, feature values and
+outlier scores are identical to the pre-upgrade outputs (maximum absolute
+change 0). The statistical tolerances and upstream fixtures are unchanged.
+All 15 comparisons against R satisfy the existing CytoScan tolerance rules.
+
 **Datasets** (`parity/gen/cytoscan.py`):
 - Cohorts follow `CytoScan::generateDemo`: 6 channels, each a two-normal
   mixture.

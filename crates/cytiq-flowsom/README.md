@@ -22,12 +22,11 @@ Deterministic FlowSOM-style clustering of the events of one FCS file. Backs the
 5. Merge the 100 nodes into 20 metaclusters by average-linkage hierarchical
    clustering of the codebook.
 
-All settings are fixed `FLOWSOM_*` constants. Deliberate differences from R
+Defaults come from the `FLOWSOM_*` constants. Deliberate differences from R
 defaults: `scale = TRUE`, 20 metaclusters (R: 10), and plain average linkage
 instead of ConsensusClusterPlus. After the parity fixes Rust-vs-R ARI is
 0.93–0.98, the same as R seed-to-seed; see
-[`parity/REPORT.md`](../../parity/REPORT.md) §2.5. CLI rules are in the root
-[README](../../README.md#flowsom).
+[`parity/REPORT.md`](../../parity/REPORT.md) §2.5.
 
 ## Usage
 
@@ -49,6 +48,13 @@ config.debug_dir = Some("./flowsom-debug".into());
 let result = FlowSomRunner::run("sample.fcs", "sample.flowsom.csv", &config)?;
 println!("{} metaclusters", result.summary.metrics.metaclusters);
 ```
+
+`--xdim`/`--ydim` set the grid (default 10×10), `--metaclusters` the cluster
+count (default 20, at most `xdim·ydim`), `--seed` the seed (default 1) and
+`--no-scale` disables z-scoring. `--training-events N` draws a deterministic
+sample without replacement from its own RNG stream for training, then assigns
+every event; scaling statistics still use every event. Training iterations,
+learning rate and radius schedules remain fixed constants.
 
 ## Public API
 

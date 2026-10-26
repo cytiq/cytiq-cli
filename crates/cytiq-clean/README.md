@@ -15,8 +15,7 @@ could not:
 Events are never copied. Gates are written as Gating-ML 2.0 and evaluated with
 [`cytiq-gating`](../cytiq-gating), so they can be edited by hand and re-applied
 with `--gates`. The population debris gate is the AutoSpill FSC/SSC auto-gate
-(<https://www.nature.com/articles/s41467-021-23126-8>). Full rules are in the
-root [README](../../README.md#clean).
+(<https://www.nature.com/articles/s41467-021-23126-8>).
 
 ## Usage
 
@@ -35,6 +34,26 @@ config.channels.no_viability = true;
 let result = CleanRunner::run(&config)?;
 println!("kept {} of {}", result.metrics.kept, result.metrics.event_count);
 ```
+
+## Filter configuration
+
+- Viability is auto-detected from `$PnN`/`$PnS` (Live/Dead, L/D, Zombie,
+  Viability, Fixable, DAPI, 7-AAD, PI, propidium, SYTOX). Several candidates
+  are an error; select `--viability-channel` or pass `--no-viability`.
+- The viability axis compensates the dye and applies `fasinh` with
+  `T = cofactor · sinh(4.5 ln 10)`, a rescaled `asinh(x / cofactor)`.
+  `--viability-cofactor` defaults to 150.
+- By default the viability threshold is the valley after the dimmest
+  population; no clear valley means `not_assessed`. Use
+  `--viability-control unstained.fcs` with `--viability-control-quantile`
+  (default 0.995), or `--viability-threshold` in compensated intensity units.
+- Adaptive debris detection needs a separate low-FSC peak at most 0.25 times
+  the next population's FSC position; otherwise it is `not_assessed`.
+  `--debris-mode fixed --debris-fsc-min/--debris-ssc-min` supplies thresholds.
+- `--debris-mode population` suits beads and cell lines; its gate around the
+  dominant population drops minor populations in mixed samples.
+- `--gates` re-applies the ids `non_debris`, `singlets`, `live` and `clean`
+  without refitting. A missing gate makes its filter `not_assessed`.
 
 ## Public API
 

@@ -26,7 +26,7 @@ this crate.
   them with "equivalent" approximations.
 - Algorithm constants are fixed to upstream defaults and are not CLI flags. If
   one must change, change the `DEFAULT_*` constant, check parity, and update
-  the root `README.md`.
+  this crate's [README](README.md#algorithm).
 - The Isolation Tree is deterministic (best split, no randomness); keep it so.
 - Events are processed in file order; the `Time` channel name is recorded in
   the summary but events are not re-sorted.
@@ -37,7 +37,7 @@ this crate.
 - Output FCS is written only after the mask is complete, and non-finite output
   values are an error rather than being written.
 - `summary.json`, `mask.csv` and `masks.parquet` are output contracts; update
-  the `## PeacoQC` section of the root `README.md` when their fields change.
+  this crate's [output documentation](README.md#output-rules) when their fields change.
 
 ## Where changes belong
 

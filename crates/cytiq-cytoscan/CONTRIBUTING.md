@@ -31,7 +31,7 @@ this crate.
   on processing order (`subsample_does_not_depend_on_path`). Isolation trees
   seed per tree index, so results are stable under `rayon` parallelism.
 - Algorithm settings are fixed `DEFAULT_*` constants, not CLI flags. Exposing
-  one is a deliberate API change: document it in the root README.
+  one is a deliberate API change: document it in this crate's [README](README.md).
 - Preprocessing order is truncate at `$PnR`, compensate, then
   `asinh(x / 150)`. Missing spillover is a warning, not an error.
 - The aggregate takes `ceil(10000 / n_files)` events from every file without

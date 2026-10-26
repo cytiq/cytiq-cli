@@ -39,9 +39,6 @@ On the synthetic parity datasets the spillover matrix matches R `autospill`
 colours) and a FACSymphony (24 colours) to `5e-13`; the gates match event for
 event ([`parity/REPORT.md`](../../parity/REPORT.md) sections 2.2 and 2.10).
 
-Manifest formats, matrix layout and flags: root
-[README](../../README.md#autospill).
-
 ## Usage
 
 ```bash
@@ -61,6 +58,47 @@ let rows = read_controls_manifest("controls.csv")?;
 let config = AutospillConfig { matrix_kind: MatrixKind::Spillover, ..Default::default() };
 let result = AutospillRunner::run(&rows, "./controls", &config)?;
 export_matrix(&result, config.matrix_kind, "spillover.parquet")?;
+```
+
+## Manifests
+
+The controls manifest is a CSV with the following columns:
+
+```csv
+filename,dye
+control_a.fcs,FITC
+control_b.fcs,PE
+unstained.fcs,Autofluorescence
+```
+
+Rules:
+
+- `filename` is relative to `--input-dir`
+- `dye` values must be unique
+- `primary_channel` is inferred from FCS metadata by matching `dye` against `$PnN` first, then `$PnS`
+- inferred channels are always exported/reported using the canonical short name from `$PnN`
+- matching is case-insensitive and strips one trailing measurement suffix such as `-A`, `-H`, or `-W`
+- `dye=Autofluorescence` is a reserved control name for synthetic autofluorescence handling
+- for `Autofluorescence`, `--detectors` is required and the synthetic channel is inferred as the only detector not present in the FCS metadata
+- legacy extra manifest columns are tolerated on read but ignored
+
+Optional detectors manifest:
+
+```csv
+channel,label,wavelength
+FL1-A,FITC detector,530
+FL2-A,PE detector,585
+FL3-A,APC detector,670
+```
+
+If omitted, detector order defaults to the inferred `primary_channel` order.
+
+Optional transform manifest:
+
+```csv
+channel,length,max_range,pos,neg,width
+FITC,256,262144,4.418539922,0,-100
+PE,256,262144,4.418539922,0,-100
 ```
 
 ## Public API

@@ -15,8 +15,8 @@ this crate.
 
 - The Parquet schema is an output contract of every stage that writes masks
   (`compensate`, `peacoqc`, `clean`, `gate --membership`). Changing a column
-  name, type or meaning needs an update of the `## Masks` section of the root
-  `README.md` and of each writer's docs.
+  name, type or meaning needs an update of this crate's
+  [schema documentation](README.md#schema) and of each writer's docs.
 - Null in a filter column means "not assessed", never "passed". Do not fill
   nulls when reading or combining.
 - Rows are matched by `source_event_id` only, never by position, so masks

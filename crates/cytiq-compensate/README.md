@@ -37,6 +37,11 @@ println!("{} events on a raw detector margin", result.margin_event_count);
 
 ## Output rules
 
+- Without `--matrix`, the file's `$SPILLOVER`/`$SPILL` matrix is used.
+  `--matrix` accepts a square CSV/TSV with a corner label, channel columns and
+  one row per channel, as exported by AutoSpill. It requires `--matrix-kind`:
+  `spillover` is inverted; `compensation` is applied as is. Rectangular matrices
+  are rejected. Channels match `$PnN`, then `$PnS`; a missing channel is an error.
 - Matrix channels hold `linear · compensation`, where linear values have
   `$PnE`/`$PnG` applied (`cytiq_fcs::linear_values`, as `cytiq gate` does).
   Other non-time channels whose log scaling or gain changes their values are

@@ -40,10 +40,25 @@ against a separate high-quality reference cohort.
      recorded: only spherical and diagonal structures fit, as in mclust.
    - `both`.
 
-Full rules are in the root [README](../../README.md#cytoscan). Measured
-agreement with R is in [`parity/REPORT.md`](../../parity/REPORT.md) §2.7:
+Measured agreement with R is in [`parity/REPORT.md`](../../parity/REPORT.md) §2.7:
 features match R to ~5e-13 on identical events; random draws use `rand`, so
 results are reproducible but not bit-identical to R.
+Event selections and tree-feature choices retain rand 0.8's integer sampling
+semantics when using rand 0.10; golden tests guard those seeded results.
+
+## Novelty reference cohorts
+
+Use more reference files than features for a reliable novelty flag: `summary`
+has 4 features per channel, `quantiles` 9 and `binning` 10. With fewer files,
+only spherical and diagonal covariance structures fit, and the threshold
+rests on a handful of log-densities; the run warns.
+
+Unlike mclust, the mixture does not try its other full-covariance structures
+(`VEV`, `EVE`, ...), and starts EM from Ward's clustering where mclust uses
+`hcVVV` when files outnumber features. It also rejects a one-component full
+covariance that is singular up to rounding. Binning and fingerprint features
+sum to 1 per channel, so mclust may keep that covariance and flag every test
+file. `cytoscan_config.json` records the chosen `novelty_model`, `G` and BIC.
 
 ## Usage
 

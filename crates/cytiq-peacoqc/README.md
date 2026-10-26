@@ -23,8 +23,7 @@ Events are processed in file (acquisition) order:
 values (MAD 6, IT limit 0.6, 5 consecutive bins, ...) are fixed `DEFAULT_*`
 constants aligned with upstream defaults. On the parity dataset the mask
 matches R PeacoQC 1.20.0 at 100% in every mode
-([`parity/REPORT.md`](../../parity/REPORT.md), section `peacoqc`). Full CLI
-rules are in the root [README](../../README.md#peacoqc).
+([`parity/REPORT.md`](../../parity/REPORT.md), section `peacoqc`).
 
 ## Usage
 
@@ -77,6 +76,12 @@ println!("kept {}", result.summary.metrics.events_after);
 - `remove_margins` uses raw detector bounds, or the bounds recorded in
   `CYTIQ_MARGINS` by `cytiq transform`. Channels transformed or compensated
   without recorded bounds are an error.
+- `--remove-margins` follows `PeacoQC::RemoveMargins`: raw bounds include
+  `$PnR - 1` and flowCore's low bound (−111). On float data the low bound
+  can flag ordinary noise around zero; the margin mask from
+  [`compensate`](../cytiq-compensate/README.md) uses the upper limit only.
+- `--remove-zeros` ignores zero values during peak detection (useful for mass
+  cytometry).
 - Channels match `$PnN`, then `$PnS`, then `$PnN [$PnS]`.
 - With `debug_dir`, writes `summary.json`, `mask.csv` and `report.html`
   (Plotly from the CDN).

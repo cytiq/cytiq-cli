@@ -30,8 +30,8 @@ this crate.
   initialisation. Changes need a parity run (`parity/run_all.sh`) and an
   updated report.
 - The `scale = TRUE`, 20-metacluster and average-linkage choices are documented
-  MVP decisions. Changing them changes every user's clusters: update the root
-  README and the report.
+  MVP decisions. Changing them changes every user's clusters: update this
+  crate's [README](README.md) and the report.
 - IDs: `event_index` and `source_event_id` are 0-based; node, metacluster and
   grid coordinates are 1-based. Downstream joins on `source_event_id` depend
   on this.

@@ -15,6 +15,9 @@ this crate.
   `pickBIC`; unit tests against mclust's BIC table, `hclass` and `dens`.
 - `src/novelty.rs` — the novelty model on top of it: threshold at the 5%
   quantile of reference log-densities.
+- `src/sampling.rs` — stable seeded event and tree-feature selections, preserving
+  rand 0.8's integer sampling across dependency upgrades; golden tests cover
+  each sampling algorithm.
 - `src/export.rs` — CSV / JSON outputs, debug artifacts, PCA, Ward-ordered
   heatmap and the Plotly HTML report.
 - `src/error.rs` — `CytoScanError` (`thiserror`).
@@ -31,7 +34,7 @@ this crate.
   on processing order (`subsample_does_not_depend_on_path`). Isolation trees
   seed per tree index, so results are stable under `rayon` parallelism.
 - Algorithm settings are fixed `DEFAULT_*` constants, not CLI flags. Exposing
-  one is a deliberate API change: document it in the root README.
+  one is a deliberate API change: document it in this crate's [README](README.md).
 - Preprocessing order is truncate at `$PnR`, compensate, then
   `asinh(x / 150)`. Missing spillover is a warning, not an error.
 - The aggregate takes `ceil(10000 / n_files)` events from every file without

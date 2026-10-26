@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build the image
         run: docker buildx build --load -f docker/Dockerfile -t cytiq:ci .

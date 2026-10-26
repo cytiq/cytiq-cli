@@ -9,7 +9,7 @@ cytiq-fcs = { path = "../cytiq-fcs" }
 log = "0.4.28"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 plotly = "0.14.1"
-rand = "0.8.5"
+rand = "0.10.3"
 rand_distr = "0.4.3"
 rayon = "1.10.0"
 serde = { version = "1.0.228", features = ["derive"] }

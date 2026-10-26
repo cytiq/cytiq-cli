@@ -14,8 +14,8 @@ this crate.
 ## Invariants
 
 - The JSON document is a public contract. Any change to field names, types or
-  meaning must bump `SCHEMA_VERSION` in `src/runner.rs` and update the `## Meta`
-  section of the root `README.md`. Adding a field is still a schema change.
+  meaning must bump `SCHEMA_VERSION` in `src/runner.rs` and update this crate's
+  [document shape](README.md#what-is-recorded). Adding a field is still a schema change.
 - `text` and `supplemental_text` are copied verbatim from `cytiq-fcs`, in file
   order. Do not trim, normalize, deduplicate or sort keywords here; that would
   defeat the purpose of the crate.

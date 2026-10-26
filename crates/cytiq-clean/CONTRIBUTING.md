@@ -40,8 +40,8 @@ this crate.
 - `event_id` is the 0-based input row; events are never reordered or copied.
 - Config validation lives in `validate` in `runner.rs`; keep error messages in
   terms of CLI flags, since they surface to users unchanged.
-- `metrics.json` and the `masks.parquet` schema are output contracts; update the
-  `## Clean` section of the root `README.md` when they change.
+- `metrics.json` and the `masks.parquet` schema are output contracts; update
+  this crate's [README](README.md#output-rules) when they change.
 
 ## Where changes belong
 

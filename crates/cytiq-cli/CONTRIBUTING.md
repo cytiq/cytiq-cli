@@ -65,8 +65,9 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
    derive it too.
 5. Add `tests/<name>_cli.rs` covering success, a missing input and at least
    one invalid flag.
-6. Document the command in the root `README.md` (and its crate list) and in the
-   command table of this crate's README.
+6. Document the command in its library crate's `README.md` and in the command
+   table of this crate's README. Update the pipeline diagram in the root
+   `README.md` and `PIPELINE.md` when stage order or signal-state checks change.
 
 ## Where changes belong
 

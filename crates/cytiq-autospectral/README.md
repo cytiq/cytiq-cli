@@ -73,9 +73,6 @@ let summary = AutoSpectralRunner::run(&controls, &samples, "./fcs", &config)?;
 println!("condition number {:.3e}", summary.condition_number);
 ```
 
-Manifest formats are documented in the root
-[README](../../README.md#autospectral).
-
 ## Public API
 
 | Item | Purpose |
@@ -90,6 +87,25 @@ Manifest formats are documented in the root
 | `AutoSpectralError` | Error type for every failure mode |
 
 ## Manifest rules
+
+Controls manifest:
+
+```csv
+filename,dye,primary_channel
+controls/unstained.fcs,Autofluorescence,
+controls/FITC.fcs,FITC,FITC
+controls/PE.fcs,PE,PE
+```
+
+Samples manifest:
+
+```csv
+filename
+samples/sample_01.fcs
+samples/sample_02.fcs
+```
+
+The optional detectors CSV uses the [AutoSpill detector format](../cytiq-autospill/README.md#manifests).
 
 - `filename` values must be relative; they resolve against `input_dir`.
 - Exactly one control with `dye` `Autofluorescence` (or `AF`) and at least one
@@ -114,11 +130,18 @@ Manifest formats are documented in the root
 <debug-dir>/summary.json                    same summary, only with --debug-dir
 ```
 
-- Unmixed files are FCS 3.1 float32. Detector columns are replaced by component
+- Unmixed files are FCS 3.1. Components are rounded to float32; copied channels
+  keep exact values, so the file uses float64 when one does not fit float32
+  (for example `Original_ID` above 2^24). Detector columns are replaced by component
   columns; other parameters (scatter, time, ...) are copied with their `$Pn*`
   keywords. Acquisition keywords are carried over; the spillover matrix and
-  earlier `CYTIQ_*` keywords are dropped. `CYTIQ_UNMIXING` lists the components
+  earlier `CYTIQ_*` keywords are dropped, except `CYTIQ_ACQUISITION`.
+  `CYTIQ_UNMIXING` lists the components
   and detectors, and `CYTIQ_MARGINS` the bounds of the copied channels.
+- Components have no detector margins: `peacoqc --remove-margins` refuses them,
+  and `gate` refuses to compensate them. Use the raw `margin_pass` mask instead.
+- `Time` and `Original_ID` are never inferred as detectors; explicitly selecting
+  `Original_ID` is an error.
 - Duplicate sample stems get a `-<row>` suffix.
 - Existing output files are replaced; there is no `--overwrite` check.
 

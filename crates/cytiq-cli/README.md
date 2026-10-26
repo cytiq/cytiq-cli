@@ -4,30 +4,33 @@ The `cytiq` binary. A thin `clap` front end that parses arguments, builds the
 config of a library crate, calls its runner and logs a summary. All algorithms
 live in the library crates listed below.
 
+See the [pipeline guide](PIPELINE.md) for stage order, a complete conventional
+chain and signal-state checks.
+
 ## Commands
 
-| Command | Backing crate | Purpose | Docs |
-| --- | --- | --- | --- |
-| `cytiq autospill` | [`cytiq-autospill`](../cytiq-autospill) | Spillover or compensation matrix from single-color controls | [AutoSpill](../../README.md#autospill) |
-| `cytiq autospread` | [`cytiq-autospill`](../cytiq-autospill) | Spillover spreading matrix from single-color controls | [AutoSpill](../../README.md#autospill) |
-| `cytiq autospectral` | [`cytiq-autospectral`](../cytiq-autospectral) | Reference-based spectral unmixing | [AutoSpectral](../../README.md#autospectral) |
-| `cytiq transform` | [`cytiq-transform`](../cytiq-transform) | arcsinh / logicle / hyperlog / biexponential signal transforms | [Transform](../../README.md#transform) |
-| `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate) | Apply a spillover or compensation matrix to sample events | [Compensate](../../README.md#compensate) |
-| `cytiq preflight` | [`cytiq-preflight`](../cytiq-preflight) | Check a run manifest and its FCS files before computation | [Preflight](../../README.md#preflight) |
-| `cytiq qc` | [`cytiq-qc`](../cytiq-qc) | Check a sample's final event mask against its panel's QC policy | [QC](../../README.md#qc) |
-| `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask) | Combine per-event masks of one acquisition | [Masks](../../README.md#masks) |
-| `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan) | File-level anomaly detection over a cohort | [CytoScan](../../README.md#cytoscan) |
-| `cytiq classify` | [`cytiq-classify`](../cytiq-classify) | Supervised panel-specific event classification | [Classify](../../README.md#classify) |
-| `cytiq gate` | [`cytiq-gating`](../cytiq-gating) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership | [Gating](../../README.md#gating) |
-| `cytiq clean` | [`cytiq-clean`](../cytiq-clean) | Debris, doublet and dead-cell removal as per-event masks | [Clean](../../README.md#clean) |
-| `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc) | Peak-based acquisition quality control | [PeacoQC](../../README.md#peacoqc) |
-| `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom) | FlowSOM-style clustering | [FlowSOM](../../README.md#flowsom) |
-| `cytiq meta` | [`cytiq-meta`](../cytiq-meta) | FCS metadata export as JSON | [Meta](../../README.md#meta) |
+| Command | Backing crate and documentation | Purpose |
+| --- | --- | --- |
+| `cytiq autospill` | [`cytiq-autospill`](../cytiq-autospill/README.md) | Spillover or compensation matrix from single-color controls |
+| `cytiq autospread` | [`cytiq-autospill`](../cytiq-autospill/README.md) | Spillover spreading matrix from single-color controls |
+| `cytiq autospectral` | [`cytiq-autospectral`](../cytiq-autospectral/README.md) | Reference-based spectral unmixing |
+| `cytiq transform` | [`cytiq-transform`](../cytiq-transform/README.md) | arcsinh / logicle / hyperlog / biexponential signal transforms |
+| `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate/README.md) | Apply a spillover or compensation matrix to sample events |
+| `cytiq preflight` | [`cytiq-preflight`](../cytiq-preflight/README.md) | Check a run manifest and its FCS files before computation |
+| `cytiq qc` | [`cytiq-qc`](../cytiq-qc/README.md) | Check a sample's final event mask against its panel's QC policy |
+| `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask/README.md) | Combine per-event masks of one acquisition |
+| `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan/README.md) | File-level anomaly detection over a cohort |
+| `cytiq classify` | [`cytiq-classify`](../cytiq-classify/README.md) | Supervised panel-specific event classification |
+| `cytiq gate` | [`cytiq-gating`](../cytiq-gating/README.md) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership |
+| `cytiq clean` | [`cytiq-clean`](../cytiq-clean/README.md) | Debris, doublet and dead-cell removal as per-event masks |
+| `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc/README.md) | Peak-based acquisition quality control |
+| `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | FlowSOM-style clustering |
+| `cytiq meta` | [`cytiq-meta`](../cytiq-meta/README.md) | FCS metadata export as JSON |
 
 `cytiq <command> --help` lists every flag with its default.
 
 ```bash
-just run meta --input data/data.fcs
+just run meta --input data/fixtures/gating/sample.fcs
 cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method logicle
 ```
 
@@ -36,8 +39,8 @@ cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method lo
 `cargo build --release --locked` produces `target/release/cytiq` with ONNX
 Runtime linked statically. The `ort` dependency downloads and caches its prebuilt
 runtime during the build. The executable needs no Python, runtime environment
-variables or companion `lib/` directory. See the root
-[classify documentation](../../README.md#classify) for supported targets.
+variables or companion `lib/` directory. See the
+[classify documentation](../cytiq-classify/README.md) for supported targets.
 
 ## Shared flag conventions
 
@@ -53,7 +56,7 @@ variables or companion `lib/` directory. See the root
   `mask combine`; other commands follow the output rules of their library
   crate.
 - `--mask FILE` (repeatable) restricts `classify`, `gate`, `flowsom` and `clean` to events
-  every mask keeps; see [Masks](../../README.md#masks).
+  every mask keeps; see [cytiq-mask](../cytiq-mask/README.md).
 
 ## Provenance
 

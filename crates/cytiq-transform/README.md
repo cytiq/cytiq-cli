@@ -22,7 +22,7 @@ Logicle and hyperlog share `LogicleParameters` (`t`, `m`, `w`, `a`, defaults
 `262144`, `4.5`, `0.5`, `0`) and reject values outside `2W <= M` and
 `-W <= A <= M - 2W`.
 
-Full flag reference and rules: root [README](../../README.md#transform).
+`cytiq transform --help` lists every flag and its default.
 Parity against flowCore / flowWorkspace / FlowKit:
 [`parity/REPORT.md`](../../parity/REPORT.md) section 2.1.
 
@@ -78,6 +78,11 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
   `Original_ID` above 2^24) does not fit `f32`. The output carries the source
   keywords, `CYTIQ_TRANSFORM` (the transform metadata JSON) and
   `CYTIQ_ACQUISITION`.
+- The output keeps acquisition keywords and the original `$PnR` of unchanged
+  channels; transformed channels get a `$PnR` from their new values. The source
+  spillover matrix moves to `CYTIQ_SOURCE_SPILL`. Detector margin bounds are
+  mapped through the transform into `CYTIQ_MARGINS`, so `peacoqc --remove-margins`
+  can remove the same events as on the raw file.
 - `TransformRunner::input_files` resolves the inputs a run would read.
 - Compensation comes first: a selected channel in the file's pending
   `$SPILLOVER`/`$SPILL` matrix is `UncompensatedInput` unless

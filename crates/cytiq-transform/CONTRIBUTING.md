@@ -32,8 +32,8 @@ this crate.
   defaults. Changing one changes every output.
 - The `CYTIQ_TRANSFORM` keyword and the `metadata_json` sidecar share the
   `TransformMetadataDocument` shape (`tool`, `version`, `method`, `parameters`,
-  `files`). Treat field changes as a contract change and update the root
-  `README.md`.
+  `files`). Treat field changes as a contract change and update this crate's
+  [README](README.md#inputs-channels-and-outputs).
 - Validate everything before writing: config, inputs, output plans
   (no duplicate outputs, no non-`.fcs` outputs, `overwrite` checks) and the
   metadata path are all checked before the first file is written. A

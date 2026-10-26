@@ -19,8 +19,26 @@ describe their values (for example the spillover matrix after `compensate` or
 - every primary and supplemental TEXT keyword as `[key, value]` pairs, in file
   order and exactly as stored
 
-The document shape is documented in the root [README](../../README.md#meta)
-and versioned by `schema_version` (currently `1`).
+The document is versioned by `schema_version` (currently `1`):
+
+```json
+{
+  "schema_version": 1,
+  "tool": "cytiq meta",
+  "version": "0.1.0",
+  "file": { "path": "raw.fcs", "name": "raw.fcs", "bytes": 96813, "sha256": "..." },
+  "fcs_version": "FCS3.1",
+  "segments": { "text": [256, 812], "data": [813, 96812], "analysis": null },
+  "event_count": 4000,
+  "parameter_count": 6,
+  "parameters": [
+    { "index": 1, "name": "FSC-A", "label": null, "data_type": "float",
+      "width": { "bits": 32 }, "keywords": { "$P1B": "32", "$P1N": "FSC-A", "...": "..." } }
+  ],
+  "text": [["$CYT", "..."], ["$DATE", "..."]],
+  "supplemental_text": null
+}
+```
 
 ## Usage
 

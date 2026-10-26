@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -362,7 +362,18 @@ fn is_record_or_temporary(path: &Path) -> bool {
 pub fn hash_file(path: &Path) -> io::Result<(u64, String)> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
-    let bytes = io::copy(&mut file, &mut hasher)?;
+    let mut buffer = [0_u8; 8192];
+    let mut bytes = 0;
+    loop {
+        let read = match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        hasher.update(&buffer[..read]);
+        bytes += read as u64;
+    }
     let sha256 = hasher
         .finalize()
         .iter()
@@ -423,6 +434,32 @@ mod tests {
     }
 
     const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn hashes_empty_small_and_multibuffer_files_with_sizes() {
+        let directory = temp_dir("hash");
+        let large = (0_u8..=250).cycle().take(20_003).collect::<Vec<_>>();
+        for (name, data, expected) in [
+            (
+                "empty",
+                b"".as_slice(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            ("small", b"abc".as_slice(), ABC_SHA256),
+            (
+                "large",
+                large.as_slice(),
+                "ee00de5b1eb73f0d3b7b22862029ded78a3f153910ce1b6f2e4862c04773adf8",
+            ),
+        ] {
+            let path = directory.join(name);
+            fs::write(&path, data).unwrap();
+            let (bytes, sha256) = hash_file(&path).unwrap();
+            assert_eq!(bytes, data.len() as u64, "{name}");
+            assert_eq!(sha256, expected, "{name}");
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn records_inputs_and_outputs_with_hashes() {

@@ -23,8 +23,12 @@ Membership semantics follow FlowKit/flowutils exactly: rectangles use
 `min <= x < max`, polygons use the winding number with odd-winding interiors,
 ellipsoids include their boundary, and every gate is intersected with its
 parent. Events are pre-processed as FlowKit "raw" events (`$PnE`, `$PnG`,
-`$TIMESTEP`) before compensation. Full rules, including dimension-name
-matching, are in the root [README](../../README.md#gating).
+`$TIMESTEP`) before compensation.
+
+Dimension names match `$PnN`, then `$PnS`, then the FlowJo spelling of `$PnN`
+(`/` replaced with `_`), then a fluorochrome of the referenced spectrum matrix.
+An `FCS` compensation reference is treated as uncompensated when the file has
+no spillover keyword. Gate ids must be valid XML `ID`s: use `CD3pos`, not `CD3+`.
 
 ## Usage
 

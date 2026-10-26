@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 use std::fs::File;
-use std::io;
+use std::io::{self, Read};
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -52,7 +52,16 @@ pub fn is_sha256(value: &str) -> bool {
 fn sha256_file(path: &Path) -> io::Result<String> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        hasher.update(&buffer[..read]);
+    }
     Ok(hasher
         .finalize()
         .iter()
@@ -65,6 +74,36 @@ fn sha256_file(path: &Path) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hashes_empty_small_and_multibuffer_files() {
+        let directory =
+            std::env::temp_dir().join(format!("cytiq-acquisition-hash-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let large = (0_u8..=250).cycle().take(20_003).collect::<Vec<_>>();
+        for (name, data, expected) in [
+            (
+                "empty",
+                b"".as_slice(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                "small",
+                b"abc".as_slice(),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                "large",
+                large.as_slice(),
+                "ee00de5b1eb73f0d3b7b22862029ded78a3f153910ce1b6f2e4862c04773adf8",
+            ),
+        ] {
+            let path = directory.join(name);
+            std::fs::write(&path, data).unwrap();
+            assert_eq!(sha256_file(&path).unwrap(), expected, "{name}");
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn set_acquisition_replaces_a_carried_value() {

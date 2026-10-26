@@ -43,6 +43,8 @@ against a separate high-quality reference cohort.
 Measured agreement with R is in [`parity/REPORT.md`](../../parity/REPORT.md) §2.7:
 features match R to ~5e-13 on identical events; random draws use `rand`, so
 results are reproducible but not bit-identical to R.
+Event selections and tree-feature choices retain rand 0.8's integer sampling
+semantics when using rand 0.10; golden tests guard those seeded results.
 
 ## Novelty reference cohorts
 

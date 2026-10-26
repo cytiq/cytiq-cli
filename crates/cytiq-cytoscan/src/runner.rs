@@ -17,9 +17,8 @@ use cytiq_fcs::{
 };
 use log::{debug, info};
 use nalgebra::DMatrix;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::seq::index;
-use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Uniform};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
@@ -28,6 +27,7 @@ use crate::error::CytoScanError;
 use crate::export::write_outputs;
 use crate::mixture::MclustModel;
 use crate::novelty;
+use crate::sampling::sample_indices;
 
 pub const DEFAULT_RANDOM_SEED: u64 = 42;
 pub const DEFAULT_EVENTS_PER_FILE: usize = 1_000;
@@ -1174,18 +1174,6 @@ fn aggregate_event_count(files: &[LoadedFile]) -> usize {
         .sum()
 }
 
-/// Sorted indices of `limit` events drawn without replacement (all events
-/// when the file has no more than `limit`).
-fn sample_indices(length: usize, limit: usize, seed: u64) -> Vec<usize> {
-    if length <= limit {
-        return (0..length).collect();
-    }
-    let mut rng = StdRng::seed_from_u64(seed);
-    let mut indices = index::sample(&mut rng, length, limit).into_vec();
-    indices.sort_unstable();
-    indices
-}
-
 fn summary_features(sample: &[Vec<f64>]) -> Vec<f64> {
     let columns = transpose(sample);
     columns
@@ -1582,13 +1570,16 @@ fn build_isolation_tree(
     }
     let mut candidates = (0..features.first().map_or(0, Vec::len)).collect::<Vec<_>>();
     while !candidates.is_empty() {
-        let feature_index = candidates.swap_remove(rng.gen_range(0..candidates.len()));
+        let feature_index =
+            candidates.swap_remove(crate::sampling::random_index(rng, candidates.len()));
         let (minimum, maximum) = feature_min_max(features, indexes, feature_index);
         if maximum <= minimum {
             // constant within this node: isotree drops the column and retries
             continue;
         }
-        let threshold = Uniform::new(minimum, maximum).sample(rng);
+        let threshold = Uniform::new(minimum, maximum)
+            .expect("nonconstant feature range must be finite")
+            .sample(rng);
         let (left, right): (Vec<usize>, Vec<usize>) = indexes
             .iter()
             .partition(|index| features[**index][feature_index] <= threshold);

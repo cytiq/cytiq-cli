@@ -12,6 +12,7 @@ mod export;
 mod mixture;
 mod novelty;
 mod runner;
+mod sampling;
 
 pub use crate::error::CytoScanError;
 pub use crate::mixture::MclustModel;

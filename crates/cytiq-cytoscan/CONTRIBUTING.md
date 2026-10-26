@@ -15,6 +15,9 @@ this crate.
   `pickBIC`; unit tests against mclust's BIC table, `hclass` and `dens`.
 - `src/novelty.rs` — the novelty model on top of it: threshold at the 5%
   quantile of reference log-densities.
+- `src/sampling.rs` — stable seeded event and tree-feature selections, preserving
+  rand 0.8's integer sampling across dependency upgrades; golden tests cover
+  each sampling algorithm.
 - `src/export.rs` — CSV / JSON outputs, debug artifacts, PCA, Ward-ordered
   heatmap and the Plotly HTML report.
 - `src/error.rs` — `CytoScanError` (`thiserror`).

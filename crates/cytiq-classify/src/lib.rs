@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub use features::{Feature, Profile, feature_columns};
 
 pub const DEFAULT_BATCH_SIZE: usize = 65_536;
-pub const UPSTREAM: &[(&str, &str)] = &[("ONNX Runtime", "1.28.0")];
+pub const UPSTREAM: &[(&str, &str)] = &[("ONNX Runtime", "1.31.0")];
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClassifyError {
@@ -133,7 +133,8 @@ impl ClassifyRunner {
         let source = cytiq_fcs::source_event_ids(&dataset)?
             .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
         let columns = feature_columns(&dataset, &bundle.profile)?;
-        let mut builder = Session::builder()?;
+        let environment = ort::init().build()?;
+        let mut builder = Session::builder(&environment)?;
         if let Some(threads) = config.threads {
             builder = builder
                 .with_intra_threads(threads)

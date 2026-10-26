@@ -12,8 +12,7 @@ this crate.
 ## Invariants
 
 - The record is a public contract versioned by `SCHEMA_VERSION`. Changing a
-  field name, type or meaning bumps it and updates the `## Provenance` section
-  of the root `README.md`.
+  field name, type or meaning bumps it and updates this crate's [README](README.md).
 - `arguments` is the command line verbatim. Do not normalise or reorder it.
 - Records are written atomically (`.tmp` + rename).
 - Inputs are hashed by `snapshot_inputs` before the command runs, never at

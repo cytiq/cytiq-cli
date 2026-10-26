@@ -19,7 +19,7 @@ Third-party processed FCS without verifiable Cytiq signal state are outside the
 contract. Files without Cytiq state are interpreted as raw, as declared by the
 dataset profile. A model is only supported for its declared instrument and panel.
 
-ONNX Runtime 1.28.0 is linked statically by `ort` 2.0.0-rc.13 using its
+ONNX Runtime 1.31.0 is linked statically by `ort` 2.0.0-rc.15 using its
 `download-binaries` feature. The crate handles downloading, SHA-256 verification
 and caching the prebuilt library during Cargo builds; no project download script
 is needed. The first build needs HTTPS access to the upstream binary CDN.

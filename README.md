@@ -1391,9 +1391,9 @@ fraction among assessed events; `provenance.json` records the model, input and
 mask hashes. Existing outputs require `--overwrite`.
 
 `--batch-size` defaults to 65536; `--threads` caps ONNX CPU threads. No GPU,
-Python, model registry or network is required for inference. `ort` 2.0.0-rc.13
+Python, model registry or network is required for inference. `ort` 2.0.0-rc.15
 uses its built-in `download-binaries` feature to download, verify and cache
-ONNX Runtime 1.28.0 during Cargo builds. ONNX Runtime is linked statically into
+ONNX Runtime 1.31.0 during Cargo builds. ONNX Runtime is linked statically into
 `cytiq`; no project download script or separate runtime library is required.
 The first build needs HTTPS access to the upstream binary CDN. Linux source
 builds also need a C++ toolchain such as `g++`; the Docker build installs it.

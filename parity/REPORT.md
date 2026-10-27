@@ -9,7 +9,8 @@ Updated 2026-10-25: `cytoscan` novelty ports mclust's default model search
 (§2.7); AutoSpectral's own Aurora example as the first real spectral data,
 and `autospectral` spectra built as AutoSpectral builds them (§2.3, §2.10).
 Updated 2026-10-27: `spillqc`, a port of CompensAID's spillover-error
-detection with flowDensity's `deGate` and flowCore's `estimateLogicle` (§2.11).
+detection with flowDensity's `deGate` and flowCore's `estimateLogicle` (§2.11),
+and a benchmark of what it detects on real data (§2.12).
 
 ## TL;DR
 
@@ -664,6 +665,32 @@ CompensAID's paper reports a precision of 0.16–0.27 for the same reason.
    leave the secondary-negative population, and both tools report the pair
    `No positive/negative population`. This is a property of the method,
    documented in the crate README.
+
+### 2.12 `spillqc` on real data: what it detects
+
+Parity says nothing about how useful the method is.
+[`parity/benchmark/`](benchmark/README.md) (`just benchmark-spillqc`) measures
+that on the FACSCelesta stained sample (11 colours, 56,458 events).
+
+**Matrix accuracy.** The lab's FACSDiva matrix agrees with the AutoSpill matrix
+from the matching controls: off-diagonal MAE 0.0021, max |Δ| 0.029. Yet spillqc
+flags 47 of 79 assessable pairs with one and 45 with the other, 43 of them
+shared. The flags reflect the sample, not the matrix.
+
+The FACSymphony controls carry an identity `$SPILL` and come without a stained
+sample, so they cannot be scored.
+
+**Detection.** One coefficient of the FACSDiva matrix is changed at a time
+(772 runs), and runs are scored against the unchanged-matrix flags:
+
+- Recall is 0–11% for relative errors of ±5–20%, 22–28% at ±50%, and 35% for
+  +0.05 absolute.
+- Precision is 0.07–0.29; CompensAID reports 0.16–0.27.
+- About a third of the changed pairs are not assessable.
+
+Under-compensation is the harder direction: 13 of 36 pairs are already
+flagged `under`, and the SSI moves less (median 0.09 at −0.05 against 1.2 at
++0.05).
 
 ## 3. Known remaining differences
 

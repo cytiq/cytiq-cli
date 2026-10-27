@@ -21,7 +21,7 @@ chain and signal-state checks.
 | `cytiq qc` | [`cytiq-qc`](../cytiq-qc/README.md) | Check a sample's final event mask against its panel's QC policy |
 | `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask/README.md) | Combine per-event masks of one acquisition |
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan/README.md) | File-level anomaly detection over a cohort |
-| `cytiq classify` | [`cytiq-classify`](../cytiq-classify/README.md) | Supervised panel-specific event classification |
+| `cytiq classify` | [`cytiq-classify`](../cytiq-classify/README.md) | Supervised binary or vocabulary-aware multiclass event classification |
 | `cytiq gate` | [`cytiq-gating`](../cytiq-gating/README.md) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership |
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean/README.md) | Debris, doublet and dead-cell removal as per-event masks |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc/README.md) | Peak-based acquisition quality control |

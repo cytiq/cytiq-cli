@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cytiq_fcs::{FcsDataset, SignalState, Spillover, compensate, linear_values};
+use cytiq_fcs::{ColumnData, FcsDataset, SignalState, Spillover, compensate, linear_values};
 use serde::Deserialize;
 
 use crate::ClassifyError;
@@ -32,7 +32,7 @@ pub fn feature_columns(
     profile: &Profile,
 ) -> Result<Vec<Vec<f32>>, ClassifyError> {
     let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
-    if profile.recipe != "cytiq-fcm-arcsinh-v1"
+    if !["cytiq-fcm-arcsinh-v1", "cytiq-flowcyt-stored-v1"].contains(&profile.recipe.as_str())
         || !profile.cofactor.is_finite()
         || profile.cofactor <= 0.0
         || profile.features.is_empty()
@@ -76,6 +76,23 @@ pub fn feature_columns(
             return Err(invalid("marker label does not match panel"));
         }
         indices.push(index);
+    }
+    if profile.recipe == "cytiq-flowcyt-stored-v1" {
+        if dataset.text.iter().any(|(key, _)| {
+            [
+                "CYTIQ_COMPENSATION",
+                "CYTIQ_TRANSFORM",
+                "CYTIQ_SOURCE_SPILL",
+                "CYTIQ_UNMIXING",
+            ]
+            .iter()
+            .any(|name| key.trim_start_matches('$').eq_ignore_ascii_case(name))
+        }) {
+            return Err(invalid(
+                "FlowCyt recipe requires the original author export",
+            ));
+        }
+        return stored_columns(dataset, &indices);
     }
     let state = SignalState::of(&dataset.text)?;
     let fluorescence = profile
@@ -175,4 +192,22 @@ pub fn feature_columns(
         output.push(values);
     }
     Ok(output)
+}
+
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+fn stored_columns(dataset: &FcsDataset, indices: &[usize]) -> Result<Vec<Vec<f32>>, ClassifyError> {
+    indices
+        .iter()
+        .map(|index| {
+            let values: Vec<f32> = match &dataset.data.columns[*index] {
+                ColumnData::UInt(values) => values.iter().map(|v| *v as f32).collect(),
+                ColumnData::F32(values) => values.clone(),
+                ColumnData::F64(values) => values.iter().map(|v| *v as f32).collect(),
+            };
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(ClassifyError::Invalid("nonfinite FlowCyt features".into()));
+            }
+            Ok(values)
+        })
+        .collect()
 }

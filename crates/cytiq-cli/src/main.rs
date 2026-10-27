@@ -1314,19 +1314,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             info!("starting classify: {}", config.input.display());
             recorder.snapshot_inputs("input", std::slice::from_ref(&config.input))?;
-            recorder.snapshot_inputs(
-                "model",
-                &[
-                    config.model.join("model.onnx"),
-                    config.model.join("manifest.json"),
-                ],
-            )?;
+            recorder.snapshot_inputs("model", &cytiq_classify::input_files(&config.model)?)?;
             recorder.snapshot_inputs("mask", &config.masks)?;
             recorder.set_algorithms(cytiq_classify::UPSTREAM);
             let result = cytiq_classify::ClassifyRunner::run(&config)?;
             info!(
-                "classified {} of {} events; {} blast, {} unknown",
-                result.assessed, result.events, result.blast, result.unknown
+                "classified {} of {} events; {} unknown",
+                result.assessed, result.events, result.unknown
             );
             record_provenance(
                 recorder,

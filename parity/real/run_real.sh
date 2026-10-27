@@ -5,7 +5,8 @@
 #   Datasets come from parity/real/datasets.json (R package files installed by
 #   parity/setup_env.sh, or URLs), each checked against its SHA-256.
 #   Set CYTIQ_REAL_DATA=<dir> to also run every `*.fcs` with `$SPILL` in <dir>
-#   (for example internal data that cannot be committed).
+#   (for example internal data that cannot be committed) through the QC and
+#   CompensAID chains.
 # Writes parity/results/metrics_real.json and exits non-zero when a rule in
 # parity/real/tolerances.json is violated.
 set -euo pipefail
@@ -58,6 +59,17 @@ run_qc_chain() {
     --channels "$channels"
 }
 
+# --- CompensAID chain (any `$SPILL` file): spillqc on the raw file, and with
+# --preprocessed on the vignette's own preprocessed file when there is one ----
+run_compensaid_chain() {
+  local D="$1"
+  "$BIN" spillqc --input "$D/sample.fcs" --output "$D/spillqc" --overwrite
+  if [[ -f "$D/preprocessed.fcs" ]]; then
+    "$BIN" spillqc --input "$D/preprocessed.fcs" --output "$D/spillqc_preprocessed" \
+      --preprocessed --overwrite
+  fi
+}
+
 # --- AutoSpill chain (single-stain controls): spillover matrix and gates ------
 run_autospill_chain() {
   local D="$1"
@@ -83,6 +95,7 @@ while IFS=$'\t' read -r name chain; do
   case "$chain" in
     flowsom_gating) run_flowsom_chain "$OUT/$name" ;;
     qc) run_qc_chain "$OUT/$name" ;;
+    compensaid) run_compensaid_chain "$OUT/$name" ;;
     autospill) run_autospill_chain "$OUT/$name" ;;
     autospectral) run_autospectral_chain "$OUT/$name" ;;
     *) echo "unknown chain \`$chain\` for $name in datasets.json" >&2; exit 1 ;;
@@ -95,6 +108,7 @@ if [[ -n "${CYTIQ_REAL_DATA:-}" ]]; then
     mkdir -p "$target"
     cp "$fcs" "$target/sample.fcs"
     run_qc_chain "$target"
+    run_compensaid_chain "$target"
   done
 fi
 

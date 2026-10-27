@@ -54,6 +54,8 @@ for method in all mad it; do
     --method "$method" --debug-dir "$OUT/peacoqc_${method}_debug"
 done
 
+timed spillqc "$BIN" spillqc --input "$DATA/spillqc" --output "$OUT/spillqc" --overwrite
+
 for dataset in flowsom flowsom_hard; do
   timed "$dataset" "$BIN" flowsom --input "$DATA/$dataset/sample.fcs" \
     --output "$OUT/$dataset.csv" --channels "$(cat "$DATA/$dataset/channels.txt")" \

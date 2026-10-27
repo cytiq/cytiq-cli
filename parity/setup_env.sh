@@ -24,13 +24,14 @@ BiocManager::install(version = Sys.getenv("BIOC_VERSION"), lib = lib, ask = FALS
 BiocManager::install(c("flowCore", "flowWorkspace", "FlowSOM", "PeacoQC", "ConsensusClusterPlus",
                        "remotes", "MASS", "deldir", "flowFP", "isotree", "mclust", "transport",
                        "doParallel", "foreach", "ggridges", "ggrepel", "gridExtra", "dplyr",
-                       "jsonlite"), lib = lib, ask = FALSE, update = FALSE)
+                       "jsonlite", "flowDensity"), lib = lib, ask = FALSE, update = FALSE)
 R
 
 # Packages built from git, at the commits the parity report was produced with.
 for pin in carlosproca/autospill@1e60e86337b297f1dd9ffec6701d8010dd06175b \
   DrCytometer/AutoSpectral@292dfeaae6b382d1a7c9c263c5bb4de35ff67207 \
-  AUMC-HEMA/CytoScan@c97f403d3ad6c673bed67f1f7dff4062e2f28e19; do
+  AUMC-HEMA/CytoScan@c97f403d3ad6c673bed67f1f7dff4062e2f28e19 \
+  Olsman/CompensAID@db748036e977571e09ddb4267ca598a1d700f2fc; do
   repo="${pin%@*}"
   commit="${pin#*@}"
   name="${repo#*/}"
@@ -64,11 +65,11 @@ VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q -r "$ROOT/parity/requirements.txt"
 {
   Rscript -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()));
     for (p in c('flowCore','flowWorkspace','FlowSOM','PeacoQC','autospill','AutoSpectral','MASS',
-                'CytoScan','flowFP','isotree','mclust','transport'))
+                'CytoScan','flowFP','isotree','mclust','transport','flowDensity','CompensAID'))
       cat(p, as.character(packageVersion(p)), '\n')"
   R --version | head -1
   VIRTUAL_ENV="$ENV_DIR/py" uv pip freeze | grep -Ei '^(flowkit|flowio|numpy|pandas|pyarrow|scikit-learn|scipy)=='
-  for name in autospill AutoSpectral CytoScan; do
+  for name in autospill AutoSpectral CytoScan CompensAID; do
     echo "$name git $(git -C "$ENV_DIR/$name-src" rev-parse --short HEAD)"
   done
   rustc --version

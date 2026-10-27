@@ -153,6 +153,85 @@ def compare_autospill(data: Path, rust: Path, upstream: Path) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- spillqc
+SPILLQC_NUMERIC = ["secondary_cutoff", "primary_cutoff_neg", "primary_cutoff_pos", "segment_min",
+                   "segment_max", "mfi_neg", "sd_neg", "mfi_pos"]
+
+
+def _flag(values: np.ndarray) -> np.ndarray:
+    """CompensAID's PlotMatrix colouring: -1 at SSI <= -1, 1 at SSI >= 1, NaN unassessed."""
+    return np.where(np.isnan(values), np.nan, np.where(values <= -1, -1.0, np.where(values >= 1, 1.0, 0.0)))
+
+
+def spillqc_agreement(upstream: Path, rust: Path) -> dict:
+    """cytiq's SSI tables against CompensAID's for one file (directories of
+    ssi_matrix.csv, ssi_segments.csv and cutoffs.csv)."""
+    r_cut = pd.read_csv(upstream / "cutoffs.csv")
+    x_cut = pd.read_csv(rust / "cutoffs.csv")
+    cuts = r_cut.merge(x_cut, on="channel", suffixes=("_r", "_x"))
+    r_info = pd.read_csv(upstream / "ssi_segments.csv").rename(columns=lambda c: c.replace(".", "_"))
+    x_info = pd.read_csv(rust / "ssi_segments.csv")
+    key = ["primary_channel", "secondary_channel", "segment"]
+    rows = r_info.merge(x_info, on=key, suffixes=("_r", "_x"))
+
+    def max_abs(a: pd.Series, b: pd.Series) -> float:
+        both = a.notna() & b.notna()
+        return _r(float(np.max(np.abs(a[both].astype(float) - b[both].astype(float))))) if both.any() else 0.0
+
+    na_mismatches = 0
+    for column in [*SPILLQC_NUMERIC, "event_count", "event_count_merge", "ssi"]:
+        na_mismatches += int((rows[f"{column}_r"].isna() != rows[f"{column}_x"].isna()).sum())
+    counts = ["event_count", "event_count_merge"]
+    count_mismatches = sum(int((rows[f"{c}_r"].fillna(-1) != rows[f"{c}_x"].fillna(-1)).sum()) for c in counts)
+    r_matrix = pd.read_csv(upstream / "ssi_matrix.csv", index_col=0)
+    x_matrix = pd.read_csv(rust / "ssi_matrix.csv", index_col=0).loc[r_matrix.index, r_matrix.columns]
+    off = ~np.eye(len(r_matrix), dtype=bool)
+    r_flags, x_flags = _flag(r_matrix.to_numpy(float))[off], _flag(x_matrix.to_numpy(float))[off]
+    same = (r_flags == x_flags) | (np.isnan(r_flags) & np.isnan(x_flags))
+    return {
+        "segment_rows": {"upstream": len(r_info), "rust": len(x_info), "matched": len(rows)},
+        "cutoff_max_abs": max_abs(cuts["cutoff_r"], cuts["cutoff_x"]),
+        "segment_values_max_abs": max(max_abs(rows[f"{c}_r"], rows[f"{c}_x"]) for c in SPILLQC_NUMERIC),
+        "ssi_max_abs": max(max_abs(rows["ssi_r"], rows["ssi_x"]),
+                           max_abs(r_matrix.stack(), x_matrix.stack())),
+        "na_mismatches": na_mismatches,
+        "count_mismatches": count_mismatches,
+        "message_mismatches": int((rows["message_r"].fillna("") != rows["message_x"].fillna("")).sum()),
+        "flag_agreement": _r(float(np.mean(same))),
+        "upstream_flags": int(np.sum(np.abs(np.nan_to_num(r_flags)) == 1)),
+    }
+
+
+def _injected_found(matrix: pd.DataFrame, expected: pd.DataFrame) -> int:
+    """Injected (primary, secondary) pairs flagged in the expected direction."""
+    sign = {"over": -1.0, "under": 1.0}
+    found = 0
+    for _, row in expected.iterrows():
+        value = matrix.loc[row.secondary_channel, row.primary_channel]
+        found += int(_flag(np.array([float(value)]))[0] == sign[row.status])
+    return found
+
+
+def compare_spillqc(data: Path, rust: Path, upstream: Path) -> dict:
+    expected = pd.read_csv(data / "spillqc" / "truth" / "expected_flags.csv")
+    out: dict = {"files": {}}
+    for path in sorted((data / "spillqc").glob("*.fcs")):
+        name = path.stem
+        x_dir, r_dir = rust / "spillqc" / name, upstream / "spillqc" / name
+        agreement = spillqc_agreement(r_dir, x_dir)
+        agreement["rust_injected_found"] = _injected_found(pd.read_csv(x_dir / "ssi_matrix.csv", index_col=0), expected)
+        agreement["upstream_injected_found"] = _injected_found(pd.read_csv(r_dir / "ssi_matrix.csv", index_col=0), expected)
+        agreement["injected"] = len(expected)
+        out["files"][name] = agreement
+    batch = pd.read_csv(rust / "spillqc" / "batch.csv")
+    recurrent = 0
+    for _, row in expected.iterrows():
+        match = batch[(batch.primary_channel == row.primary_channel) & (batch.secondary_channel == row.secondary_channel)]
+        recurrent += int((match.status == f"recurrent_{row.status}").any())
+    out["batch"] = {"injected_recurrent": recurrent, "injected": len(expected)}
+    return out
+
+
 def compare_autospread(data: Path, rust: Path) -> dict:
     frame = pd.read_csv(rust / "autospread.csv", index_col=0)
     values = frame.to_numpy()
@@ -579,6 +658,7 @@ def main() -> None:
         "cytoscan": compare_cytoscan(data, rust, upstream),
         "gating": compare_gating(data, rust),
         "pipeline": compare_pipeline(data, rust, upstream),
+        "spillqc": compare_spillqc(data, rust, upstream),
         "timing": {
             "autospill": {"rust": rust_time(rust, "autospill"), "upstream_seconds": up_t.get("autospill")},
             "peacoqc_all": {"rust": rust_time(rust, "peacoqc_all"), "upstream_seconds": up_t.get("peacoqc_all")},
@@ -586,6 +666,8 @@ def main() -> None:
             "flowsom_hard": {"rust": rust_time(rust, "flowsom_hard"), "upstream_seconds": up_t.get("flowsom_hard_scaleF_seed1")},
             "autospectral": {"rust": rust_time(rust, "autospectral")},
             "gating": {"rust": rust_time(rust, "gating")},
+            "spillqc": {"rust": rust_time(rust, "spillqc"),
+                        "upstream_seconds": sum(v for k, v in up_t.items() if k.startswith("spillqc_")) or None},
         },
     }
     target.parent.mkdir(parents=True, exist_ok=True)

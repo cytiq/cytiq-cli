@@ -1,5 +1,6 @@
-//! Port of R's `stats::smooth.spline(seq_along(y), y, spar = spar)` as used by
-//! `PeacoQC::MADOutliers`.
+//! Port of R's `stats::smooth.spline(x, y, spar = spar)` for distinct, sorted
+//! `x` and unit weights, as used by `PeacoQC::MADOutliers` (`x = seq_along(y)`)
+//! and `flowDensity::deGate` (`x` = the `density` grid).
 //!
 //! The fit follows R's `sbart.c`/`sgram.f`/`stxwx.f`/`sslvrg.f`: cubic B-splines
 //! on knots chosen by `.nknots.smspl`, penalty Gram matrix integrated with R's
@@ -28,10 +29,38 @@ pub fn smooth_spline_fitted(values: &[f64], spar: f64) -> Vec<f64> {
     let xbar = (0..count)
         .map(|index| index as f64 / (count - 1) as f64)
         .collect::<Vec<_>>();
-    let knots = knot_sequence(&xbar);
+    fit_scaled(&xbar, values, spar)
+}
+
+/// Fitted values of `smooth.spline(x, y, spar = spar)` at `x`.
+///
+/// `x` must be strictly increasing; inputs shorter than four points are
+/// returned unchanged.
+///
+/// # Panics
+///
+/// Panics when `x` and `y` differ in length.
+#[must_use]
+pub fn smooth_spline_fitted_xy(x: &[f64], y: &[f64], spar: f64) -> Vec<f64> {
+    assert_eq!(x.len(), y.len(), "x and y must have the same length");
+    let count = y.len();
+    if count < 4 {
+        return y.to_vec();
+    }
+    // xbar <- (ux - ux[1L]) / (ux[nx] - ux[1L])
+    let range = x[count - 1] - x[0];
+    let xbar = x
+        .iter()
+        .map(|value| (value - x[0]) / range)
+        .collect::<Vec<_>>();
+    fit_scaled(&xbar, y, spar)
+}
+
+fn fit_scaled(xbar: &[f64], values: &[f64], spar: f64) -> Vec<f64> {
+    let knots = knot_sequence(xbar);
     let coefficient_count = knots.len() - 4;
 
-    let (xwy, hessian) = weighted_cross_products(&xbar, values, &knots, coefficient_count);
+    let (xwy, hessian) = weighted_cross_products(xbar, values, &knots, coefficient_count);
     let penalty = penalty_gram(&knots, coefficient_count);
 
     let (trace_hessian, trace_penalty) = (2..coefficient_count - 3).fold((0.0, 0.0), |acc, i| {

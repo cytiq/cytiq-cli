@@ -1,5 +1,5 @@
 {
-  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill), `autospectral` (spectral single-stain controls under `controls/` with AutoSpectral's `control_file.csv`, stained samples under `sample/`, `autospectral_cytometer` naming the get.autospectral.param cytometer; spectra and unmixed abundances vs R AutoSpectral) or `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
+  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill), `autospectral` (spectral single-stain controls under `controls/` with AutoSpectral's `control_file.csv`, stained samples under `sample/`, `autospectral_cytometer` naming the get.autospectral.param cytometer; spectra and unmixed abundances vs R AutoSpectral) `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R) or `compensaid` (`cytiq spillqc` vs CompensAID on a raw `$SPILL` file through the vignette chain, and on `preprocessed.fcs` when present). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
   "datasets": [
     {
       "name": "flowsom_68983",
@@ -10,6 +10,16 @@
         "sample.fcs": {"r_package": "FlowSOM", "path": "extdata/68983.fcs", "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"},
         "flowjo_labels.csv": {"r_package": "FlowSOM", "path": "extdata/gatingResult.csv", "sha256": "906171895ee6577e8d95e540649c23e23f1b1ff92de57ac7a6fb28e8d2346f89"},
         "manualGating.xml": {"r_package": "FlowSOM", "path": "extdata/manualGating.xml", "sha256": "d78a9587cb38cdd0a442c7b374b1c2ee99e945f8dcd326a3cbdeb15722cbca43"}
+      }
+    },
+    {
+      "name": "compensaid_68983",
+      "chain": "compensaid",
+      "cytometry": "conventional",
+      "panel": "mouse, 18 colours, CompensAID vignette (the FlowSOM 68983 acquisition, raw and as the vignette preprocessed it)",
+      "files": {
+        "sample.fcs": {"r_package": "CompensAID", "path": "extdata/raw.68983.fcs", "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"},
+        "preprocessed.fcs": {"r_package": "CompensAID", "path": "extdata/68983.fcs", "sha256": "c3a9513e0f8b4fcb4f42d3011668a6ca08b6ffa4b09d2f650f42147275e9df10"}
       }
     },
     {

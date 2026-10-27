@@ -16,6 +16,7 @@ provenance record of every command (see [cytiq-provenance](../cytiq-provenance/R
 
 ```bash
 cytiq meta       --input sample.fcs --output sample.meta.json
+cytiq spillqc    --input samples/ --output spillqc/     # optional: flags likely $SPILL errors for review
 cytiq compensate --input sample.fcs --output sample.comp.fcs
 cytiq transform  --input sample.comp.fcs --output sample.t.fcs
 cytiq peacoqc    --input sample.t.fcs --output sample.peacoqc.fcs --channels CD3,CD4,CD8
@@ -45,6 +46,7 @@ Each stage reads the `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` and
 | `autospill`, `autospread`, `autospectral`, `cytoscan` | raw files | error |
 | `preflight` | raw files; for samples of a `compensated` or `unmixed` panel, also files `cytiq compensate` or `cytiq autospectral` processed, untransformed | failed check |
 | `compensate` | raw matrix channels | error when already compensated, unmixed, or a matrix channel is transformed |
+| `spillqc` | raw matrix channels; with `--preprocessed`, compensated and transformed values as stored | error when already compensated, unmixed, or a matrix channel is transformed (without `--preprocessed`) |
 | `transform` | compensated or unmixed channels | error when a selected channel's spillover is still pending (`--allow-uncompensated`), or the file is already transformed (`--allow-retransform`) |
 | `clean` | raw scatter and viability channels | error |
 | `peacoqc` | compensated, transformed channels | warning |

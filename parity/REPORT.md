@@ -8,6 +8,8 @@ FACSCelesta and a FACSymphony (§2.10); the raw margin mask without flowCore's
 Updated 2026-10-25: `cytoscan` novelty ports mclust's default model search
 (§2.7); AutoSpectral's own Aurora example as the first real spectral data,
 and `autospectral` spectra built as AutoSpectral builds them (§2.3, §2.10).
+Updated 2026-10-27: `spillqc`, a port of CompensAID's spillover-error
+detection with flowDensity's `deGate` and flowCore's `estimateLogicle` (§2.11).
 
 ## TL;DR
 
@@ -25,6 +27,7 @@ and `autospectral` spectra built as AutoSpectral builds them (§2.3, §2.10).
 | `flowsom` | FlowSOM 2.18.0 | ⚠️ ARI vs R 0.87–0.91 (hard set), 9× slower than R | ✅ ARI vs R 0.93–0.98 (R's own seed-to-seed level), ~8× faster than R |
 | `gate` | FlowKit 1.3.0 `GatingStrategy.gate_sample` | — (new command) | ✅ identical per-event membership for all 11 gates; identical counts at 1M events, ~13× faster than FlowKit |
 | whole chain (§2.9) | flowCore + PeacoQC + FlowKit + FlowSOM, same steps | — (new) | ✅ every stage equals upstream per event on 200,000 golden events (values Δ ≤ 1e-7, masks and gates identical, FlowSOM ARI vs R 0.999), except the margin mask, which deliberately drops flowCore's −111 floor; against the truth: final mask F1 0.971, every population incl. a 0.2% rare one found with precision ≥ 0.997 |
+| `spillqc` (§2.11) | CompensAID 0.99.7 (`db74803`) after its vignette chain, flowDensity 1.44 | — (new command) | ✅ on CompensAID's own example (raw and preprocessed) and three synthetic tubes, every cut-off, segment edge, count and merge message equals R to 7e-15, every SSI and flag is identical, the same events survive margins and PeacoQC, and both injected spillover errors are found by both tools |
 | real data (§2.10) | flowCore, PeacoQC, FlowKit, FlowSOM, FlowJo labels, autospill, AutoSpectral | — (new) | ✅ Aurora spectral panel: fluorophore spectra cosine ≥ 0.9998 against AutoSpectral, unmixing solver equal to 4e-8; compensation/logicle Δ ≤ 8e-8, PeacoQC identical, manual Gating-ML identical to FlowKit on all 15 gates; populations match FlowJo with Jaccard 0.98–0.996 (NK T 0.86, a FlowJo export effect); AutoSpill on FACSCelesta (11 colours) and FACSymphony (24 colours) controls: max \|Δ\| 5e-13, gates identical |
 
 **44 deviations** from the upstream algorithms were found and fixed (8 of them in `cytoscan`), plus
@@ -601,6 +604,67 @@ against AutoSpectral's reported one. The abundances differ through that
 spectrum alone: with AutoSpectral's AF spectrum, cytiq's fluorophore spectra
 give AutoSpectral's abundances to a correlation of 0.9993 or better.
 
+### 2.11 `spillqc`
+
+`cytiq spillqc` ports `CompensAID::CompensAID()` (Olsman et al. 2026) and the
+preprocessing of its vignette:
+
+1. `PeacoQC::RemoveMargins`.
+2. `flowCore::compensate` with `$SPILL`.
+3. `estimateLogicle` + `transform`.
+4. `PeacoQC`.
+5. The marker channels.
+
+Two new ports were needed:
+
+- `flowDensity::deGate(all.cuts = TRUE, upper = TRUE)` in `cytiq-density`, on
+  the `smooth.spline` port moved there from `cytiq-peacoqc`;
+- flowCore's `estimateLogicle` width in `cytiq-transform`.
+
+Three supporting changes:
+
+- `cytiq-fcs` now reads flowCore's `flowCore_$PnRmin`/`Rmax` keywords for
+  `minRange`/`maxRange`.
+- `cytiq-peacoqc` exposes its mask computation for in-memory data. The
+  `peacoqc` masks are unchanged (`parity_smoke`).
+- The vignette runs PeacoQC over every column. Both sides here run it over the
+  spillover channels.
+
+| Dataset | Rows (pair × segment) | Cut-off max \|Δ\| | Segment values max \|Δ\| | SSI max \|Δ\| | Count / NA / message mismatches | Flag agreement | Flags |
+|---|---|---|---|---|---|---|---|
+| CompensAID `68983.fcs` (`--preprocessed`, algorithm only) | 360 | 4.4e-15 | 4.9e-15 | 0 | 0 / 0 / 0 | 100% | 2 = 2 |
+| CompensAID `raw.68983.fcs` (full chain; 19,225 → 18,905 events, both) | 360 | 4.2e-15 | 6.9e-15 | 0 | 0 / 0 / 0 | 100% | 2 = 2 |
+| synthetic `tube_1..3`, 30,000 events, 6 markers, two injected errors | 120 each | ≤ 5.3e-15 | ≤ 5.3e-15 | 0 | 0 / 0 / 0 | 100% | 9, 7, 9 |
+
+Recovery of the injected errors:
+
+- Both tools flag PE→PerCP-Cy5.5 (spillover halved) as `under` and
+  APC→APC-Cy7 (×1.6) as `over` in every tube.
+- With the true matrix (`--matrix truth/spillover.csv`) cytiq flags neither.
+- The batch view calls both `recurrent_*` across the three tubes.
+
+The other flags come from the same two errors, propagated through the
+inverse: for example CD3→CD8 `over`, a consequence of the wrong PE row.
+CompensAID's paper reports a precision of 0.16–0.27 for the same reason.
+
+**What the synthetic data showed:**
+
+1. **Empty density gaps.** The first synthetic tubes had perfectly separated
+   populations. In 5 of 18 channel cut-offs (PE-Cy7 in every tube, APC in
+   two), cytiq and R chose different points (0.008 to 0.40 apart) across a gap
+   where the smoothed density is exactly zero; all flags still agreed. `.getIntersect` ranks the grid points by
+   `splinefun(dens)`. Inside a run of zeros the spline values are round-off of
+   about 1e-21, set by every earlier step and by how R's C code was compiled,
+   so no port can reproduce R's pick. Reproducing R's FMM `spline_eval`
+   exactly, including its interval reuse, still picked differently. cytiq
+   takes the first zero. The generator now adds 6% intermediate events, as
+   real samples have, after which the cut-offs agree to 5e-15.
+2. **Strong under-compensation cannot be assessed.** Halving the large FITC→PE
+   coefficient (0.22) lifts the CD3⁺CD4⁻ cells above PE's first valley. They
+   leave the secondary-negative population, and both tools report the pair
+   `No positive/negative population`. This is a property of the method,
+   documented in the crate README.
+
 ## 3. Known remaining differences
 
 | Tool | Difference | Impact | Recommendation |
@@ -626,6 +690,8 @@ give AutoSpectral's abundances to a correlation of 0.9993 or better.
 | margins | `compensate`/`autospectral` masks flag the upper detector limit `$PnR − 1` only; `peacoqc --remove-margins` keeps `PeacoQC::RemoveMargins`, which also removes each channel's observed extremes and values at or below flowCore's −111 floor | RemoveMargins removes a superset: noise below −111 on float data (7.4% of the golden chain, §2.9; 31% of a FACSCelesta sample, §2.10), far more on discrete data | use the `compensate` mask, not `--remove-margins`, on float data |
 | PeacoQC | on small files (15,000 events) the bins are coarse, so ~10% of good events around an artefact are removed (5.6% at 200,000) | same as R | prefer whole acquisitions |
 | real data | FlowRepository (AutoSpill datasets) serves an expired certificate (March 2023) | not fetched automatically | download by hand into `CYTIQ_REAL_DATA` |
+| spillqc | across an empty density gap `deGate`'s valley is the first zero-density grid point; R's pick follows ~1e-21 round-off of `splinefun` | different cut-off in the gap (events inside it move between populations); flags agreed even so on the synthetic data | none: R's choice is not reproducible |
+| spillqc | inputs on which CompensAID errors (`if (NA)` in `.WithinLimit`, `numeric(0)` in `.GetClosestLimit`) or counts `NA` rows as events | cytiq marks the pair `not_assessed` or keeps the old cut-off (crate CONTRIBUTING) | — |
 
 ## 4. Changed files
 
@@ -656,6 +722,16 @@ give AutoSpectral's abundances to a correlation of 0.9993 or better.
   `data/fixtures/autospectral/unstained.fcs`; `parity/real/` (`autospectral`
   chain).
 
+- 2026-10-27: `crates/cytiq-spillqc/` (new); `crates/cytiq-density/src/degate.rs`
+  (new), `smooth_spline.rs` (moved from `cytiq-peacoqc`, plus an `x` variant);
+  `crates/cytiq-peacoqc/src/runner.rs` (`compute_mask`, `peacoqc_mask`);
+  `crates/cytiq-transform/src/scales.rs` (`estimate_logicle_width`);
+  `crates/cytiq-fcs/src/margins.rs` (`from_flowcore_parameter`);
+  `parity/gen/spillqc.py`, `parity/compensaid.R` (new); `parity/real/`
+  (`compensaid` chain); `data/fixtures/density/degate_reference.rs`,
+  `data/fixtures/transform/estimate_logicle_reference.rs`,
+  `data/fixtures/parity/spillqc/` (new).
+
 Checks: `cargo fmt --check`, `cargo clippy --workspace --all-targets -D
 warnings`, `cargo test --workspace` — all green.
 
@@ -678,6 +754,6 @@ install on hosted runners. CI runs the smoke test on the committed R outputs
 instead. A violated tolerance exits non-zero, and the
 timing wrappers read both BSD (macOS) and GNU `time`. `setup_env.sh`
 (`just parity-setup`) pins the Bioconductor release, the git commits of
-autospill, AutoSpectral and CytoScan, and the Python packages
+autospill, AutoSpectral, CytoScan and CompensAID, and the Python packages
 (`parity/requirements.txt`); CRAN packages come from `PARITY_CRAN`, and the
 installed versions are recorded in `versions.txt`.

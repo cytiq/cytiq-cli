@@ -19,7 +19,7 @@ from sklearn.metrics import adjusted_rand_score
 
 PARITY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PARITY))
-from compare import _offdiag, check_tolerances  # noqa: E402
+from compare import _offdiag, check_tolerances, spillqc_agreement  # noqa: E402
 
 # autospill's `marker.forbidden.char`, each replaced by `-` in its matrix and
 # gate names.
@@ -132,6 +132,20 @@ def compare_qc_chain(directory: Path) -> dict:
     }
 
 
+def compare_compensaid_chain(directory: Path) -> dict:
+    """cytiq spillqc against CompensAID: the vignette chain on the raw file,
+    and the algorithm alone on the vignette's preprocessed file."""
+    out = {"pipeline": spillqc_agreement(directory / "r_spillqc", directory / "spillqc" / "sample")}
+    summary = json.loads((directory / "spillqc" / "summary.json").read_text())["files"][0]
+    r_events = int(pd.read_csv(directory / "r_spillqc" / "cutoffs.csv")["events"].iloc[0])
+    out["pipeline"]["events_assessed"] = {"rust": summary["events_assessed"], "upstream": r_events}
+    out["pipeline"]["events_equal"] = summary["events_assessed"] == r_events
+    if (directory / "r_spillqc_preprocessed").exists():
+        out["preprocessed"] = spillqc_agreement(directory / "r_spillqc_preprocessed",
+                                                directory / "spillqc_preprocessed" / "preprocessed")
+    return out
+
+
 def autospill_name(channel: str) -> str:
     return "".join("-" if char in AUTOSPILL_FORBIDDEN else char for char in channel)
 
@@ -213,6 +227,8 @@ def main() -> None:
     for directory in sorted(out_dir.iterdir()):
         if (directory / "channels.txt").exists():
             metrics["real"][directory.name] = compare_qc_chain(directory)
+        if (directory / "r_spillqc").exists():
+            metrics["real"].setdefault(directory.name, {})["compensaid"] = compare_compensaid_chain(directory)
         if (directory / "controls_full.csv").exists():
             metrics["real"][directory.name] = {"autospill": compare_autospill_chain(directory)}
         if (directory / "control_file.csv").exists():

@@ -50,6 +50,30 @@ impl MarginBounds {
         Self { lower, upper }
     }
 
+    /// Bounds as flowCore itself reads them: like [`Self::from_raw_parameter`],
+    /// except that the `flowCore_$PnRmin`/`flowCore_$PnRmax` keywords a
+    /// flowCore-written file carries replace the `-111` floor and `$PnR - 1`.
+    /// flowCore's `minRange` is then `min(zero, max(Rmin, min(e)))` and
+    /// `maxRange` is `Rmax`, which is what `PeacoQC::RemoveMargins` and
+    /// `estimateLogicle` (`t = maxRange`) see.
+    #[must_use]
+    pub fn from_flowcore_parameter(text: &FcsText, parameter: &Parameter) -> Self {
+        let keyword = |suffix: &str| {
+            text.get(&format!("flowCore_$P{}{suffix}", parameter.index))
+                .and_then(|value| value.trim().parse::<f64>().ok())
+        };
+        let mut bounds = Self::from_raw_parameter(parameter);
+        if let Some(minimum) = keyword("Rmin") {
+            bounds.lower = zero_value(parameter)
+                .map_or(minimum, |zero| zero.min(minimum))
+                .min(0.0);
+        }
+        if let Some(maximum) = keyword("Rmax") {
+            bounds.upper = Some(maximum);
+        }
+        bounds
+    }
+
     /// Low and high thresholds for a channel whose values span
     /// `minimum..=maximum`.
     #[must_use]
@@ -216,6 +240,22 @@ mod tests {
         }
     }
 
+    fn text(pairs: &[(&str, &str)]) -> FcsText {
+        let pairs = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect::<Vec<_>>();
+        let lookup = pairs.iter().cloned().collect();
+        FcsText::new(
+            crate::types::TextSegment {
+                delimiter: b'/',
+                pairs,
+            },
+            None,
+            lookup,
+        )
+    }
+
     // Reference: the flowCore/PeacoQC expression the bounds replace.
     fn flowcore_thresholds(parameter: &Parameter, values: &[f64]) -> (f64, f64) {
         let minimum = values.iter().copied().fold(f64::INFINITY, f64::min);
@@ -225,6 +265,24 @@ mod tests {
             .unwrap_or_else(|| zero_value(parameter).map_or(real_min, |zero| zero.min(real_min)));
         let max_range = keyword_f64(parameter, "$P1R").map_or(maximum, |range| range - 1.0);
         (min_range.min(0.0).max(minimum), max_range.min(maximum))
+    }
+
+    #[test]
+    fn flowcore_keywords_replace_default_bounds() {
+        let mut parameter = parameter(&[("$P1R", "262144"), ("$P1E", "0,0")]);
+        parameter.index = 8;
+        let flowcore = text(&[
+            ("flowCore_$P8Rmin", "-56.25"),
+            ("flowCore_$P8Rmax", "262144"),
+        ]);
+        let bounds = MarginBounds::from_flowcore_parameter(&flowcore, &parameter);
+        assert_eq!(bounds.lower, -56.25);
+        assert_eq!(bounds.upper, Some(262_144.0));
+        // flowCore minRange max(-56.25, min(e)) when min(e) is lower
+        assert_eq!(bounds.thresholds(-60.0, 1000.0), (-56.25, 1000.0));
+
+        let plain = MarginBounds::from_flowcore_parameter(&text(&[]), &parameter);
+        assert_eq!(plain, MarginBounds::from_raw_parameter(&parameter));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Upstream side of parity/real/run_real.sh: the same processing with flowCore,
-# PeacoQC, FlowSOM, autospill and AutoSpectral, written next to the cytiq
-# outputs.
+# PeacoQC, FlowSOM, autospill, AutoSpectral and CompensAID, written next to the
+# cytiq outputs.
 # Usage: Rscript parity/real/real.R <out_dir>
 
 suppressPackageStartupMessages({
@@ -61,6 +61,19 @@ for (dir in list.dirs(out_dir, recursive = FALSE)) {
                      time_channel_parameter = "Time", suppress_message = TRUE)
   write.csv(data.frame(good = as.integer(peacoqc$GoodCells)), file.path(dir, "r_peacoqc.csv"),
             row.names = FALSE)
+}
+
+# CompensAID chains: compensaid_68983 and CYTIQ_REAL_DATA files ----------------
+source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))),
+                 "..", "compensaid.R"))
+for (dir in list.dirs(out_dir, recursive = FALSE)) {
+  if (!dir.exists(file.path(dir, "spillqc"))) next
+  write_compensaid(compensaid_chain(file.path(dir, "sample.fcs")), file.path(dir, "r_spillqc"))
+  preprocessed <- file.path(dir, "preprocessed.fcs")
+  if (file.exists(preprocessed)) {
+    write_compensaid(read.FCS(preprocessed, truncate_max_range = FALSE),
+                     file.path(dir, "r_spillqc_preprocessed"))
+  }
 }
 
 # AutoSpill chains: single-stain controls --------------------------------------

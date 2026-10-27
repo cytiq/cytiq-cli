@@ -16,6 +16,7 @@ chain and signal-state checks.
 | `cytiq autospectral` | [`cytiq-autospectral`](../cytiq-autospectral/README.md) | Reference-based spectral unmixing |
 | `cytiq transform` | [`cytiq-transform`](../cytiq-transform/README.md) | arcsinh / logicle / hyperlog / biexponential signal transforms |
 | `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate/README.md) | Apply a spillover or compensation matrix to sample events |
+| `cytiq spillqc` | [`cytiq-spillqc`](../cytiq-spillqc/README.md) | Flag likely spillover-matrix errors in stained samples (CompensAID SSI), per file and across a batch |
 | `cytiq preflight` | [`cytiq-preflight`](../cytiq-preflight/README.md) | Check a run manifest and its FCS files before computation |
 | `cytiq qc` | [`cytiq-qc`](../cytiq-qc/README.md) | Check a sample's final event mask against its panel's QC policy |
 | `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask/README.md) | Combine per-event masks of one acquisition |

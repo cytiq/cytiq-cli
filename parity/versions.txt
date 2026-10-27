@@ -10,6 +10,8 @@ flowFP 1.68.0
 isotree 0.6.1.5 
 mclust 6.1.3 
 transport 0.15.4 
+flowDensity 1.44.0 
+CompensAID 0.99.7 
 R version 4.5.3 (2026-03-11) -- "Reassured Reassurer"
 flowio==1.4.0
 flowkit==1.3.0
@@ -21,4 +23,5 @@ scipy==1.18.1
 autospill git 1e60e86
 AutoSpectral git 292dfea
 CytoScan git c97f403
+CompensAID git db74803
 rustc 1.99.1 (58cf8f9c3 2026-10-13)

@@ -16,16 +16,16 @@ PY="$PARITY/.env/py/bin/python"
 export R_LIBS_USER="$PARITY/.env/Rlib"
 WORK="$PARITY/.out/smoke"
 
-rm -rf "$WORK" "${FIXTURE:?}"/{autospill,autospectral,peacoqc,cytoscan_exact}
+rm -rf "$WORK" "${FIXTURE:?}"/{autospill,autospectral,peacoqc,cytoscan_exact,spillqc}
 mkdir -p "$WORK"
 "$PY" "$PARITY/gen/generate.py" "$FIXTURE" smoke
 rm -f "$FIXTURE/seed.json"
 # No cytiq outputs: the cross-checks of run_upstream.R that read them are skipped.
 PARITY_RUST_OUT="$WORK/no-cytiq-outputs" \
-  Rscript "$PARITY/run_upstream.R" "$FIXTURE" "$WORK" autospill autospectral peacoqc cytoscan
+  Rscript "$PARITY/run_upstream.R" "$FIXTURE" "$WORK" autospill autospectral peacoqc cytoscan spillqc
 
 # Keep the outputs the CI test reads, under <dataset>/upstream/.
-mkdir -p "$FIXTURE"/{autospill,autospectral,peacoqc,cytoscan_exact}/upstream
+mkdir -p "$FIXTURE"/{autospill,autospectral,peacoqc,cytoscan_exact,spillqc}/upstream
 cp "$WORK/autospill_spillover.csv" "$FIXTURE/autospill/upstream/spillover.csv"
 "$PY" - "$WORK/autospill_gates.csv" "$FIXTURE/autospill/upstream/gate_counts.csv" <<'PY'
 import sys
@@ -41,6 +41,11 @@ for method in summary quantiles emd binning fingerprint; do
   for file in "features_test_$method.csv" "outlier_$method.csv" "novelty_$method.csv" "novelty_$method.json"; do
     cp "$WORK/cytoscan_exact/$file" "$FIXTURE/cytoscan_exact/upstream/$file"
   done
+done
+for tube in "$WORK"/spillqc/*/; do
+  name="$(basename "$tube")"
+  mkdir -p "$FIXTURE/spillqc/upstream/$name"
+  cp "$tube"/{ssi_matrix,ssi_segments,cutoffs}.csv "$FIXTURE/spillqc/upstream/$name/"
 done
 cp "$PARITY/versions.txt" "$FIXTURE/versions.txt"
 du -sh "$FIXTURE"

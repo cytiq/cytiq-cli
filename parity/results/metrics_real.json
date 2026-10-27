@@ -382,6 +382,45 @@
         "removed_fraction": 0.01328
       }
     },
+    "compensaid_68983": {
+      "compensaid": {
+        "pipeline": {
+          "segment_rows": {
+            "upstream": 360,
+            "rust": 360,
+            "matched": 360
+          },
+          "cutoff_max_abs": 4.21885e-15,
+          "segment_values_max_abs": 6.88338e-15,
+          "ssi_max_abs": 0.0,
+          "na_mismatches": 0,
+          "count_mismatches": 0,
+          "message_mismatches": 0,
+          "flag_agreement": 1.0,
+          "upstream_flags": 2,
+          "events_assessed": {
+            "rust": 18905,
+            "upstream": 18905
+          },
+          "events_equal": true
+        },
+        "preprocessed": {
+          "segment_rows": {
+            "upstream": 360,
+            "rust": 360,
+            "matched": 360
+          },
+          "cutoff_max_abs": 4.44089e-15,
+          "segment_values_max_abs": 4.88498e-15,
+          "ssi_max_abs": 0.0,
+          "na_mismatches": 0,
+          "count_mismatches": 0,
+          "message_mismatches": 0,
+          "flag_agreement": 1.0,
+          "upstream_flags": 2
+        }
+      }
+    },
     "peacoqc_111": {
       "events": 10000,
       "channels": 13,

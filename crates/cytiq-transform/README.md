@@ -59,6 +59,7 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
 | `TransformRunResult`, `TransformFileResult`, `TransformChannelMetrics`, `TransformValueMetrics` | Per-file plan and per-channel raw/transformed statistics |
 | `parse_channel_list` | Parse a comma-separated channel list |
 | `scales::{Logicle, Hyperlog, FlowJoBiexp, ScaleParameterError}` | Reference scales with `scale` / `inverse` |
+| `scales::estimate_logicle_width` | flowCore `estimateLogicle`'s `w` for one channel (`T = maxRange`, `M`, `q`); used by `cytiq spillqc` |
 | `TransformError` | Error type for every failure mode |
 
 ## Inputs, channels and outputs

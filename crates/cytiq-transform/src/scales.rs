@@ -60,6 +60,41 @@ fn check_logicle_parameters(t: f64, w: f64, m: f64, a: f64) -> Result<(), ScaleP
     Ok(())
 }
 
+/// `flowCore::estimateLogicle`'s width for one channel (`.lgclTrans`,
+/// `type = "instrument"`): `w = (m - log10(t / |r|)) / 2` with
+/// `r = .Machine$double.eps + quantile(x[x < 0], q)` (type 7), and `w = 0`
+/// when no value is negative. flowCore passes `t = maxRange`, `m = 4.5`,
+/// `q = 0.05`.
+///
+/// # Errors
+///
+/// Returns an error when `w` comes out negative, as flowCore does ("w is
+/// negative! Try to increase 'm'").
+pub fn estimate_logicle_width(
+    values: &[f64],
+    t: f64,
+    m: f64,
+    q: f64,
+) -> Result<f64, ScaleParameterError> {
+    let mut negative = values
+        .iter()
+        .copied()
+        .filter(|value| *value < 0.0)
+        .collect::<Vec<_>>();
+    if negative.is_empty() {
+        return Ok(0.0);
+    }
+    negative.sort_by(f64::total_cmp);
+    let r = f64::EPSILON + cytiq_density::quantile_type7(&negative, q);
+    let w = (m - (t / r.abs()).log10()) / 2.0;
+    if w < 0.0 {
+        return Err(ScaleParameterError(format!(
+            "estimated logicle W is negative ({w}); increase M"
+        )));
+    }
+    Ok(w)
+}
+
 /// Moore & Parks logicle with output on the `[0, 1]` Gating-ML scale.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Logicle {
@@ -604,6 +639,31 @@ mod tests {
     use super::*;
 
     include!("../../../data/fixtures/transform/flowcore_reference.rs");
+    include!("../../../data/fixtures/transform/estimate_logicle_reference.rs");
+
+    #[test]
+    fn logicle_width_matches_flowcore_estimate_logicle() {
+        let w = estimate_logicle_width(&ESTIMATE_LOGICLE_VALUES, 262_144.0, 4.5, 0.05)
+            .expect("width is positive");
+        assert!(
+            (w - ESTIMATE_LOGICLE_W).abs() < 1e-12,
+            "{w} vs {ESTIMATE_LOGICLE_W}"
+        );
+    }
+
+    #[test]
+    fn logicle_width_is_zero_without_negative_values() {
+        assert_eq!(
+            estimate_logicle_width(&[0.0, 5.0, 1e4], 262_144.0, 4.5, 0.05),
+            Ok(0.0)
+        );
+    }
+
+    #[test]
+    fn logicle_width_rejects_wide_negative_tails() {
+        // |r| = 1 needs w = (4.5 - log10(262144)) / 2 < 0
+        assert!(estimate_logicle_width(&[-1.0, 10.0], 262_144.0, 4.5, 0.05).is_err());
+    }
 
     #[test]
     fn logicle_matches_flowcore_logicle_transform() {

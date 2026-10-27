@@ -27,6 +27,7 @@ flowchart TB
     subgraph signal["Compensation or unmixing"]
         autospill["autospill / autospread<br/>cytiq-autospill"]
         compensate["compensate<br/>cytiq-compensate"]
+        spillqc["spillqc (matrix check)<br/>cytiq-spillqc"]
         autospectral["autospectral<br/>cytiq-autospectral"]
     end
 
@@ -55,6 +56,8 @@ flowchart TB
     controls --> autospill
     autospill -->|"compensation.csv"| compensate
     raw -->|"conventional"| compensate
+    raw -->|"stained samples"| spillqc
+    autospill -.->|"candidate matrix"| spillqc
     controls --> autospectral
     raw -->|"spectral"| autospectral
 

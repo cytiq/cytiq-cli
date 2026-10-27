@@ -378,3 +378,159 @@ fn cytoscan_features_and_flags_equal_r_cytoscan() {
         }
     }
 }
+
+/// A CSV cell as R writes it: `NA` and empty are missing.
+fn r_value(cell: &str) -> Option<f64> {
+    match cell {
+        "" | "NA" => None,
+        _ => Some(
+            cell.parse()
+                .unwrap_or_else(|_| panic!("`{cell}` is not a number")),
+        ),
+    }
+}
+
+/// Rows of a segment table keyed by (primary channel, secondary channel,
+/// segment), column names with R's dots turned into underscores.
+fn segment_rows(path: &Path) -> HashMap<(String, String, String), HashMap<String, String>> {
+    let (header, rows) = read_csv(path);
+    let header = header
+        .iter()
+        .map(|name| name.replace('.', "_"))
+        .collect::<Vec<_>>();
+    rows.into_iter()
+        .map(|row| {
+            let fields = header.iter().cloned().zip(row).collect::<HashMap<_, _>>();
+            let key = (
+                fields["primary_channel"].clone(),
+                fields["secondary_channel"].clone(),
+                fields["segment"].clone(),
+            );
+            (key, fields)
+        })
+        .collect()
+}
+
+fn ssi_flag(ssi: Option<f64>) -> Option<i8> {
+    ssi.map(|value| {
+        if value <= -1.0 {
+            -1
+        } else {
+            i8::from(value >= 1.0)
+        }
+    })
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn spillqc_equals_r_compensaid() {
+    let data = fixture("spillqc");
+    let out = create_temp_dir("cytiq-parity-spillqc");
+    cytiq(&[
+        "spillqc",
+        "--input",
+        utf8(&data),
+        "--output",
+        utf8(&out.join("qc")),
+    ]);
+
+    for tube in ["tube_1", "tube_2", "tube_3"] {
+        let upstream = data.join("upstream").join(tube);
+        let mine = out.join("qc").join(tube);
+
+        let (_, theirs) = read_csv(&upstream.join("cutoffs.csv"));
+        let (_, cuts) = read_csv(&mine.join("cutoffs.csv"));
+        for row in theirs {
+            let cut = cuts
+                .iter()
+                .find(|cut| cut[0] == row[0])
+                .unwrap_or_else(|| panic!("{tube}: no cut-off for {}", row[0]));
+            let delta =
+                (r_value(&cut[2]).expect("cutoff") - r_value(&row[1]).expect("cutoff")).abs();
+            assert!(
+                delta <= 1e-9,
+                "{tube} {}: cut-off differs by {delta}",
+                row[0]
+            );
+        }
+
+        let theirs = segment_rows(&upstream.join("ssi_segments.csv"));
+        let rows = segment_rows(&mine.join("ssi_segments.csv"));
+        assert_eq!(rows.len(), theirs.len(), "{tube}: segment rows");
+        for (key, their) in &theirs {
+            let row = &rows[key];
+            for column in [
+                "secondary_cutoff",
+                "primary_cutoff_neg",
+                "primary_cutoff_pos",
+                "segment_min",
+                "segment_max",
+                "event_count",
+                "event_count_merge",
+                "mfi_neg",
+                "sd_neg",
+                "mfi_pos",
+            ] {
+                match (r_value(&row[column]), r_value(&their[column])) {
+                    (Some(a), Some(b)) => {
+                        assert!(
+                            (a - b).abs() <= 1e-9,
+                            "{tube} {key:?} {column}: {a} vs R {b}"
+                        );
+                    }
+                    (a, b) => assert_eq!(a, b, "{tube} {key:?} {column}"),
+                }
+            }
+            let (ssi, their_ssi) = (r_value(&row["ssi"]), r_value(&their["ssi"]));
+            assert_eq!(ssi.is_some(), their_ssi.is_some(), "{tube} {key:?} ssi");
+            if let (Some(a), Some(b)) = (ssi, their_ssi) {
+                // CompensAID rounds to 2 decimals
+                assert!(
+                    (a - b).abs() <= 0.01 + 1e-12,
+                    "{tube} {key:?} ssi: {a} vs R {b}"
+                );
+            }
+            let their_message = match their["message"].as_str() {
+                "NA" => "",
+                message => message,
+            };
+            assert_eq!(row["message"], their_message, "{tube} {key:?} message");
+        }
+
+        let theirs = read_csv(&upstream.join("ssi_matrix.csv")).1;
+        let (header, matrix_rows) = read_csv(&mine.join("ssi_matrix.csv"));
+        for their in &theirs {
+            let row = matrix_rows
+                .iter()
+                .find(|row| row[0] == their[0])
+                .expect("secondary row");
+            for (index, primary) in header.iter().enumerate().skip(1) {
+                assert_eq!(
+                    ssi_flag(r_value(&row[index])),
+                    ssi_flag(r_value(&their[index])),
+                    "{tube}: {primary} -> {} flag",
+                    their[0]
+                );
+            }
+        }
+    }
+
+    // Both injected errors recur across the tubes sharing the matrix.
+    let (_, expected) = read_csv(&data.join("truth/expected_flags.csv"));
+    let (header, batch) = read_csv(&out.join("qc/batch.csv"));
+    let column = |name: &str| header.iter().position(|field| field == name).expect(name);
+    for error in expected {
+        let row = batch
+            .iter()
+            .find(|row| {
+                row[column("primary_channel")] == error[0]
+                    && row[column("secondary_channel")] == error[1]
+            })
+            .expect("injected pair in batch");
+        assert_eq!(
+            row[column("status")],
+            format!("recurrent_{}", error[2]),
+            "{error:?}"
+        );
+    }
+}

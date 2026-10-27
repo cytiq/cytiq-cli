@@ -13,7 +13,7 @@ out_dir <- if (length(args) >= 2) args[[2]] else "parity/.out/upstream"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_dir <- normalizePath(out_dir)
 tools <- if (length(args) >= 3) args[3:length(args)] else
-  c("transform", "autospill", "peacoqc", "flowsom", "autospectral", "cytoscan", "pipeline")
+  c("transform", "autospill", "peacoqc", "flowsom", "autospectral", "cytoscan", "spillqc", "pipeline")
 
 timed <- function(name, expr) {
   started <- proc.time()[["elapsed"]]
@@ -86,6 +86,15 @@ run_peacoqc <- function() {
               file.path(out_dir, paste0("peacoqc_", tolower(method), "_mask.csv")), row.names = FALSE)
     write(sprintf("%s,%d,%d", method, res$EventsPerBin, length(res$GoodCells)),
           file.path(out_dir, "peacoqc_meta.csv"), append = TRUE)
+  }
+}
+
+# ------------------------------------------------------------------ spillqc
+run_spillqc <- function() {
+  for (path in Sys.glob(file.path(data_dir, "spillqc", "*.fcs"))) {
+    name <- tools::file_path_sans_ext(basename(path))
+    timed(paste0("spillqc_", name),
+          write_compensaid(compensaid_chain(path), file.path(out_dir, "spillqc", name)))
   }
 }
 
@@ -248,6 +257,8 @@ run_cytoscan <- function() {
 
 source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))),
                  "pipeline.R"))
+source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))),
+                 "compensaid.R"))
 
 for (tool in tools) {
   message("== ", tool)

@@ -10,7 +10,6 @@
 mod error;
 mod export;
 mod runner;
-mod smooth_spline;
 
 pub use crate::error::PeacoQcError;
 pub use crate::runner::{
@@ -18,7 +17,7 @@ pub use crate::runner::{
     DEFAULT_MAX_BINS, DEFAULT_MIN_CELLS, DEFAULT_MIN_PEAK_BIN_PERCENT, DEFAULT_PEAK_REMOVAL,
     DEFAULT_STEP, DEFAULT_TIME_CHANNEL, EventMaskRecord, PeacoQcConfig, PeacoQcConstants,
     PeacoQcMethod, PeacoQcMetrics, PeacoQcParameters, PeacoQcResult, PeacoQcRunner, PeacoQcSummary,
-    masks_path, parse_channel_list,
+    masks_path, parse_channel_list, peacoqc_mask,
 };
 
 /// Upstream implementations this crate is validated against

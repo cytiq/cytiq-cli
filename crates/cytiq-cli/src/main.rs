@@ -42,6 +42,10 @@ use cytiq_provenance::{
     BuildInfo, RunRecorder, files_under, record_path_for_dir, record_path_for_file,
 };
 use cytiq_qc::{CheckStatus as QcStatus, QcConfig, QcRunner};
+use cytiq_spillqc::{
+    BatchSettings, CompensaidParameters, DEFAULT_BATCH_MIN_FILES, DEFAULT_BATCH_MIN_FRACTION,
+    DEFAULT_MIN_EVENTS, DEFAULT_SEGMENTS, PreprocessOptions, SpillQcConfig, SpillQcRunner,
+};
 use cytiq_transform::{
     BiexponentialParameters, LogicleParameters, TransformConfig, TransformFormat, TransformMethod,
     TransformParameters, TransformRunResult, TransformRunner,
@@ -378,6 +382,9 @@ enum Commands {
     /// Remove debris, doublets and dead cells; writes per-event masks,
     /// metrics, Gating-ML gates and an HTML report.
     Clean(CleanArgs),
+    /// Check the spillover matrix applied to fully stained samples with
+    /// `CompensAID`'s Secondary Stain Index; flags need expert review.
+    Spillqc(SpillqcArgs),
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
     Flowsom {
         #[arg(long)]
@@ -464,6 +471,100 @@ enum MaskCommand {
         #[arg(long)]
         overwrite: bool,
     },
+}
+
+#[derive(Debug, Serialize, Args)]
+#[allow(clippy::struct_excessive_bools)]
+struct SpillqcArgs {
+    /// Raw .fcs file, glob pattern, or directory. Can be passed multiple times.
+    #[arg(short, long, required = true)]
+    input: Vec<PathBuf>,
+    /// Output directory: `summary.json`, `batch.csv`, `report.html` and one
+    /// directory of SSI tables per input.
+    #[arg(short, long)]
+    output: PathBuf,
+    /// Square matrix CSV/TSV as written by `cytiq autospill`, assessed
+    /// instead of each input's `$SPILLOVER` keyword.
+    #[arg(long, requires = "matrix_kind")]
+    matrix: Option<PathBuf>,
+    /// What `--matrix` holds.
+    #[arg(long, value_enum, requires = "matrix")]
+    matrix_kind: Option<CliMatrixKind>,
+    /// The inputs are already compensated and transformed (`CompensAID`'s own
+    /// input); skip margins, compensation, logicle and `PeacoQC`.
+    #[arg(long, conflicts_with_all = ["matrix", "no_margins", "no_peacoqc"])]
+    preprocessed: bool,
+    /// Keep detector-margin events.
+    #[arg(long)]
+    no_margins: bool,
+    /// Skip `PeacoQC`.
+    #[arg(long)]
+    no_peacoqc: bool,
+    /// Comma-separated channels to assess; defaults to the matrix channels
+    /// with a `$PnS` marker name.
+    #[arg(long)]
+    channels: Option<String>,
+    /// Channel to assess; can be repeated.
+    #[arg(long = "channel")]
+    channel: Vec<String>,
+    /// Segments of the positive population.
+    #[arg(long, default_value_t = DEFAULT_SEGMENTS, value_parser = parse_positive_usize)]
+    segments: usize,
+    /// Minimum events per population and per segment.
+    #[arg(long, default_value_t = DEFAULT_MIN_EVENTS, value_parser = parse_positive_usize)]
+    min_events: usize,
+    /// Files sharing a matrix that must assess a pair before it can recur.
+    #[arg(long, default_value_t = DEFAULT_BATCH_MIN_FILES, value_parser = parse_positive_usize)]
+    batch_min_files: usize,
+    /// Share of those files that must flag a pair in one direction.
+    #[arg(long, default_value_t = DEFAULT_BATCH_MIN_FRACTION, value_parser = parse_fraction)]
+    batch_min_fraction: f64,
+    /// Exit with 1 when any pair is flagged (after writing every output).
+    #[arg(long)]
+    fail_on_flag: bool,
+    /// Worker thread limit; defaults to all available logical CPUs.
+    #[arg(long, value_parser = parse_threads)]
+    threads: Option<usize>,
+    /// Replace the outputs of an earlier run in the output directory.
+    #[arg(long)]
+    overwrite: bool,
+}
+
+impl SpillqcArgs {
+    fn config(&self) -> Result<SpillQcConfig, String> {
+        let channels = if self.channels.is_none() && self.channel.is_empty() {
+            None
+        } else {
+            Some(parse_peacoqc_channels(
+                self.channels.as_deref(),
+                &self.channel,
+            )?)
+        };
+        Ok(SpillQcConfig {
+            inputs: self.input.clone(),
+            output: self.output.clone(),
+            matrix: self
+                .matrix
+                .clone()
+                .zip(self.matrix_kind.map(CompensateMatrixKind::from)),
+            preprocess: PreprocessOptions {
+                preprocessed: self.preprocessed,
+                remove_margins: !self.no_margins,
+                peacoqc: !self.no_peacoqc,
+                channels,
+            },
+            parameters: CompensaidParameters {
+                segments: self.segments,
+                min_events: self.min_events,
+            },
+            batch: BatchSettings {
+                min_files: self.batch_min_files,
+                min_fraction: self.batch_min_fraction,
+            },
+            threads: self.threads,
+            overwrite: self.overwrite,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Args)]
@@ -1465,6 +1566,59 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         }
+        Commands::Spillqc(args) => {
+            info!(
+                "starting spillqc: inputs={}, output={}",
+                args.input.len(),
+                args.output.display()
+            );
+            let config = args
+                .config()
+                .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+            recorder.snapshot_inputs("input", &SpillQcRunner::input_files(&config)?)?;
+            if let Some((matrix, _)) = &config.matrix {
+                recorder.snapshot_inputs("matrix", std::slice::from_ref(matrix))?;
+            }
+            recorder.set_algorithms(cytiq_spillqc::UPSTREAM);
+            let result = SpillQcRunner::run(&config)?;
+            let counts = &result.summary.counts;
+            for file in &result.summary.files {
+                for flag in &file.flags {
+                    warn!(
+                        "{}: {} -> {}: SSI {} ({:?})",
+                        file.name,
+                        flag.primary_marker,
+                        flag.secondary_marker,
+                        flag.ssi
+                            .map_or_else(|| "NA".to_owned(), |ssi| ssi.to_string()),
+                        flag.status
+                    );
+                }
+            }
+            info!(
+                "spillqc: {} of {} file(s) assessed, {} skipped; {} flagged pair(s), {} recurrent; wrote {}",
+                counts.assessed,
+                counts.files,
+                counts.skipped,
+                counts.flagged_pairs,
+                counts.recurrent_pairs,
+                config.output.display()
+            );
+            record_provenance(
+                recorder,
+                &result.outputs,
+                &record_path_for_dir(&config.output),
+            )?;
+            if args.fail_on_flag && counts.flagged_pairs > 0 {
+                return Err(io::Error::other(format!(
+                    "spillqc flagged {} pair(s); review {}",
+                    counts.flagged_pairs,
+                    config.output.join(cytiq_spillqc::REPORT_FILE).display()
+                ))
+                .into());
+            }
+            Ok(())
+        }
         Commands::Clean(args) => {
             info!(
                 "starting clean: input={}, output={}",
@@ -1580,6 +1734,7 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Qc { .. } => "qc",
         Commands::Compensate { .. } => "compensate",
         Commands::Clean(_) => "clean",
+        Commands::Spillqc(_) => "spillqc",
         Commands::Flowsom { .. } => "flowsom",
     }
 }
@@ -1658,6 +1813,13 @@ fn parse_threads(raw: &str) -> Result<usize, String> {
         Err("thread count must be greater than zero".to_owned())
     } else {
         Ok(threads)
+    }
+}
+
+fn parse_fraction(raw: &str) -> Result<f64, String> {
+    match raw.parse::<f64>() {
+        Ok(value) if value > 0.0 && value <= 1.0 => Ok(value),
+        _ => Err(format!("expected a number in (0, 1], got `{raw}`")),
     }
 }
 

@@ -5,7 +5,7 @@ Usage: python generate.py <out_dir> [full|smoke]
 Every dataset is written under <out_dir>/<tool>/ together with a `truth/`
 directory holding the values the tools are expected to recover. `smoke`
 writes small versions of the datasets whose upstream results are exact or
-deterministic (autospill, autospectral, peacoqc, cytoscan_exact), for the CI
+deterministic (autospill, autospectral, peacoqc, cytoscan_exact, spillqc), for the CI
 check in data/fixtures/parity (parity/make_smoke.sh).
 """
 
@@ -22,6 +22,7 @@ from cytoscan import gen_cytoscan, gen_cytoscan_exact, gen_cytoscan_ref100
 from fcsio import PNR, write_fcs
 from gating import gen_gating
 import pipeline
+from spillqc import gen_spillqc
 
 SEED = 20261022
 
@@ -235,13 +236,15 @@ FULL = [("transform", gen_transform), ("autospill", gen_autospill), ("autospectr
         ("cytoscan_exact", gen_cytoscan_exact), ("cytoscan", gen_cytoscan),
         ("cytoscan_ref100", gen_cytoscan_ref100), ("gating", gen_gating),
         ("pipeline", lambda target: gen_pipeline(target, "full")),
-        ("pipeline_beads", lambda target: gen_pipeline(target, "beads"))]
+        ("pipeline_beads", lambda target: gen_pipeline(target, "beads")),
+        ("spillqc", gen_spillqc)]
 # Small enough to commit (about 3 MB), large enough for every gate: the KDE
 # scatter gates want a few thousand events, PeacoQC a few hundred bins' worth.
 SMOKE = [("autospill", lambda target: gen_autospill(target, n_events=3_000)),
          ("autospectral", lambda target: gen_autospectral(target, n_events=2_000, n_sample=3_000)),
          ("peacoqc", lambda target: gen_peacoqc(target, n_events=15_000)),
-         ("cytoscan_exact", gen_cytoscan_exact)]
+         ("cytoscan_exact", gen_cytoscan_exact),
+         ("spillqc", lambda target: gen_spillqc(target, n_events=6_000))]
 
 
 def main() -> None:

@@ -598,6 +598,7 @@ dependencies = [
  "cytiq-preflight",
  "cytiq-provenance",
  "cytiq-qc",
+ "cytiq-spillqc",
  "cytiq-transform",
  "log",
  "parquet",
@@ -769,10 +770,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-spillqc"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "cytiq-compensate",
+ "cytiq-density",
+ "cytiq-fcs",
+ "cytiq-peacoqc",
+ "cytiq-transform",
+ "log",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "cytiq-transform"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "cytiq-density",
  "cytiq-fcs",
  "log",
  "plotly",

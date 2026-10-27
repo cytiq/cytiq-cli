@@ -18,8 +18,7 @@ use serde::Serialize;
 
 use crate::error::PeacoQcError;
 use crate::export::{write_debug_artifacts, write_masks_parquet};
-use crate::smooth_spline::smooth_spline_fitted;
-use cytiq_density::density;
+use cytiq_density::{density, smooth_spline_fitted};
 
 pub const DEFAULT_MAD_THRESHOLD: f64 = 6.0;
 /// `PeacoQC::MADOutliers` smooths each peak series with `smooth.spline(spar = 0.5)`.
@@ -201,6 +200,37 @@ struct ResolvedChannel {
     values: Vec<f64>,
 }
 
+/// The part of a channel the algorithm reads: its name for messages and
+/// feature labels, and its values in event order.
+#[derive(Clone, Copy, Debug)]
+struct ChannelData<'a> {
+    name: &'a str,
+    values: &'a [f64],
+}
+
+impl ResolvedChannel {
+    fn data(&self) -> ChannelData<'_> {
+        ChannelData {
+            name: &self.display_name,
+            values: &self.values,
+        }
+    }
+}
+
+/// Bin-level result shared by [`PeacoQcRunner::run`] and [`peacoqc_mask`].
+#[derive(Clone, Debug)]
+struct MaskComputation {
+    working: WorkingData,
+    bins: Vec<Vec<usize>>,
+    events_per_bin: usize,
+    peak_matrix: PeakMatrix,
+    mad_bad_bins: Vec<bool>,
+    it_bad_bins: Vec<bool>,
+    consecutive_bad_bins: Vec<bool>,
+    mad_contributions: Vec<MadContribution>,
+    mask: Vec<EventMaskRecord>,
+}
+
 #[derive(Clone, Debug)]
 struct WorkingData {
     original_indices: Vec<usize>,
@@ -274,98 +304,28 @@ impl PeacoQcRunner {
         } else {
             None
         };
-        let working = prepare_working_data(&channels, events_before, margin_bounds.as_deref());
-        if working.original_indices.is_empty() {
-            return Err(PeacoQcError::AllEventsRemoved {
-                path: input.to_path_buf(),
-            });
-        }
-
-        let events_per_bin = find_events_per_bin(
-            config.remove_zeros,
-            &working.channel_values,
-            working.original_indices.len(),
-        );
-        let bins = make_bins(events_per_bin, working.original_indices.len());
-        let peak_matrix =
-            build_peak_matrix(input, &channels, &working, &bins, config.remove_zeros)?;
-        info!(
-            "peacoqc pipeline: built {} bins and {} peak features",
-            bins.len(),
-            peak_matrix.feature_names.len()
-        );
-
-        let mut good_bins = vec![true; bins.len()];
-        let mut it_bad_bins = vec![false; bins.len()];
-        if matches!(config.method, PeacoQcMethod::All | PeacoQcMethod::It) {
-            if bins.len() >= DEFAULT_FORCE_IT_BINS {
-                let it_good_bins = isolation_tree_good_bins(&peak_matrix.values, DEFAULT_IT_LIMIT);
-                for (index, good) in it_good_bins.iter().copied().enumerate() {
-                    if !good {
-                        it_bad_bins[index] = true;
-                    }
-                    good_bins[index] = good;
-                }
-            } else {
-                warnings.push(format!(
-                    "Isolation Tree skipped: {} bins is below the default force_IT threshold of {}",
-                    bins.len(),
-                    DEFAULT_FORCE_IT_BINS
-                ));
-            }
-        }
-
-        let mut mad_bad_bins = vec![false; bins.len()];
-        let mut mad_contributions = Vec::new();
-        if matches!(config.method, PeacoQcMethod::All | PeacoQcMethod::Mad) {
-            let mad = mad_bad_bins_for_features(
-                &peak_matrix,
-                &good_bins,
-                &bins,
-                working.original_indices.len(),
-                events_before,
-            );
-            for (index, bad) in mad.bad_bins.iter().copied().enumerate() {
-                if bad {
-                    mad_bad_bins[index] = true;
-                    good_bins[index] = false;
-                }
-            }
-            mad_contributions = mad.contributions;
-        }
-
-        let pre_consecutive_good_bins = good_bins.clone();
-        let mut consecutive_bad_bins = vec![false; bins.len()];
-        if !matches!(config.method, PeacoQcMethod::PeaksOnly) {
-            good_bins = remove_short_good_regions(&good_bins, DEFAULT_CONSECUTIVE_BINS);
-            for (index, (before, after)) in pre_consecutive_good_bins
-                .iter()
-                .copied()
-                .zip(good_bins.iter().copied())
-                .enumerate()
-            {
-                consecutive_bad_bins[index] = before && !after;
-            }
-        }
-
-        let removed_by_it_working =
-            working_event_mask_from_bins(&it_bad_bins, &bins, working.original_indices.len());
-        let removed_by_mad_working =
-            working_event_mask_from_bins(&mad_bad_bins, &bins, working.original_indices.len());
-        let removed_by_consecutive_working = working_event_mask_from_bins(
-            &consecutive_bad_bins,
-            &bins,
-            working.original_indices.len(),
-        );
-
-        let mask = build_event_mask(
+        let channel_data = channels
+            .iter()
+            .map(ResolvedChannel::data)
+            .collect::<Vec<_>>();
+        let MaskComputation {
+            working,
+            bins,
+            events_per_bin,
+            peak_matrix,
+            mad_bad_bins,
+            it_bad_bins,
+            consecutive_bad_bins,
+            mad_contributions,
+            mask,
+        } = compute_mask(
+            input,
+            &channel_data,
             events_before,
-            &working,
-            &bins,
-            &removed_by_mad_working,
-            &removed_by_it_working,
-            &removed_by_consecutive_working,
-        );
+            margin_bounds.as_deref(),
+            config,
+            &mut warnings,
+        )?;
         let read_error = |source| PeacoQcError::FcsRead {
             path: input.to_path_buf(),
             source,
@@ -407,6 +367,166 @@ impl PeacoQcRunner {
 
         Ok(PeacoQcResult { summary, mask })
     }
+}
+
+/// `PeacoQC`'s good-event mask of already compensated and transformed
+/// channels held in memory, as [`PeacoQcRunner::run`] computes it from a file.
+/// `channels` pairs a name with its values in event order; all have the same
+/// length. `source` only names the data in errors. Margins are the caller's
+/// business: `config.remove_margins` and `config.debug_dir` are ignored.
+///
+/// # Errors
+///
+/// Returns an error when `channels` is empty, a channel is not finite or has
+/// a different length, no peak features can be built, or the thread pool
+/// cannot be created.
+pub fn peacoqc_mask(
+    source: &Path,
+    channels: &[(&str, &[f64])],
+    config: &PeacoQcConfig,
+) -> Result<Vec<bool>, PeacoQcError> {
+    let Some((_, first)) = channels.first() else {
+        return Err(PeacoQcError::EmptyChannels);
+    };
+    let events = first.len();
+    for (name, values) in channels {
+        if values.len() != events || values.iter().any(|value| !value.is_finite()) {
+            return Err(PeacoQcError::NonFiniteChannel {
+                path: source.to_path_buf(),
+                channel: (*name).to_owned(),
+            });
+        }
+    }
+    if events == 0 {
+        return Err(PeacoQcError::EmptyInput {
+            path: source.to_path_buf(),
+        });
+    }
+    let data = channels
+        .iter()
+        .map(|(name, values)| ChannelData { name, values })
+        .collect::<Vec<_>>();
+    with_thread_pool(config.threads, || {
+        let mut warnings = Vec::new();
+        let computation = compute_mask(source, &data, events, None, config, &mut warnings)?;
+        for warning in &warnings {
+            warn!("peacoqc: {warning}");
+        }
+        Ok(computation
+            .mask
+            .iter()
+            .map(|record| record.is_good)
+            .collect())
+    })
+}
+
+fn compute_mask(
+    input: &Path,
+    channels: &[ChannelData<'_>],
+    events_before: usize,
+    margin_bounds: Option<&[MarginBounds]>,
+    config: &PeacoQcConfig,
+    warnings: &mut Vec<String>,
+) -> Result<MaskComputation, PeacoQcError> {
+    let working = prepare_working_data(channels, events_before, margin_bounds);
+    if working.original_indices.is_empty() {
+        return Err(PeacoQcError::AllEventsRemoved {
+            path: input.to_path_buf(),
+        });
+    }
+
+    let events_per_bin = find_events_per_bin(
+        config.remove_zeros,
+        &working.channel_values,
+        working.original_indices.len(),
+    );
+    let bins = make_bins(events_per_bin, working.original_indices.len());
+    let peak_matrix = build_peak_matrix(input, channels, &working, &bins, config.remove_zeros)?;
+    info!(
+        "peacoqc pipeline: built {} bins and {} peak features",
+        bins.len(),
+        peak_matrix.feature_names.len()
+    );
+
+    let mut good_bins = vec![true; bins.len()];
+    let mut it_bad_bins = vec![false; bins.len()];
+    if matches!(config.method, PeacoQcMethod::All | PeacoQcMethod::It) {
+        if bins.len() >= DEFAULT_FORCE_IT_BINS {
+            let it_good_bins = isolation_tree_good_bins(&peak_matrix.values, DEFAULT_IT_LIMIT);
+            for (index, good) in it_good_bins.iter().copied().enumerate() {
+                if !good {
+                    it_bad_bins[index] = true;
+                }
+                good_bins[index] = good;
+            }
+        } else {
+            warnings.push(format!(
+                "Isolation Tree skipped: {} bins is below the default force_IT threshold of {}",
+                bins.len(),
+                DEFAULT_FORCE_IT_BINS
+            ));
+        }
+    }
+
+    let mut mad_bad_bins = vec![false; bins.len()];
+    let mut mad_contributions = Vec::new();
+    if matches!(config.method, PeacoQcMethod::All | PeacoQcMethod::Mad) {
+        let mad = mad_bad_bins_for_features(
+            &peak_matrix,
+            &good_bins,
+            &bins,
+            working.original_indices.len(),
+            events_before,
+        );
+        for (index, bad) in mad.bad_bins.iter().copied().enumerate() {
+            if bad {
+                mad_bad_bins[index] = true;
+                good_bins[index] = false;
+            }
+        }
+        mad_contributions = mad.contributions;
+    }
+
+    let pre_consecutive_good_bins = good_bins.clone();
+    let mut consecutive_bad_bins = vec![false; bins.len()];
+    if !matches!(config.method, PeacoQcMethod::PeaksOnly) {
+        good_bins = remove_short_good_regions(&good_bins, DEFAULT_CONSECUTIVE_BINS);
+        for (index, (before, after)) in pre_consecutive_good_bins
+            .iter()
+            .copied()
+            .zip(good_bins.iter().copied())
+            .enumerate()
+        {
+            consecutive_bad_bins[index] = before && !after;
+        }
+    }
+
+    let removed_by_it_working =
+        working_event_mask_from_bins(&it_bad_bins, &bins, working.original_indices.len());
+    let removed_by_mad_working =
+        working_event_mask_from_bins(&mad_bad_bins, &bins, working.original_indices.len());
+    let removed_by_consecutive_working =
+        working_event_mask_from_bins(&consecutive_bad_bins, &bins, working.original_indices.len());
+
+    let mask = build_event_mask(
+        events_before,
+        &working,
+        &bins,
+        &removed_by_mad_working,
+        &removed_by_it_working,
+        &removed_by_consecutive_working,
+    );
+    Ok(MaskComputation {
+        working,
+        bins,
+        events_per_bin,
+        peak_matrix,
+        mad_bad_bins,
+        it_bad_bins,
+        consecutive_bad_bins,
+        mad_contributions,
+        mask,
+    })
 }
 
 /// Parse a comma-separated list of channel names.
@@ -583,7 +703,7 @@ fn selected_margin_bounds(
 }
 
 fn prepare_working_data(
-    channels: &[ResolvedChannel],
+    channels: &[ChannelData<'_>],
     event_count: usize,
     margin_bounds: Option<&[MarginBounds]>,
 ) -> WorkingData {
@@ -624,7 +744,7 @@ fn prepare_working_data(
 }
 
 fn margin_events_for_channel(
-    channel: &ResolvedChannel,
+    channel: &ChannelData<'_>,
     bounds: &MarginBounds,
 ) -> (Vec<bool>, ChannelMarginCounts) {
     let minimum = channel.values.iter().copied().fold(f64::INFINITY, f64::min);
@@ -653,7 +773,7 @@ fn margin_events_for_channel(
         .map(|(min_removed, max_removed)| *min_removed || *max_removed)
         .collect::<Vec<_>>();
     let counts = ChannelMarginCounts {
-        channel: channel.display_name.clone(),
+        channel: channel.name.to_owned(),
         min_count: min_flags.iter().filter(|removed| **removed).count(),
         max_count: max_flags.iter().filter(|removed| **removed).count(),
         removed_count: removed.iter().filter(|removed| **removed).count(),
@@ -701,7 +821,7 @@ fn make_bins(events_per_bin: usize, event_count: usize) -> Vec<Vec<usize>> {
 
 fn build_peak_matrix(
     input: &Path,
-    channels: &[ResolvedChannel],
+    channels: &[ChannelData<'_>],
     working: &WorkingData,
     bins: &[Vec<usize>],
     remove_zeros: bool,
@@ -711,7 +831,7 @@ fn build_peak_matrix(
         .enumerate()
         .filter_map(|(index, channel)| {
             build_channel_peak_features(
-                &channel.display_name,
+                channel.name,
                 &working.channel_values[index],
                 bins,
                 remove_zeros,

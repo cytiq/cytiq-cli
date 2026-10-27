@@ -23,6 +23,7 @@ cytiq-peacoqc = { path = "../cytiq-peacoqc" }
 cytiq-preflight = { path = "../cytiq-preflight" }
 cytiq-provenance = { path = "../cytiq-provenance" }
 cytiq-qc = { path = "../cytiq-qc" }
+cytiq-spillqc = { path = "../cytiq-spillqc" }
 cytiq-transform = { path = "../cytiq-transform" }
 log = "0.4.30"
 serde = { version = "1.0.228", features = ["derive"] }

@@ -13,6 +13,9 @@ algorithmic implementations are:
   `cytiq cytoscan`
 - PeacoQC-style acquisition quality control in `crates/cytiq-peacoqc`,
   exposed through `cytiq peacoqc`
+- CompensAID spillover-error detection (Secondary Stain Index) in
+  `crates/cytiq-spillqc`, exposed through `cytiq spillqc`, with the
+  flowDensity cut-off search in `crates/cytiq-density`
 - FlowSOM-style clustering in `crates/cytiq-flowsom`, exposed through
   `cytiq flowsom`
 - Gating-ML 2.0 gate evaluation in `crates/cytiq-gating`, exposed through
@@ -141,6 +144,43 @@ input/output model:
 Relevant code:
 - `crates/cytiq-peacoqc/src/runner.rs`
 - `crates/cytiq-peacoqc/src/export.rs`
+
+## CompensAID, Secondary Stain Index and flowDensity
+
+If you use `cytiq spillqc`, or reuse the implementation in
+`crates/cytiq-spillqc`, cite the CompensAID paper:
+
+Olsman, R., Bonte, S., Hofmans, M. et al. CompensAID: An Automated Detection
+Tool for Reference Errors. *Cytometry Part A* 109(2), 124-134 (2026).
+<https://doi.org/10.1002/cyto.a.70016>
+
+CompensAID builds on the Secondary Stain Index:
+
+Daniels, K. and Gardner, R. Secondary Stain Index. Memorial Sloan Kettering
+Cancer Center (2020).
+
+Its per-channel cut-offs come from flowDensity's `deGate`, ported in
+`crates/cytiq-density/src/degate.rs`:
+
+Malek, M., Taghiyar, M.J., Chong, L. et al. flowDensity: reproducing manual
+gating of flow cytometry data by automated density-based cell population
+identification. *Bioinformatics* 31(4), 606-607 (2015).
+<https://doi.org/10.1093/bioinformatics/btu677>
+
+Project links:
+- Upstream R reference implementation: <https://github.com/Olsman/CompensAID>
+- flowDensity: <https://bioconductor.org/packages/flowDensity>
+
+The Rust implementation ports CompensAID 0.99.7 and runs it after the
+vignette's preprocessing (`PeacoQC::RemoveMargins`, `flowCore::compensate`,
+`estimateLogicle`, PeacoQC). The batch view, which groups files by the matrix
+applied to them and calls flags recurrent, is a cytiq extension without a
+publication.
+
+Relevant code:
+- `crates/cytiq-spillqc/src/compensaid.rs`
+- `crates/cytiq-spillqc/src/preprocess.rs`
+- `crates/cytiq-density/src/degate.rs`
 
 ## FlowSOM
 

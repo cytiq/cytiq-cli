@@ -25,6 +25,11 @@ parity:
 parity-real:
     parity/real/run_real.sh
 
+# ---- Benchmark spillqc detection on real data (needs `just parity-real` outputs)
+[group('validation')]
+benchmark-spillqc:
+    parity/benchmark/run_spillqc.sh
+
 # ---- Regenerate the golden end-to-end CI fixture
 [group('validation')]
 parity-ci-fixture:

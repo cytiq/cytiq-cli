@@ -1,0 +1,525 @@
+{
+  "matrix_accuracy": {
+    "celesta_mdsc_controls": {
+      "colours": 11,
+      "offdiag_mae": 0.002125,
+      "offdiag_max_abs": 0.02896,
+      "offdiag_frobenius": 0.04533,
+      "coefficients_off_by_0.01": 3,
+      "largest": [
+        {
+          "fluorochrome": "BV605-A",
+          "detector": "BV510-A",
+          "facsdiva": 0.0005929,
+          "autospill": 0.02955
+        },
+        {
+          "fluorochrome": "FITC-A",
+          "detector": "BV510-A",
+          "facsdiva": 0.0154,
+          "autospill": 0.03607
+        },
+        {
+          "fluorochrome": "BV421-A",
+          "detector": "BV510-A",
+          "facsdiva": 0.4398,
+          "autospill": 0.4561
+        },
+        {
+          "fluorochrome": "APC-Cy7-A",
+          "detector": "BV510-A",
+          "facsdiva": 0.0,
+          "autospill": -0.008962
+        },
+        {
+          "fluorochrome": "BV786-A",
+          "detector": "BV510-A",
+          "facsdiva": 0.0,
+          "autospill": 0.006417
+        }
+      ],
+      "stained_sample_flags": {
+        "facsdiva": 47,
+        "autospill": 45,
+        "shared": 43
+      }
+    },
+    "symphony_omip24_controls": {
+      "colours": 24,
+      "skipped": "no stained sample; the controls' $SPILL is the identity"
+    }
+  },
+  "detection": {
+    "celesta_mdsc_sample": {
+      "sample": "celesta_mdsc_sample",
+      "baseline": {
+        "pairs": 110,
+        "assessed": 79,
+        "flags": 47
+      },
+      "runs": 772,
+      "levels": [
+        {
+          "mode": "absolute",
+          "level": -0.05,
+          "coefficients": 19,
+          "detected": 3,
+          "recall": 0.1579,
+          "precision": 0.1364,
+          "f1": 0.1463,
+          "masked": 7,
+          "not_assessed": 7,
+          "median_shift_toward_flag": 0.085,
+          "new_flags_elsewhere_per_run": 1.0
+        },
+        {
+          "mode": "absolute",
+          "level": -0.02,
+          "coefficients": 27,
+          "detected": 5,
+          "recall": 0.1852,
+          "precision": 0.2,
+          "f1": 0.1923,
+          "masked": 10,
+          "not_assessed": 8,
+          "median_shift_toward_flag": 0.08,
+          "new_flags_elsewhere_per_run": 0.7407
+        },
+        {
+          "mode": "absolute",
+          "level": -0.01,
+          "coefficients": 36,
+          "detected": 4,
+          "recall": 0.1111,
+          "precision": 0.2857,
+          "f1": 0.16,
+          "masked": 13,
+          "not_assessed": 14,
+          "median_shift_toward_flag": 0.065,
+          "new_flags_elsewhere_per_run": 0.2778
+        },
+        {
+          "mode": "absolute",
+          "level": 0.01,
+          "coefficients": 110,
+          "detected": 12,
+          "recall": 0.1091,
+          "precision": 0.1935,
+          "f1": 0.1395,
+          "masked": 0,
+          "not_assessed": 30,
+          "median_shift_toward_flag": 0.14,
+          "new_flags_elsewhere_per_run": 0.4545
+        },
+        {
+          "mode": "absolute",
+          "level": 0.02,
+          "coefficients": 110,
+          "detected": 25,
+          "recall": 0.2273,
+          "precision": 0.2778,
+          "f1": 0.25,
+          "masked": 0,
+          "not_assessed": 29,
+          "median_shift_toward_flag": 0.285,
+          "new_flags_elsewhere_per_run": 0.5909
+        },
+        {
+          "mode": "absolute",
+          "level": 0.05,
+          "coefficients": 110,
+          "detected": 39,
+          "recall": 0.3545,
+          "precision": 0.195,
+          "f1": 0.2516,
+          "masked": 0,
+          "not_assessed": 28,
+          "median_shift_toward_flag": 1.195,
+          "new_flags_elsewhere_per_run": 1.464
+        },
+        {
+          "mode": "relative",
+          "level": -0.5,
+          "coefficients": 36,
+          "detected": 8,
+          "recall": 0.2222,
+          "precision": 0.1633,
+          "f1": 0.1882,
+          "masked": 13,
+          "not_assessed": 14,
+          "median_shift_toward_flag": 0.135,
+          "new_flags_elsewhere_per_run": 1.139
+        },
+        {
+          "mode": "relative",
+          "level": -0.3,
+          "coefficients": 36,
+          "detected": 6,
+          "recall": 0.1667,
+          "precision": 0.1538,
+          "f1": 0.16,
+          "masked": 13,
+          "not_assessed": 14,
+          "median_shift_toward_flag": 0.085,
+          "new_flags_elsewhere_per_run": 0.9167
+        },
+        {
+          "mode": "relative",
+          "level": -0.2,
+          "coefficients": 36,
+          "detected": 4,
+          "recall": 0.1111,
+          "precision": 0.16,
+          "f1": 0.1311,
+          "masked": 13,
+          "not_assessed": 14,
+          "median_shift_toward_flag": 0.09,
+          "new_flags_elsewhere_per_run": 0.5833
+        },
+        {
+          "mode": "relative",
+          "level": -0.1,
+          "coefficients": 36,
+          "detected": 3,
+          "recall": 0.08333,
+          "precision": 0.1765,
+          "f1": 0.1132,
+          "masked": 13,
+          "not_assessed": 13,
+          "median_shift_toward_flag": 0.06,
+          "new_flags_elsewhere_per_run": 0.3889
+        },
+        {
+          "mode": "relative",
+          "level": -0.05,
+          "coefficients": 36,
+          "detected": 2,
+          "recall": 0.05556,
+          "precision": 0.2222,
+          "f1": 0.08889,
+          "masked": 13,
+          "not_assessed": 13,
+          "median_shift_toward_flag": 0.03,
+          "new_flags_elsewhere_per_run": 0.1944
+        },
+        {
+          "mode": "relative",
+          "level": 0.05,
+          "coefficients": 36,
+          "detected": 0,
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0,
+          "masked": 0,
+          "not_assessed": 14,
+          "median_shift_toward_flag": 0.015,
+          "new_flags_elsewhere_per_run": 0.25
+        },
+        {
+          "mode": "relative",
+          "level": 0.1,
+          "coefficients": 36,
+          "detected": 1,
+          "recall": 0.02778,
+          "precision": 0.07143,
+          "f1": 0.04,
+          "masked": 0,
+          "not_assessed": 13,
+          "median_shift_toward_flag": 0.07,
+          "new_flags_elsewhere_per_run": 0.3611
+        },
+        {
+          "mode": "relative",
+          "level": 0.2,
+          "coefficients": 36,
+          "detected": 2,
+          "recall": 0.05556,
+          "precision": 0.1053,
+          "f1": 0.07273,
+          "masked": 0,
+          "not_assessed": 13,
+          "median_shift_toward_flag": 0.14,
+          "new_flags_elsewhere_per_run": 0.4722
+        },
+        {
+          "mode": "relative",
+          "level": 0.3,
+          "coefficients": 36,
+          "detected": 3,
+          "recall": 0.08333,
+          "precision": 0.1071,
+          "f1": 0.09375,
+          "masked": 0,
+          "not_assessed": 12,
+          "median_shift_toward_flag": 0.29,
+          "new_flags_elsewhere_per_run": 0.6944
+        },
+        {
+          "mode": "relative",
+          "level": 0.5,
+          "coefficients": 36,
+          "detected": 10,
+          "recall": 0.2778,
+          "precision": 0.2083,
+          "f1": 0.2381,
+          "masked": 0,
+          "not_assessed": 11,
+          "median_shift_toward_flag": 0.68,
+          "new_flags_elsewhere_per_run": 1.056
+        }
+      ],
+      "ever_detected": [
+        {
+          "primary": "APC-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "under"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "Alexa Fluor 700-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "FITC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "FITC-A",
+          "direction": "under"
+        },
+        {
+          "primary": "APC-A",
+          "secondary": "PE-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-Cy7-A",
+          "secondary": "APC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-Cy7-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "APC-Cy7-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "APC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "BV510-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "BV786-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "FITC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "PE-A",
+          "direction": "over"
+        },
+        {
+          "primary": "Alexa Fluor 700-A",
+          "secondary": "PerCP-Cy5-5-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV510-A",
+          "secondary": "APC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV510-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV510-A",
+          "secondary": "Alexa Fluor 700-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV510-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV510-A",
+          "secondary": "BV786-A",
+          "direction": "under"
+        },
+        {
+          "primary": "BV605-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV605-A",
+          "secondary": "BV421-A",
+          "direction": "under"
+        },
+        {
+          "primary": "BV605-A",
+          "secondary": "BV786-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "APC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "under"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "Alexa Fluor 700-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "BV510-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "FITC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "PE-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "PE-Texas Red-A",
+          "direction": "over"
+        },
+        {
+          "primary": "BV786-A",
+          "secondary": "PerCP-Cy5-5-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "APC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "APC-Cy7-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "Alexa Fluor 700-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "BV421-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "BV510-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "BV605-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "FITC-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "FITC-A",
+          "direction": "under"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "PE-Texas Red-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "PE-Texas Red-A",
+          "direction": "under"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "PerCP-Cy5-5-A",
+          "direction": "over"
+        },
+        {
+          "primary": "PE-A",
+          "secondary": "PerCP-Cy5-5-A",
+          "direction": "under"
+        }
+      ]
+    }
+  }
+}

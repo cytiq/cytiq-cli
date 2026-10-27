@@ -125,6 +125,7 @@ Setup requires R and `uv` and creates an isolated environment in `parity/.env`:
 just parity-setup       # once: install upstream R/Python tools
 just parity             # synthetic datasets
 just parity-real        # real acquisitions
+just benchmark-spillqc  # what spillqc detects on real data (after parity-real)
 ```
 
 Results and known differences are in [`parity/REPORT.md`](parity/REPORT.md);

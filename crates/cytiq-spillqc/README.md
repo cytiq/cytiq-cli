@@ -110,6 +110,11 @@ evidence than one in a single file. Other statuses are `sporadic`, `pass` and
   than pinpointing it.
 - **Co-expression looks like under-compensation.** Dim co-expression below the
   S cut-off reads as positive SSI.
+- **Small errors go unnoticed on real data.** On a real 11-colour FACSCelesta
+  sample, single-coefficient errors of ±5–20% were flagged at most 11% of the
+  time, and ±50% about a quarter of the time. Precision was 0.07–0.29, and the
+  unchanged sample already drew flags on most pairs with both the lab and the
+  AutoSpill matrix. See [`parity/benchmark/`](../../parity/benchmark/README.md).
 
 ## Outputs
 

@@ -1,0 +1,206 @@
+schema_version: 4
+threshold: 0.5
+profile:
+  artifact_type: panel_profile
+  cofactor: 150.0
+  context:
+    cohort: nonmalignant_bone_marrow
+    organism: Homo sapiens
+    specimen: bone_marrow_aspirate
+    tissue: bone_marrow
+  features:
+  - channel: FS INT
+    fluorescence: false
+    labels: []
+    marker_id: FSC_A
+    name: FSC_A
+  - channel: SS INT
+    fluorescence: false
+    labels: []
+    marker_id: SSC_A
+    name: SSC_A
+  - channel: FL1 INT
+    fluorescence: true
+    labels:
+    - CD14-FITC
+    marker_id: CD14
+    name: CD14
+  - channel: FL2 INT
+    fluorescence: true
+    labels:
+    - CD19-PE
+    marker_id: CD19
+    name: CD19
+  - channel: FL3 INT
+    fluorescence: true
+    labels:
+    - CD13-ECD
+    marker_id: CD13
+    name: CD13
+  - channel: FL4 INT
+    fluorescence: true
+    labels:
+    - CD33-PC5.5
+    marker_id: CD33
+    name: CD33
+  - channel: FL5 INT
+    fluorescence: true
+    labels:
+    - CD34-PC7
+    marker_id: CD34
+    name: CD34
+  - channel: FL6 INT
+    fluorescence: true
+    labels:
+    - CD117-APC
+    marker_id: CD117
+    name: CD117
+  - channel: FL7 INT
+    fluorescence: true
+    labels:
+    - CD7-APC700
+    marker_id: CD7
+    name: CD7
+  - channel: FL8 INT
+    fluorescence: true
+    labels:
+    - CD16-APC750
+    marker_id: CD16
+    name: CD16
+  - channel: FL9 INT
+    fluorescence: true
+    labels:
+    - HLA-PB
+    marker_id: HLA-DR
+    name: HLA_DR
+  - channel: FL10 INT
+    fluorescence: true
+    labels:
+    - CD45-KO
+    marker_id: CD45
+    name: CD45
+  instrument: NAVIOS
+  panel: flowcyt_bm
+  recipe: cytiq-flowcyt-stored-v1
+  resolution_rules:
+  - evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    population: t_cells
+    required_features:
+    - CD14
+    - CD19
+    - CD13
+    - CD33
+    - CD34
+    - CD117
+    - CD7
+    - CD16
+    - HLA_DR
+    - CD45
+  - evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    population: b_cells
+    required_features:
+    - CD14
+    - CD19
+    - CD13
+    - CD33
+    - CD34
+    - CD117
+    - CD7
+    - CD16
+    - HLA_DR
+    - CD45
+  - evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    population: monocytes
+    required_features:
+    - CD14
+    - CD19
+    - CD13
+    - CD33
+    - CD34
+    - CD117
+    - CD7
+    - CD16
+    - HLA_DR
+    - CD45
+  - evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    population: mast_cells
+    required_features:
+    - CD14
+    - CD19
+    - CD13
+    - CD33
+    - CD34
+    - CD117
+    - CD7
+    - CD16
+    - HLA_DR
+    - CD45
+  - evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    population: hspc
+    required_features:
+    - CD14
+    - CD19
+    - CD13
+    - CD33
+    - CD34
+    - CD117
+    - CD7
+    - CD16
+    - HLA_DR
+    - CD45
+  schema_version: 2
+  version: 0.1.0
+run_id: multiclass-fixture
+vocabulary_sha256: ec7803b0311499549e68064473ba2bd144e45bfce0ec8d6b3f692e0f356a5aa7
+panel_sha256: b123c0dc2e69681a8e28cf91a81454494ff2136adcf47cd61b018b55c54967ac
+label_mapping_sha256: fc2bce8f18a9846054f9d0b584b9a552e9d158dc8ea82d55b412d79204878439
+task: population_identity
+task_kind: multiclass
+decision_rule: argmax
+unknown_policy: disabled
+model_kind: lightgbm
+classes:
+- t_cells
+- b_cells
+- monocytes
+- mast_cells
+- hspc
+- other
+input: features
+output: probabilities
+model_sha256: 4ba57a5b107d57154103891b0a7d4cc768ff2e27d2b40ce8a94c3a9f42d520cf
+parity:
+  status: ok
+  max_probability_error: 1.4143810256328493e-07
+  same_labels: true
+  events: 192
+  tolerance: 1.0e-05
+  cpu_seconds_per_1000: 0.0003472218746007153
+  float32_thresholds_corrected: 153
+normalization:
+  kind: none

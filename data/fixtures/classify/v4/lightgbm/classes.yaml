@@ -1,0 +1,79 @@
+artifact_type: class_vocabulary
+classes:
+- id: t_cells
+  index: 0
+  kind: population
+  parent: lymphocytes
+  residual_definition: null
+  state: null
+  target: t_cells
+- id: b_cells
+  index: 1
+  kind: population
+  parent: lymphocytes
+  residual_definition: null
+  state: null
+  target: b_cells
+- id: monocytes
+  index: 2
+  kind: population
+  parent: bone_marrow_cells
+  residual_definition: null
+  state: null
+  target: monocytes
+- id: mast_cells
+  index: 3
+  kind: population
+  parent: bone_marrow_cells
+  residual_definition: null
+  state: null
+  target: mast_cells
+- id: hspc
+  index: 4
+  kind: population
+  parent: bone_marrow_cells
+  residual_definition: null
+  state: null
+  target: hspc
+- id: other
+  index: 5
+  kind: residual
+  parent: bone_marrow_cells
+  residual_definition:
+    evidence:
+    - record_id: null
+      reference: https://arxiv.org/html/2403.00024v2#S2.SS1
+      snapshot_id: null
+      source: FlowCyt CHIL 2024
+      status: source_adopted
+    excluded_populations:
+    - t_cells
+    - b_cells
+    - monocytes
+    - mast_cells
+    - hspc
+    scope: bone_marrow_cells
+  state: null
+  target: flowcyt_remaining_events
+decision_rule: argmax
+hierarchy:
+  b_cells: lymphocytes
+  bone_marrow_cells: null
+  hspc: bone_marrow_cells
+  lymphocytes: bone_marrow_cells
+  mast_cells: bone_marrow_cells
+  monocytes: bone_marrow_cells
+  t_cells: lymphocytes
+panel_id: flowcyt_bm
+panel_sha256: b123c0dc2e69681a8e28cf91a81454494ff2136adcf47cd61b018b55c54967ac
+partition_complete: true
+projection_sha256: d60ec31e2ff4ba17d6f4e3bd8159cf57fa82b39125a7c466ae927f8aab6ec68e
+registry_sha256: d4bb34294bee4a6282d44bd4762ab61213cf43f5ab8dcaa265e2f565cf6cfca9
+schema_version: 2
+scope: bone_marrow_cells
+task: population_identity
+task_kind: multiclass
+tree_sha256: 9b6bddd29293df2df141d2fdd284b92046e320773e08499c009b4186d74ffc47
+tree_version: 0.1.0
+unknown_policy: disabled
+version: 0.1.0

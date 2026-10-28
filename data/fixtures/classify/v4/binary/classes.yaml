@@ -1,0 +1,38 @@
+artifact_type: class_vocabulary
+classes:
+- id: non_blast
+  index: 0
+  kind: phenotype
+  parent: null
+  residual_definition: null
+  state: false
+  target: blast
+- id: blast
+  index: 1
+  kind: phenotype
+  parent: null
+  residual_definition: null
+  state: true
+  target: blast
+decision_rule: binary_threshold
+hierarchy:
+  b_cells: lymphocytes
+  bone_marrow_cells: null
+  hspc: bone_marrow_cells
+  lymphocytes: bone_marrow_cells
+  mast_cells: bone_marrow_cells
+  monocytes: bone_marrow_cells
+  t_cells: lymphocytes
+panel_id: P1
+panel_sha256: 0dfacbfe6d1973ae2880286c05e0e36350741eac801340b2ac55448d2aa3c944
+partition_complete: true
+projection_sha256: f2edd531fbba48e80de8e82cc80dce03e6877dd33ee15f33c2a5e4047f92ec26
+registry_sha256: d4bb34294bee4a6282d44bd4762ab61213cf43f5ab8dcaa265e2f565cf6cfca9
+schema_version: 2
+scope: bone_marrow_cells
+task: blast
+task_kind: binary_phenotype
+tree_sha256: 0d5009ccbec7f08ebe14f427b441bdca104db93b4c6eebbcefec614f970550d8
+tree_version: 0.1.0
+unknown_policy: disabled
+version: 0.1.0

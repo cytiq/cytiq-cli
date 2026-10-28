@@ -1,6 +1,6 @@
 # cytiq-classify
 
-Panel-specific supervised classification using a Cytiq model bundle v1, v2 or v3 and CPU
+Panel-specific supervised classification using a Cytiq model bundle v1–v4 and CPU
 ONNX Runtime. `ClassifyRunner::run(&ClassifyConfig)` reads an FCS, checks marker
 labels and instrument, applies the declared preprocessing, and writes
 `predictions.parquet` plus `summary.json`. The CLI adds `provenance.json`.
@@ -107,3 +107,27 @@ their prior behavior on compatible unnormalized files. A v3 model must have been
 trained with its declared normalization; changing a manifest alone cannot make
 an old classifier scientifically compatible. The exporter in `cytiq-ml` must be
 updated separately, with subject-level splitting before normalizer training.
+
+## JSON/YAML bundle v4
+
+V4 accepts exactly one `.json`, `.yaml` or `.yml` file for each of `manifest`,
+`classes`, `panel` and `label-mapping`; mixed extensions are supported. The
+knowledge artifacts themselves remain schema v2. V1/v2/v3 retain their fixed
+JSON paths and byte-based integrity checks.
+
+V4 knowledge checksums use the exact canonical artifact JSON from `cytiq-tree`:
+Python `json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True,
+allow_nan=False) + '\n'`, encoded as UTF-8. Presentation, YAML aliases and field
+order do not affect identity. Model/normalizer hashes and provenance checksums
+continue to describe exact bytes. V4 requires explicit `normalization` under
+the same rules as v3; `kind: none` retains the unnormalized preprocessing path.
+
+YAML `yes/no/on/off` are strings, booleans use `true/false`, and numeric label
+keys require quotes. Duplicate/non-string keys, merge keys, unsupported tags,
+recursive aliases and non-finite values are rejected. Missing or ambiguous
+bundle files and mismatched checksums fail before inference/output creation.
+`input_files()` returns the actual selected paths for provenance.
+
+Golden serialization vectors and Python-exported v4 fixtures verify canonical
+SHA-256 and identical binary/multiclass predictions for YAML and JSON. The v4
+fixtures reuse the v2 ONNX weights during tests rather than duplicating models.

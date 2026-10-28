@@ -25,6 +25,17 @@ parity:
 parity-real:
     parity/real/run_real.sh
 
+# ---- Validate CytoNorm quantiles/splines and full clustering against pinned R
+[group('validation')]
+parity-cytonorm:
+    cargo build -p cytiq-cli --locked
+    R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm.R target/debug/cytiq
+
+# ---- Regenerate the independent R numerical fixtures for CytoNorm
+[group('validation')]
+parity-cytonorm-fixture:
+    R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm_numeric.R
+
 # ---- Benchmark spillqc detection on real data (needs `just parity-real` outputs)
 [group('validation')]
 benchmark-spillqc:

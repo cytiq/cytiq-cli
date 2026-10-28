@@ -1,6 +1,6 @@
 # cytiq-classify
 
-Panel-specific supervised classification using a Cytiq model bundle v1 or v2 and CPU
+Panel-specific supervised classification using a Cytiq model bundle v1, v2 or v3 and CPU
 ONNX Runtime. `ClassifyRunner::run(&ClassifyConfig)` reads an FCS, checks marker
 labels and instrument, applies the declared preprocessing, and writes
 `predictions.parquet` plus `summary.json`. The CLI adds `provenance.json`.
@@ -78,3 +78,32 @@ lineage definitions hold for AML/P1 or unrelated processed FCS files.
 `ClassifyRunner` retains one ONNX environment for the process, allowing repeated
 or concurrent library calls. Test both v1 and v2 with `cargo test -p cytiq-classify`
 and `cargo test -p cytiq-cli --test classify_cli`.
+
+## Normalization-aware bundle v3
+
+V3 inherits the vocabulary, panel, label-mapping and prediction columns of v2.
+The manifest must additionally declare one of:
+
+```json
+{"normalization": {"kind": "none"}}
+```
+
+```json
+{"normalization": {"kind": "cytonorm", "model_sha256": "<64 lowercase hex characters>"}}
+```
+
+The hash is SHA-256 of the exact CytoNorm `model.json`, whose payload hashes
+pin SOM, marker/transform contract and splines. It must equal the FCS
+`CYTIQ_NORMALIZATION.model_sha256`. Missing or mismatched normalization is
+rejected before inference or output creation. Existing panel, instrument,
+compensation and arcsinh recipe checks still apply; normalization does not
+enable cross-instrument classifier inference automatically. V3 output metadata
+and summary record this contract. Public `feature_columns` retains the legacy
+unnormalized contract; `feature_columns_with_normalization` accepts an explicit
+`NormalizationContract`.
+
+V1/v2 bundles and the stored FlowCyt recipe reject normalized FCS. They retain
+their prior behavior on compatible unnormalized files. A v3 model must have been
+trained with its declared normalization; changing a manifest alone cannot make
+an old classifier scientifically compatible. The exporter in `cytiq-ml` must be
+updated separately, with subject-level splitting before normalizer training.

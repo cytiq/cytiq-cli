@@ -32,6 +32,22 @@ cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD
 
 ## Signal state
 
+For batch normalization, train a panel-specific model from QC-filtered controls
+or comparable aggregates, then apply it before analysis:
+
+```bash
+cytiq cytonorm train --manifest batches.yaml --output cytonorm-model/
+cytiq cytonorm apply --input sample.peacoqc.fcs --model cytonorm-model/ \
+  --batch day2 --output sample.norm.fcs
+```
+
+Training masks belong to individual manifest entries. Apply preserves every
+input event and its lineage, so existing analysis masks remain valid. Acquisition
+QC, margin checks and raw-space gates run before normalization. Gates evaluated
+after normalization must be designed in the normalized value space. Classifier
+bundle v3 must pin the normalization model ID; v1/v2 reject normalized inputs.
+See the [manifest and QC contract](../cytiq-cytonorm/README.md).
+
 `compensate` writes log-amplified input (`$PnE` other than `0,0`) as linear
 values; `gate` and `clean` linearise it as they read. Stages that read stored
 values (`transform`, `peacoqc`, `flowsom`, `cytoscan`, `autospill` and
@@ -51,9 +67,17 @@ Each stage reads the `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` and
 | `clean` | raw scatter and viability channels | error |
 | `peacoqc` | compensated, transformed channels | warning |
 | `flowsom` | transformed channels | warning |
+| `flowsom apply` | saved marker and preprocessing contract | error on mismatch; never refits scale |
+| `cytonorm train/apply` | compatible panel and complete transformed, compensated/unmixed state | error on mismatch, repeated normalization or unknown batch |
+| `classify` v3 | explicitly declared normalization ID or `none`, plus the existing feature contract | error before inference on mismatch |
 | `gate` | what the Gating-ML dimensions say | error when a dimension would compensate or transform a channel again |
 
 Gating-ML strategies applied to `sample.t.fcs` must use `uncompensated`
 dimensions without `transformation-ref` on the compensated and transformed
 channels. Otherwise apply the strategy to the raw `sample.fcs`, which `cytiq
 gate` compensates and transforms itself.
+
+`CYTIQ_NORMALIZATION` records the normalizer and batch. `transform` rejects
+normalized input even with `--allow-retransform`. Normalized marker columns no
+longer have acquisition margin bounds; do not rerun acquisition margin filtering
+on them. Compensation/unmixing and the original transform metadata remain recorded.

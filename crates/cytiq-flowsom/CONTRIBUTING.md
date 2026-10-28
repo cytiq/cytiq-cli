@@ -6,6 +6,10 @@ this crate.
 
 ## Layout
 
+- `src/model.rs` (a child of `runner`) — versioned portable SOM, frozen-scale
+  inference, population statistics and independently implemented consensus.
+  The matrix API is shared by CytoNorm; do not re-estimate scale during apply.
+
 - `src/lib.rs` — crate docs (paper and upstream links) and re-exports only.
 - `src/runner.rs` — constants, config and result types, FCS loading, channel
   resolution, scaling, the deterministic LCG, SOM training, event assignment,

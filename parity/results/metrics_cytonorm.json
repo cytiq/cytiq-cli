@@ -1,0 +1,6 @@
+{
+  "CytoNorm": "2.0.12",
+  "conditional_max_absolute_error": 3.5527136788005009e-15,
+  "full_pipeline_min_ARI": 1,
+  "biological_shift_retained": 3.0009999999999999
+}

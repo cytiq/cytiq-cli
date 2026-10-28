@@ -1,6 +1,8 @@
 flowCore 2.22.1 
 flowWorkspace 4.22.1 
 FlowSOM 2.18.0 
+CytoNorm 2.0.12 (278f352d8edffd7a5d3e6b0b76c402d991a1e7a9)
+ConsensusClusterPlus 1.74.0
 PeacoQC 1.20.0 
 autospill 0.2.0 
 AutoSpectral 1.8.7 

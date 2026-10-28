@@ -67,6 +67,9 @@ struct Cli {
 #[derive(Debug, Serialize, Subcommand)]
 #[serde(untagged)]
 enum Commands {
+    /// Learn and apply population-specific batch normalization after transform.
+    #[command(subcommand)]
+    Cytonorm(CytoNormCommand),
     /// Estimate a spillover or compensation matrix from single-color controls.
     Autospill {
         /// Controls manifest CSV with `filename,dye`; primary channels are inferred from FCS metadata.
@@ -386,11 +389,14 @@ enum Commands {
     /// `CompensAID`'s Secondary Stain Index; flags need expert review.
     Spillqc(SpillqcArgs),
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
+    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
     Flowsom {
-        #[arg(long)]
-        input: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
+        #[command(subcommand)]
+        command: Option<FlowSomCommand>,
+        #[arg(long, required = true)]
+        input: Option<PathBuf>,
+        #[arg(long, required = true)]
+        output: Option<PathBuf>,
         /// Comma-separated channel names used for clustering.
         #[arg(long)]
         channels: Option<String>,
@@ -425,6 +431,102 @@ enum Commands {
         /// clustered. Repeat to combine several masks with AND.
         #[arg(long = "mask")]
         masks: Vec<PathBuf>,
+    },
+}
+
+#[derive(Debug, Serialize, Subcommand)]
+enum CytoNormCommand {
+    /// Train a normalization bundle on controls or comparable batch aggregates.
+    Train {
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Normalize every event with the fixed model of a trained batch.
+    Apply {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        batch: String,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        #[arg(long)]
+        debug_dir: Option<PathBuf>,
+        #[arg(long)]
+        overwrite: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, ValueEnum)]
+enum CliMetaclustering {
+    Average,
+    Consensus,
+}
+impl From<CliMetaclustering> for cytiq_flowsom::Metaclustering {
+    fn from(value: CliMetaclustering) -> Self {
+        match value {
+            CliMetaclustering::Average => Self::Average,
+            CliMetaclustering::Consensus => Self::Consensus,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Subcommand)]
+enum FlowSomCommand {
+    /// Save reusable SOM geometry, scaling and metacluster labels.
+    Train {
+        #[arg(long, required = true)]
+        input: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        channels: String,
+        #[arg(long, default_value_t = FLOWSOM_XDIM, value_parser = parse_positive_usize)]
+        xdim: usize,
+        #[arg(long, default_value_t = FLOWSOM_YDIM, value_parser = parse_positive_usize)]
+        ydim: usize,
+        #[arg(long, default_value_t = FLOWSOM_METACLUSTERS, value_parser = parse_positive_usize)]
+        metaclusters: usize,
+        #[arg(long, default_value_t = FLOWSOM_RANDOM_SEED)]
+        seed: u64,
+        #[arg(long)]
+        no_scale: bool,
+        #[arg(long, value_enum, default_value_t = CliMetaclustering::Average)]
+        metaclustering: CliMetaclustering,
+        #[arg(long, value_parser = parse_positive_usize)]
+        training_events: Option<usize>,
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// Assign events to a saved SOM without retraining or rescaling the sample.
+    Apply {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long = "mask")]
+        masks: Vec<PathBuf>,
+        #[arg(long, value_parser = parse_threads)]
+        threads: Option<usize>,
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 
@@ -1655,6 +1757,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             )
         }
         Commands::Flowsom {
+            command,
             input,
             output,
             channels,
@@ -1669,6 +1772,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             training_events,
             masks,
         } => {
+            if let Some(command) = command {
+                return run_flowsom_model(command, recorder);
+            }
+            let input = input.ok_or("flowsom requires --input")?;
+            let output = output.ok_or("flowsom requires --output")?;
             info!(
                 "starting flowsom: input={}, output={}",
                 input.display(),
@@ -1709,6 +1817,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &record_path_for_file(&output),
             )
         }
+        Commands::Cytonorm(command) => run_cytonorm(command, recorder),
     }
 }
 
@@ -1729,8 +1838,146 @@ const fn command_name(command: &Commands) -> &'static str {
         Commands::Compensate { .. } => "compensate",
         Commands::Clean(_) => "clean",
         Commands::Spillqc(_) => "spillqc",
-        Commands::Flowsom { .. } => "flowsom",
+        Commands::Flowsom {
+            command: Some(FlowSomCommand::Train { .. }),
+            ..
+        } => "flowsom train",
+        Commands::Flowsom {
+            command: Some(FlowSomCommand::Apply { .. }),
+            ..
+        } => "flowsom apply",
+        Commands::Flowsom { command: None, .. } => "flowsom",
+        Commands::Cytonorm(CytoNormCommand::Train { .. }) => "cytonorm train",
+        Commands::Cytonorm(CytoNormCommand::Apply { .. }) => "cytonorm apply",
     }
+}
+
+fn run_flowsom_model(
+    command: FlowSomCommand,
+    mut recorder: RunRecorder,
+) -> Result<(), Box<dyn std::error::Error>> {
+    recorder.set_constants(&FlowSomConstants::default());
+    recorder.set_algorithms(cytiq_flowsom::UPSTREAM);
+    match command {
+        FlowSomCommand::Train {
+            input,
+            output,
+            channels,
+            xdim,
+            ydim,
+            metaclusters,
+            seed,
+            no_scale,
+            metaclustering,
+            training_events,
+            masks,
+            threads,
+            overwrite,
+        } => {
+            recorder.snapshot_inputs("input", &input)?;
+            recorder.snapshot_inputs("mask", &masks)?;
+            let mut config = FlowSomConfig::new(parse_flowsom_channel_list(&channels)?);
+            config.xdim = xdim;
+            config.ydim = ydim;
+            config.metaclusters = metaclusters;
+            config.seed = seed;
+            config.scale = !no_scale;
+            config.training_events = training_events;
+            config.masks = masks;
+            config.threads = threads;
+            cytiq_flowsom::FlowSomModel::train_to_file(
+                &input,
+                &output,
+                &config,
+                metaclustering.into(),
+                overwrite,
+            )?;
+            record_provenance(
+                recorder,
+                std::slice::from_ref(&output),
+                &record_path_for_file(&output),
+            )
+        }
+        FlowSomCommand::Apply {
+            input,
+            model,
+            output,
+            masks,
+            threads,
+            overwrite,
+        } => {
+            recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
+            recorder.snapshot_inputs("model", std::slice::from_ref(&model))?;
+            recorder.snapshot_inputs("mask", &masks)?;
+            let events = cytiq_flowsom::FlowSomModel::apply_model_file(
+                &model, &input, &output, &masks, threads, overwrite,
+            )?;
+            info!("flowsom assigned {events} events with saved model");
+            record_provenance(
+                recorder,
+                std::slice::from_ref(&output),
+                &record_path_for_file(&output),
+            )
+        }
+    }
+}
+
+fn run_cytonorm(
+    command: CytoNormCommand,
+    mut recorder: RunRecorder,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cytiq_cytonorm::{ApplyConfig, CytoNormRunner, TrainConfig};
+    recorder.set_algorithms(cytiq_cytonorm::UPSTREAM);
+    recorder.set_constants(&FlowSomConstants::default());
+    let result = match command {
+        CytoNormCommand::Train {
+            manifest,
+            output,
+            threads,
+            debug_dir,
+            overwrite,
+        } => {
+            let design = cytiq_cytonorm::Manifest::load(&manifest)?;
+            recorder.set_config(&serde_json::json!({"manifest":design,"output":output,"threads":threads,"debug_dir":debug_dir,"overwrite":overwrite}));
+            recorder.snapshot_inputs("cohort_input", &CytoNormRunner::input_files(&manifest)?)?;
+            CytoNormRunner::train(&TrainConfig {
+                manifest,
+                output,
+                threads,
+                debug_dir,
+                overwrite,
+            })?
+        }
+        CytoNormCommand::Apply {
+            input,
+            model,
+            batch,
+            output,
+            threads,
+            debug_dir,
+            overwrite,
+        } => {
+            recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
+            recorder.snapshot_inputs(
+                "normalization_model",
+                &cytiq_cytonorm::CytoNormModel::input_files(&model),
+            )?;
+            CytoNormRunner::apply(&ApplyConfig {
+                input,
+                model,
+                batch,
+                output,
+                threads,
+                debug_dir,
+                overwrite,
+            })?
+        }
+    };
+    info!(
+        "cytonorm processed {} events; normalization model {}",
+        result.events, result.model_sha256
+    );
+    record_provenance(recorder, &result.outputs, &result.provenance)
 }
 
 /// What `build.rs` recorded about this binary.

@@ -99,6 +99,8 @@ write_fcs3_1_f32_with_options(
 | `raw_margin_pass` | Per-event pass flags for the raw detector limits of some channels (used before compensation and unmixing; the upper detector limit `$PnR - 1` only, unlike the `PeacoQC` rule in `MarginBounds::thresholds`, which also cuts the observed extremes and flowCore's low bound) |
 | `transform_state`, `compensation_state`, `unmixing_state`, `TransformState`, `CompensationState`, `UnmixingState`, `TRANSFORM_KEYWORD`, `COMPENSATION_KEYWORD`, `UNMIXING_KEYWORD`, `SOURCE_SPILLOVER_KEYWORD` | Signal state written by cytiq stages |
 | `SignalState` (`of`, `is_raw`, `transformed`, `compensated`, `unmixed`, `Display`) | Every recorded step at once, so stages check their input the same way |
+| `NormalizationState`, `normalization_state`, `NORMALIZATION_KEYWORD` | Validated `CYTIQ_NORMALIZATION` v1: model/panel SHA-256, batch and normalized channels |
+| `TransformContract::of` | Complete comparable transform method and parameters, requiring explicit selected-channel coverage |
 | `source_event_ids`, `ORIGINAL_ID_PARAMETER` | Raw-file rows of a derived file's events, from `Original_ID` |
 | `Error` (`FcsError`) | Error type for every failure mode |
 

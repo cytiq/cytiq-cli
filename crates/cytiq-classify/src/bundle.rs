@@ -8,8 +8,48 @@ use serde_json::Value;
 
 use crate::{ClassifyError, Profile};
 
+#[derive(Clone, Debug, Default, serde::Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NormalizationContract {
+    #[default]
+    None,
+    Cytonorm {
+        model_sha256: String,
+    },
+}
+
+impl NormalizationContract {
+    /// Check normalization independently of the feature recipe.
+    ///
+    /// # Errors
+    /// Rejects missing, unexpected or mismatched normalization state.
+    pub fn check(&self, dataset: &cytiq_fcs::FcsDataset) -> Result<(), ClassifyError> {
+        let state = cytiq_fcs::normalization_state(&dataset.text)?;
+        match (self, state) {
+            (Self::None, None) => Ok(()),
+            (Self::Cytonorm { model_sha256 }, Some(state))
+                if *model_sha256 == state.model_sha256
+                    && cytiq_fcs::TransformContract::of(&dataset.text, &state.channels).is_ok()
+                    && state.channels.iter().all(|channel| {
+                        dataset
+                            .parameters
+                            .iter()
+                            .filter(|p| p.name == *channel)
+                            .count()
+                            == 1
+                    }) =>
+            {
+                Ok(())
+            }
+            _ => Err(invalid("classifier normalization contract mismatch")),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Bundle {
+    #[serde(default)]
+    pub normalization: Option<NormalizationContract>,
     pub schema_version: u32,
     pub profile: Profile,
     #[serde(default = "default_threshold")]
@@ -56,8 +96,18 @@ impl Bundle {
         }
         match bundle.schema_version {
             1 if bundle.classes == ["non_blast", "blast"] => {}
-            2 => bundle.validate_v2(directory, &payload)?,
+            2 | 3 => bundle.validate_v2(directory, &payload)?,
             _ => return Err(invalid("unsupported bundle version/classes")),
+        }
+        match (bundle.schema_version, &bundle.normalization) {
+            (1 | 2, None) | (3, Some(NormalizationContract::None)) => {}
+            (3, Some(NormalizationContract::Cytonorm { model_sha256 }))
+                if cytiq_fcs::is_sha256(model_sha256) => {}
+            _ => {
+                return Err(invalid(
+                    "missing or unsupported classifier normalization contract",
+                ));
+            }
         }
         if bundle.multiclass() {
             if margin != 0.0 {
@@ -320,7 +370,7 @@ pub fn input_files(directory: &Path) -> Result<Vec<PathBuf>, ClassifyError> {
         directory.join("model.onnx"),
         directory.join("manifest.json"),
     ];
-    if payload["schema_version"] == 2 {
+    if matches!(payload["schema_version"].as_u64(), Some(2 | 3)) {
         paths.extend(
             ["classes.json", "panel.json", "label-mapping.json"].map(|name| directory.join(name)),
         );

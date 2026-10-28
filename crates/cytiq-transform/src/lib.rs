@@ -621,6 +621,18 @@ fn ensure_not_transformed(
     dataset: &FcsDataset,
     config: &TransformConfig,
 ) -> Result<(), TransformError> {
+    if cytiq_fcs::normalization_state(&dataset.text)
+        .map_err(|source| TransformError::FcsRead {
+            path: path.to_path_buf(),
+            source,
+        })?
+        .is_some()
+    {
+        return Err(TransformError::AlreadyTransformed {
+            path: path.to_path_buf(),
+            method: "cytonorm (cannot retransform normalized values)".to_owned(),
+        });
+    }
     let state =
         cytiq_fcs::transform_state(&dataset.text).map_err(|source| TransformError::FcsRead {
             path: path.to_path_buf(),

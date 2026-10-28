@@ -31,6 +31,20 @@ pub fn feature_columns(
     dataset: &FcsDataset,
     profile: &Profile,
 ) -> Result<Vec<Vec<f32>>, ClassifyError> {
+    feature_columns_with_normalization(dataset, profile, &crate::NormalizationContract::None)
+}
+
+/// Extract features only after verifying the training normalization contract.
+///
+/// # Errors
+/// Rejects incompatible normalization, panel, recipe or nonfinite values.
+#[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+pub fn feature_columns_with_normalization(
+    dataset: &FcsDataset,
+    profile: &Profile,
+    normalization: &crate::NormalizationContract,
+) -> Result<Vec<Vec<f32>>, ClassifyError> {
+    normalization.check(dataset)?;
     let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
     if !["cytiq-fcm-arcsinh-v1", "cytiq-flowcyt-stored-v1"].contains(&profile.recipe.as_str())
         || !profile.cofactor.is_finite()
@@ -84,6 +98,7 @@ pub fn feature_columns(
                 "CYTIQ_TRANSFORM",
                 "CYTIQ_SOURCE_SPILL",
                 "CYTIQ_UNMIXING",
+                "CYTIQ_NORMALIZATION",
             ]
             .iter()
             .any(|name| key.trim_start_matches('$').eq_ignore_ascii_case(name))

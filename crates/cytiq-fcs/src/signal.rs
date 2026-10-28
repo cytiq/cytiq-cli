@@ -12,6 +12,109 @@ pub const TRANSFORM_KEYWORD: &str = "CYTIQ_TRANSFORM";
 pub const UNMIXING_KEYWORD: &str = "CYTIQ_UNMIXING";
 /// Written by `cytiq compensate`; its JSON value is a [`CompensationState`].
 pub const COMPENSATION_KEYWORD: &str = "CYTIQ_COMPENSATION";
+/// Population-specific batch normalization, applied after transformation.
+pub const NORMALIZATION_KEYWORD: &str = "CYTIQ_NORMALIZATION";
+
+/// Portable identity of the normalizer that produced the stored values.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NormalizationState {
+    pub schema_version: u32,
+    pub model_sha256: String,
+    pub batch: String,
+    pub panel_sha256: String,
+    pub channels: Vec<String>,
+}
+
+/// Read and validate the normalization keyword.
+///
+/// # Errors
+/// Rejects malformed states, unknown versions and invalid checksums.
+pub fn normalization_state(text: &FcsText) -> Result<Option<NormalizationState>, FcsError> {
+    let Some(value) = text.get(NORMALIZATION_KEYWORD) else {
+        return Ok(None);
+    };
+    let invalid = || FcsError::InvalidKeywordValue {
+        key: NORMALIZATION_KEYWORD.to_owned(),
+        value: value.to_owned(),
+    };
+    let state: NormalizationState = serde_json::from_str(value).map_err(|_| invalid())?;
+    let unique: std::collections::HashSet<_> = state.channels.iter().collect();
+    if state.schema_version != 1
+        || !crate::is_sha256(&state.model_sha256)
+        || !crate::is_sha256(&state.panel_sha256)
+        || state.batch.trim().is_empty()
+        || state.channels.is_empty()
+        || unique.len() != state.channels.len()
+        || state.channels.iter().any(|c| c.trim().is_empty())
+    {
+        return Err(invalid());
+    }
+    Ok(Some(state))
+}
+
+/// Comparable transformation settings without paths, metrics or timestamps.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransformContract {
+    pub method: String,
+    pub parameters: serde_json::Value,
+}
+
+impl TransformContract {
+    /// Require complete Cytiq transform metadata covering every selected channel.
+    ///
+    /// # Errors
+    /// Rejects absent, incomplete or unsupported transformation metadata.
+    pub fn of(text: &FcsText, channels: &[String]) -> Result<Self, FcsError> {
+        let value = text.get(TRANSFORM_KEYWORD).unwrap_or_default();
+        let invalid = || FcsError::InvalidKeywordValue {
+            key: TRANSFORM_KEYWORD.to_owned(),
+            value: value.to_owned(),
+        };
+        let state = transform_state(text)?.ok_or_else(invalid)?;
+        if channels.iter().any(|c| !state.covers(c)) {
+            return Err(invalid());
+        }
+        let doc: serde_json::Value = serde_json::from_str(value).map_err(|_| invalid())?;
+        let parameters = doc.get("parameters").cloned().ok_or_else(invalid)?;
+        let (settings, names): (&serde_json::Value, &[&str]) = match state.method.as_str() {
+            "arcsinh" => (&parameters, &["cofactor"]),
+            "logicle" => (&parameters["logicle"], &["t", "m", "w", "a"]),
+            "hyperlog" => (&parameters["hyperlog"], &["t", "m", "w", "a"]),
+            "biexponential" => (
+                &parameters["biexponential"],
+                &["length", "max_range", "pos", "neg", "width"],
+            ),
+            _ => return Err(invalid()),
+        };
+        if names
+            .iter()
+            .any(|n| !settings[*n].as_f64().is_some_and(f64::is_finite))
+            || (state.method == "arcsinh" && settings["cofactor"].as_f64().unwrap_or(0.0) <= 0.0)
+        {
+            return Err(invalid());
+        }
+        let fields: serde_json::Map<String, serde_json::Value> = names
+            .iter()
+            .map(|name| {
+                Ok((
+                    (*name).to_owned(),
+                    serde_json::Value::from(settings[*name].as_f64().ok_or_else(invalid)?),
+                ))
+            })
+            .collect::<Result<_, FcsError>>()?;
+        let parameters = if state.method == "arcsinh" {
+            serde_json::Value::Object(fields)
+        } else {
+            serde_json::json!({state.method.clone(): fields})
+        };
+        Ok(Self {
+            method: state.method,
+            parameters,
+        })
+    }
+}
 /// The source spillover matrix of a transformed or compensated file. It no
 /// longer applies to the stored values, so it is kept under a non-standard
 /// keyword.
@@ -157,6 +260,7 @@ pub fn unmixing_state(text: &FcsText) -> Result<Option<UnmixingState>, FcsError>
 /// check their input the same way.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SignalState {
+    pub normalization: Option<NormalizationState>,
     pub transform: Option<TransformState>,
     pub compensation: Option<CompensationState>,
     pub unmixing: Option<UnmixingState>,
@@ -173,6 +277,7 @@ impl SignalState {
     /// Returns an error when a signal keyword is present but cannot be parsed.
     pub fn of(text: &FcsText) -> Result<Self, FcsError> {
         Ok(Self {
+            normalization: normalization_state(text)?,
             transform: transform_state(text)?,
             compensation: compensation_state(text)?,
             unmixing: unmixing_state(text)?,
@@ -183,7 +288,10 @@ impl SignalState {
     /// No cytiq stage changed the stored values.
     #[must_use]
     pub const fn is_raw(&self) -> bool {
-        self.transform.is_none() && self.compensation.is_none() && self.unmixing.is_none()
+        self.transform.is_none()
+            && self.compensation.is_none()
+            && self.unmixing.is_none()
+            && self.normalization.is_none()
     }
 
     /// Whether `channel` holds transformed values. Files from older cytiq
@@ -216,6 +324,9 @@ impl SignalState {
 impl std::fmt::Display for SignalState {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut steps = Vec::new();
+        if self.normalization.is_some() {
+            steps.push("normalized by `cytiq cytonorm`".to_owned());
+        }
         if self.compensation.is_some() {
             steps.push("compensated by `cytiq compensate`".to_owned());
         }
@@ -270,6 +381,47 @@ mod tests {
         assert!(state.is_raw());
         assert!(!state.source_spillover);
         assert_eq!(state.to_string(), "raw");
+    }
+
+    #[test]
+    fn normalization_requires_valid_identity_and_is_never_raw() {
+        let value = serde_json::json!({"schema_version":1,"model_sha256":"ab".repeat(32),"panel_sha256":"cd".repeat(32),"batch":"day1","channels":["FL1-A"]});
+        let state = SignalState::of(&text(&[(NORMALIZATION_KEYWORD, &value.to_string())])).unwrap();
+        assert!(!state.is_raw());
+        assert!(state.to_string().contains("normalized"));
+        for mutation in [serde_json::json!(2), serde_json::json!("bad")] {
+            let mut invalid = value.clone();
+            if mutation.is_number() {
+                invalid["schema_version"] = mutation;
+            } else {
+                invalid["model_sha256"] = mutation;
+            }
+            assert!(
+                normalization_state(&text(&[(NORMALIZATION_KEYWORD, &invalid.to_string())]))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn complete_transform_contract_rejects_missing_parameters_or_channel_coverage() {
+        let valid = r#"{"method":"arcsinh","parameters":{"cofactor":150.0},"files":[{"channels":["FL1-A"]}]}"#;
+        let selected = vec!["FL1-A".to_owned()];
+        assert!(TransformContract::of(&text(&[(TRANSFORM_KEYWORD, valid)]), &selected).is_ok());
+        assert!(
+            TransformContract::of(
+                &text(&[(
+                    TRANSFORM_KEYWORD,
+                    r#"{"method":"arcsinh","files":[{"channels":["FL1-A"]}]}"#
+                )]),
+                &selected
+            )
+            .is_err()
+        );
+        assert!(
+            TransformContract::of(&text(&[(TRANSFORM_KEYWORD, valid)]), &["FL2-A".to_owned()])
+                .is_err()
+        );
     }
 
     #[test]

@@ -157,6 +157,12 @@ pub fn dataset_margin_bounds(
 
     Ok(parameters
         .iter()
+        .filter(|p| {
+            !state
+                .normalization
+                .as_ref()
+                .is_some_and(|n| n.channels.contains(&p.name))
+        })
         .filter_map(|parameter| {
             let bounds = recorded.get(&parameter.name).copied().or_else(|| {
                 (!transformed(&parameter.name)).then(|| MarginBounds::from_raw_parameter(parameter))
@@ -182,6 +188,12 @@ pub fn dataset_margin_bounds(
 ///
 /// Panics when an index is out of range.
 pub fn raw_margin_pass(dataset: &FcsDataset, indices: &[usize]) -> Result<Vec<bool>, FcsError> {
+    if crate::normalization_state(&dataset.text)?.is_some() {
+        return Err(FcsError::InvalidKeywordValue {
+            key: crate::NORMALIZATION_KEYWORD.to_owned(),
+            value: "acquisition margins must be evaluated before normalization".to_owned(),
+        });
+    }
     let bounds = dataset_margin_bounds(&dataset.text, &dataset.parameters)?;
     let mut pass = vec![true; dataset.event_count()];
     for index in indices {

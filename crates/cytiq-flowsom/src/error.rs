@@ -4,6 +4,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum FlowSomError {
+    #[error("model I/O: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid model JSON: {0}")]
+    ModelJson(#[from] serde_json::Error),
     #[error("FCS input file `{path}` does not exist")]
     MissingInputFile { path: PathBuf },
     #[error("failed to read FCS input `{path}`: {source}")]

@@ -10,6 +10,7 @@
 mod error;
 mod export;
 mod runner;
+pub use runner::{FlowSomModel, Metaclustering, PopulationStatistics};
 
 pub use crate::error::FlowSomError;
 pub use crate::runner::{

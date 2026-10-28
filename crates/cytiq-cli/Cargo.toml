@@ -8,6 +8,7 @@ name = "cytiq"
 path = "src/main.rs"
 
 [dependencies]
+cytiq-cytonorm = { path = "../cytiq-cytonorm" }
 cytiq-classify = { path = "../cytiq-classify" }
 clap = { version = "4.5.38", features = ["derive"] }
 cytiq-autospectral = { path = "../cytiq-autospectral" }

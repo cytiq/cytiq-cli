@@ -588,6 +588,7 @@ dependencies = [
  "cytiq-classify",
  "cytiq-clean",
  "cytiq-compensate",
+ "cytiq-cytonorm",
  "cytiq-cytoscan",
  "cytiq-fcs",
  "cytiq-flowsom",
@@ -616,6 +617,29 @@ dependencies = [
  "cytiq-fcs",
  "cytiq-mask",
  "log",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-cytonorm"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "cytiq-density",
+ "cytiq-fcs",
+ "cytiq-flowsom",
+ "cytiq-mask",
+ "cytiq-provenance",
+ "cytiq-transform",
+ "log",
+ "parquet",
+ "plotly",
+ "rayon",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
@@ -663,6 +687,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 

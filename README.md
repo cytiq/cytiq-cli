@@ -1,7 +1,7 @@
 # cytiq
 
 Rust workspace for flow-cytometry tooling: FCS I/O, compensation and spectral
-unmixing, event filtering, quality control, gating, clustering and classification.
+unmixing, event filtering, quality control, batch normalization, gating, clustering and classification.
 
 ## Pipeline
 
@@ -40,6 +40,7 @@ flowchart TB
     end
 
     qc["qc (panel policy)<br/>cytiq-qc"]
+    cytonorm["cytonorm train / apply<br/>cytiq-cytonorm"]
 
     subgraph analysis["Analysis"]
         direction LR
@@ -74,6 +75,8 @@ flowchart TB
     combine -.->|"analysis mask"| qc
     combine -.->|"analysis mask"| analysis
     transform -->|"t.fcs"| analysis
+    peacoqc -->|"QC-filtered transformed FCS"| cytonorm
+    cytonorm -->|"norm.fcs + pinned model ID"| analysis
 ```
 
 See the [pipeline guide](crates/cytiq-cli/PIPELINE.md) for a complete command

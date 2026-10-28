@@ -26,6 +26,8 @@ chain and signal-state checks.
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean/README.md) | Debris, doublet and dead-cell removal as per-event masks |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc/README.md) | Peak-based acquisition quality control |
 | `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | FlowSOM-style clustering |
+| `cytiq flowsom train/apply` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | Persist and reuse SOM models, with optional consensus metaclustering |
+| `cytiq cytonorm train/apply` | [`cytiq-cytonorm`](../cytiq-cytonorm/README.md) | Panel-specific batch normalization, controls/aggregates and QC |
 | `cytiq meta` | [`cytiq-meta`](../cytiq-meta/README.md) | FCS metadata export as JSON |
 
 `cytiq <command> --help` lists every flag with its default.

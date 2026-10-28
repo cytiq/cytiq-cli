@@ -1,5 +1,9 @@
 # cytiq-transform
 
+Inputs carrying `CYTIQ_NORMALIZATION` are rejected, including when
+`--allow-retransform` is set: retransforming them would invalidate the pinned
+normalization contract. Normalize only after the final signal transform.
+
 Applies analysis-ready signal transformations (arcsinh, logicle, hyperlog,
 FlowJo biexponential) to the channels of one or more FCS files and writes new
 FCS 3.1 files. Backs the `cytiq transform` command.

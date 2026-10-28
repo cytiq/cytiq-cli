@@ -18,6 +18,10 @@ use serde::Serialize;
 use crate::error::FlowSomError;
 use crate::export::{write_assignments_csv, write_debug_artifacts};
 
+#[path = "model.rs"]
+mod model;
+pub use model::{FlowSomModel, Metaclustering, PopulationStatistics};
+
 pub const FLOWSOM_XDIM: usize = 10;
 pub const FLOWSOM_YDIM: usize = 10;
 pub const FLOWSOM_METACLUSTERS: usize = 20;
@@ -147,7 +151,7 @@ pub struct FlowSomMetrics {
     pub empty_nodes: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub struct FlowSomScaleSummary {
     pub channel: String,
     pub mean: f64,
@@ -376,6 +380,11 @@ fn with_thread_pool<T: Send>(
     let Some(threads) = threads else {
         return operation();
     };
+    if threads == 0 {
+        return Err(FlowSomError::InvalidConfig(
+            "threads must be positive".to_owned(),
+        ));
+    }
 
     debug!("using local rayon thread pool with {threads} threads");
     ThreadPoolBuilder::new()
@@ -413,7 +422,10 @@ fn validate_config(config: &FlowSomConfig) -> Result<(), FlowSomError> {
     if config.xdim == 0 || config.ydim == 0 {
         return invalid("--xdim and --ydim must be at least 1".to_owned());
     }
-    let nodes = config.xdim * config.ydim;
+    let nodes = config
+        .xdim
+        .checked_mul(config.ydim)
+        .ok_or_else(|| FlowSomError::InvalidConfig("SOM grid overflow".to_owned()))?;
     if config.metaclusters == 0 || config.metaclusters > nodes {
         return invalid(format!(
             "--metaclusters must be between 1 and the {nodes} SOM nodes"

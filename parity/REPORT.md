@@ -784,3 +784,37 @@ timing wrappers read both BSD (macOS) and GNU `time`. `setup_env.sh`
 autospill, AutoSpectral, CytoScan and CompensAID, and the Python packages
 (`parity/requirements.txt`); CRAN packages come from `PARITY_CRAN`, and the
 installed versions are recorded in `versions.txt`.
+
+## 6. CytoNorm integration (2026-10-28)
+
+`cytiq-cytonorm` independently implements population-specific quantile mappings
+and monotone Hermite interpolation, with persisted FlowSOM and consensus
+metaclustering. The separate GPL R reference is CytoNorm 2.0.12 at
+`278f352d8edffd7a5d3e6b0b76c402d991a1e7a9`, with FlowSOM 2.18.0 and
+ConsensusClusterPlus 1.74.0. No upstream implementation source is copied into
+the Rust crate. The existing FlowSOM command retains its default average linkage.
+
+`just parity-cytonorm` generates two training and two independent validation
+FCS files with three populations, two backbone markers, a batch shift and a
+biological shift on a marker excluded from clustering. It forces upstream
+recomputation instead of reusing an old RDS model. Fixed-assignment tests isolate
+the normalization from RNG differences; full-model comparison checks population
+labels with ARI rather than equating stochastic node IDs.
+
+| Check | Result | Acceptance |
+| --- | --- | --- |
+| Quantiles/splines, same assignments, all train/validation events | max absolute difference `3.55e-15` | `<= 1e-9` |
+| Independent Rust/R SOM and consensus, all four files | minimum ARI `1.0` | `>= 0.95` on this synthetic cohort |
+| Held-out biological shift retained | `3.001` transformed units (injected 3 plus 0.001 validation offset) | `>= 2.7` |
+| Rust workflow tests | technical quantile W1 reduced by more than 80%; 0.2% population retained with 120 reference events per batch | explicit synthetic assertions |
+
+CI uses committed R numerical outputs from `parity/cytonorm_numeric.R` for
+type-7 quantiles, ties, flat/negative knots, extrapolation and consensus with
+identical codebook/resampling schedules. Regeneration is explicit via
+`just parity-cytonorm-fixture`, never a way to make Rust changes pass.
+
+These checks do not establish clinical transferability between arbitrary panels
+or instruments. Aggregate mode assumes comparable biology. QC reports occupancy,
+CV, identity fallback, extrapolation and a quantile approximation to 1-D EMD;
+that reported approximation is not upstream's histogram `emdEvaluation` score.
+Classifier v3 pins the exact normalizer; v1/v2 reject normalized inputs.

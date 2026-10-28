@@ -14,8 +14,8 @@ use ort::{session::Session, value::Tensor};
 use parquet::arrow::ArrowWriter;
 use serde::Serialize;
 
-pub use bundle::{Bundle, input_files};
-pub use features::{Feature, Profile, feature_columns};
+pub use bundle::{Bundle, NormalizationContract, input_files};
+pub use features::{Feature, Profile, feature_columns, feature_columns_with_normalization};
 
 pub const DEFAULT_BATCH_SIZE: usize = 65_536;
 pub const UPSTREAM: &[(&str, &str)] = &[("ONNX Runtime", "1.31.0")];
@@ -54,6 +54,8 @@ pub struct ClassifyConfig {
 
 #[derive(Debug, Serialize)]
 pub struct ClassifyRunResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub normalization: Option<NormalizationContract>,
     pub schema_version: u32,
     pub acquisition_sha256: String,
     pub model_sha256: String,
@@ -117,7 +119,14 @@ impl ClassifyRunner {
             .unwrap_or_else(|| vec![true; dataset.event_count()]);
         let source = cytiq_fcs::source_event_ids(&dataset)?
             .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
-        let columns = feature_columns(&dataset, &bundle.profile)?;
+        let columns = feature_columns_with_normalization(
+            &dataset,
+            &bundle.profile,
+            bundle
+                .normalization
+                .as_ref()
+                .unwrap_or(&NormalizationContract::None),
+        )?;
         let environment = runtime_environment()?;
         let mut builder = Session::builder(environment)?;
         if let Some(threads) = config.threads {
@@ -156,6 +165,12 @@ impl ClassifyRunner {
                 serde_json::to_string(&bundle.classes)?,
             );
         }
+        if let Some(contract) = &bundle.normalization {
+            metadata.insert(
+                "cytiq.classify.normalization".into(),
+                serde_json::to_string(contract)?,
+            );
+        }
         let schema = Arc::new(Schema::new_with_metadata(fields, metadata));
         fs::create_dir_all(&config.output)?;
         let temp = tempfile::tempdir_in(&config.output)?;
@@ -165,6 +180,7 @@ impl ClassifyRunner {
             None,
         )?;
         let mut result = ClassifyRunResult {
+            normalization: bundle.normalization.clone(),
             schema_version: bundle.schema_version,
             acquisition_sha256: acquisition,
             model_sha256: bundle.model_sha256.clone(),
@@ -179,7 +195,7 @@ impl ClassifyRunner {
             unknown_fraction: None,
             threshold: bundle.threshold,
             abstain_margin: config.abstain_margin,
-            class_counts: (bundle.schema_version == 2)
+            class_counts: (bundle.schema_version >= 2)
                 .then(|| bundle.classes.iter().map(|c| (c.clone(), 0)).collect()),
             class_fractions: None,
             vocabulary_sha256: bundle.vocabulary_sha256.clone(),

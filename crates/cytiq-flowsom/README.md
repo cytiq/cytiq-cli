@@ -1,6 +1,6 @@
 # cytiq-flowsom
 
-Deterministic FlowSOM-style clustering of the events of one FCS file. Backs the
+Deterministic FlowSOM-style clustering of FCS events, including persisted models for cohort inference. Backs the
 `cytiq flowsom` command.
 
 - Paper: <https://doi.org/10.1002/cyto.a.22625>
@@ -8,6 +8,30 @@ Deterministic FlowSOM-style clustering of the events of one FCS file. Backs the
   FlowSOM 2.18.0, checked against `src/som.c`)
 
 ## Pipeline
+
+For persisted models, use:
+
+```bash
+cytiq flowsom train --input control1.t.fcs --input control2.t.fcs \
+  --channels CD3,CD4,CD8 --output som.json --metaclustering consensus
+cytiq flowsom apply --input sample.t.fcs --model som.json --output assignments.csv
+```
+
+`FlowSomModel::{train,train_files,train_to_file,assign,populations,save,load,apply_file}`
+exposes row-major training, inference and population statistics. Model schema 1
+stores channel order and reagent labels, grid, codebook, training mean/SD, node-to-metacluster labels,
+seed, training count and preprocessing contract. Assign returns one-based
+`(node, metacluster)` pairs and never rescales a new sample independently.
+Models are JSON and validated after loading. File workflows check transform
+settings and any upstream normalization ID. Training masks currently require a
+single input acquisition; CytoNorm manifests support per-file masks for cohorts.
+Existing outputs require `--overwrite` in the new model commands.
+
+`Metaclustering::Consensus` uses 100 deterministic 90% node subsamples, all
+features, Euclidean distance and average linkage inside and after resampling.
+Its RNG stream is independent of SOM training. This mode does not reproduce R's
+RNG sequence. The legacy command and `FlowSomRunner::run` retain their previous
+defaults, assignment schema and behavior.
 
 1. Read one FCS file and select channels (`$PnN`, then `$PnS`, then
    `"$PnN [$PnS]"`). Values are used as stored: no compensation or transform

@@ -1,6 +1,7 @@
 //! Supervised FCS event classification using a portable model bundle.
 mod bundle;
 mod features;
+mod serialization;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};

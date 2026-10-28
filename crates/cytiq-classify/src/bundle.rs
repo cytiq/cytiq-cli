@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::serialization;
 use crate::{ClassifyError, Profile};
 
 #[derive(Clone, Debug, Default, serde::Serialize, Deserialize)]
@@ -89,19 +90,19 @@ impl Bundle {
     /// # Errors
     /// Returns an error for unreadable, corrupt or incompatible portable files.
     pub fn load(directory: &Path, margin: f32) -> Result<Self, ClassifyError> {
-        let payload: Value = serde_json::from_reader(File::open(directory.join("manifest.json"))?)?;
+        let (_, payload) = manifest(directory)?;
         let bundle: Self = serde_json::from_value(payload.clone())?;
         if bundle.input != "features" || bundle.output != "probabilities" {
             return Err(invalid("unsupported ONNX interface"));
         }
         match bundle.schema_version {
             1 if bundle.classes == ["non_blast", "blast"] => {}
-            2 | 3 => bundle.validate_v2(directory, &payload)?,
+            2..=4 => bundle.validate_v2(directory, &payload)?,
             _ => return Err(invalid("unsupported bundle version/classes")),
         }
         match (bundle.schema_version, &bundle.normalization) {
-            (1 | 2, None) | (3, Some(NormalizationContract::None)) => {}
-            (3, Some(NormalizationContract::Cytonorm { model_sha256 }))
+            (1 | 2, None) | (3 | 4, Some(NormalizationContract::None)) => {}
+            (3 | 4, Some(NormalizationContract::Cytonorm { model_sha256 }))
                 if cytiq_fcs::is_sha256(model_sha256) => {}
             _ => {
                 return Err(invalid(
@@ -130,21 +131,16 @@ impl Bundle {
     }
 
     fn validate_v2(&self, directory: &Path, payload: &Value) -> Result<(), ClassifyError> {
-        verify_hash(
-            &directory.join("classes.json"),
-            self.vocabulary_sha256.as_deref(),
-        )?;
-        verify_hash(&directory.join("panel.json"), self.panel_sha256.as_deref())?;
-        verify_hash(
-            &directory.join("label-mapping.json"),
+        let vocabulary_payload =
+            self.knowledge(directory, "classes", self.vocabulary_sha256.as_deref())?;
+        let panel = self.knowledge(directory, "panel", self.panel_sha256.as_deref())?;
+        let mapping = self.knowledge(
+            directory,
+            "label-mapping",
             self.label_mapping_sha256.as_deref(),
         )?;
-        let vocabulary: Vocabulary =
-            serde_json::from_reader(File::open(directory.join("classes.json"))?)?;
+        let vocabulary: Vocabulary = serde_json::from_value(vocabulary_payload)?;
         vocabulary.validate()?;
-        let panel: Value = serde_json::from_reader(File::open(directory.join("panel.json"))?)?;
-        let mapping: Value =
-            serde_json::from_reader(File::open(directory.join("label-mapping.json"))?)?;
         let ids: Vec<_> = vocabulary.classes.iter().map(|c| c.id.clone()).collect();
         if self.classes != ids
             || self.task.as_deref() != Some(&vocabulary.task)
@@ -162,6 +158,40 @@ impl Bundle {
         validate_mapping(&mapping, &self.classes)?;
         Ok(())
     }
+
+    fn knowledge(
+        &self,
+        directory: &Path,
+        stem: &str,
+        expected: Option<&str>,
+    ) -> Result<Value, ClassifyError> {
+        if self.schema_version != 4 {
+            let path = directory.join(format!("{stem}.json"));
+            verify_hash(&path, expected)?;
+            return Ok(serde_json::from_reader(File::open(path)?)?);
+        }
+        let payload = serialization::read(&serialization::resolve(directory, stem)?)?;
+        if Some(serialization::digest(&payload).as_str()) != expected {
+            return Err(invalid("knowledge checksum mismatch"));
+        }
+        Ok(payload)
+    }
+}
+
+fn manifest(directory: &Path) -> Result<(PathBuf, Value), ClassifyError> {
+    let json = directory.join("manifest.json");
+    let path = if json.exists() {
+        json
+    } else {
+        serialization::resolve(directory, "manifest")?
+    };
+    let payload = serialization::read(&path)?;
+    if payload["schema_version"] == 4 {
+        serialization::resolve(directory, "manifest")?;
+    } else if path.extension().is_none_or(|extension| extension != "json") {
+        return Err(invalid("YAML bundles require schema_version 4"));
+    }
+    Ok((path, payload))
 }
 
 fn validate_mapping(mapping: &Value, classes: &[String]) -> Result<(), ClassifyError> {
@@ -365,15 +395,16 @@ impl Vocabulary {
 /// # Errors
 /// Returns an error when the bundle manifest cannot be read.
 pub fn input_files(directory: &Path) -> Result<Vec<PathBuf>, ClassifyError> {
-    let payload: Value = serde_json::from_reader(File::open(directory.join("manifest.json"))?)?;
-    let mut paths = vec![
-        directory.join("model.onnx"),
-        directory.join("manifest.json"),
-    ];
+    let (manifest_path, payload) = manifest(directory)?;
+    let mut paths = vec![directory.join("model.onnx"), manifest_path];
     if matches!(payload["schema_version"].as_u64(), Some(2 | 3)) {
         paths.extend(
             ["classes.json", "panel.json", "label-mapping.json"].map(|name| directory.join(name)),
         );
+    } else if payload["schema_version"] == 4 {
+        for stem in ["classes", "panel", "label-mapping"] {
+            paths.push(serialization::resolve(directory, stem)?);
+        }
     }
     Ok(paths)
 }

@@ -107,7 +107,7 @@ Requires stable Rust (edition 2024), Cargo, `rustfmt`, Clippy and `just`.
 Linux builds also need a C++ toolchain such as `g++`. The first build needs
 HTTPS access to download ONNX Runtime; it is linked statically into `cytiq`.
 See [classification build details](crates/cytiq-classify/README.md).
-Classification accepts legacy binary bundles and v2 vocabulary-aware multiclass
+Classification accepts legacy binary bundles and v2–v4 vocabulary-aware multiclass
 bundles, including a profile for stored FlowCyt author exports.
 
 ```bash

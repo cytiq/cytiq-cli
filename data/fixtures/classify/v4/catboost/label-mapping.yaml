@@ -1,0 +1,15 @@
+artifact_type: label_mapping
+dataset: flowcyt
+dataset_version: CHIL2024
+ignored_labels: []
+labels:
+  '0': t_cells
+  '1': b_cells
+  '2': monocytes
+  '3': mast_cells
+  '4': hspc
+  '5': other
+schema_version: 2
+task: population_identity
+version: 0.1.0
+vocabulary_sha256: ec7803b0311499549e68064473ba2bd144e45bfce0ec8d6b3f692e0f356a5aa7

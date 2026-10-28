@@ -1,0 +1,11 @@
+artifact_type: label_mapping
+dataset: BLAST110
+dataset_version: '11046402'
+ignored_labels: []
+labels:
+  '0': non_blast
+  '1': blast
+schema_version: 2
+task: blast
+version: 0.1.0
+vocabulary_sha256: bb6d88e0239d72308062b2e92edbaba9417b31f33439203e7ed6e9af7f2acff2

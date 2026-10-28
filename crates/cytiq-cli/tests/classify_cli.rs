@@ -45,6 +45,43 @@ fn probabilities(output: &Path) -> Vec<Option<f32>> {
 }
 
 #[test]
+fn yaml_v4_records_actual_knowledge_paths_in_provenance() {
+    let temp = tempfile::tempdir().unwrap();
+    let model = temp.path().join("bundle");
+    std::fs::create_dir(&model).unwrap();
+    std::fs::copy(
+        fixtures().join("v2/binary/model.onnx"),
+        model.join("model.onnx"),
+    )
+    .unwrap();
+    for stem in ["manifest", "classes", "panel", "label-mapping"] {
+        std::fs::copy(
+            fixtures().join(format!("v4/binary/{stem}.yaml")),
+            model.join(format!("{stem}.yaml")),
+        )
+        .unwrap();
+    }
+    let output = temp.path().join("output");
+    let result = run(
+        &fixtures().join("raw.fcs"),
+        &model,
+        &output,
+        &["--threads", "1"],
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(probabilities(&output).len(), 128);
+    let provenance = std::fs::read_to_string(output.join("provenance.json")).unwrap();
+    for stem in ["manifest", "classes", "panel", "label-mapping"] {
+        assert!(provenance.contains(&format!("{stem}.yaml")));
+        assert!(!provenance.contains(&format!("{stem}.json")));
+    }
+}
+
+#[test]
 fn both_models_match_python_and_record_provenance() {
     let temp = tempfile::tempdir().unwrap();
     let expected: serde_json::Value =

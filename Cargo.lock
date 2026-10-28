@@ -554,8 +554,11 @@ dependencies = [
  "cytiq-provenance",
  "ort",
  "parquet",
+ "ryu",
  "serde",
+ "serde-saphyr",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
 ]

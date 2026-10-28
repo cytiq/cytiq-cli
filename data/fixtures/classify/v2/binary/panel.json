@@ -1,0 +1,121 @@
+{
+  "artifact_type": "panel_profile",
+  "cofactor": 150.0,
+  "context": {
+    "cohort": "aml_and_controls",
+    "organism": "Homo sapiens",
+    "specimen": "bone_marrow_aspirate",
+    "tissue": "bone_marrow"
+  },
+  "features": [
+    {
+      "channel": "FSC-A",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "FSC_A",
+      "name": "FSC_A"
+    },
+    {
+      "channel": "FSC-H",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "FSC_H",
+      "name": "FSC_H"
+    },
+    {
+      "channel": "SSC-A",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "SSC_A",
+      "name": "SSC_A"
+    },
+    {
+      "channel": "SSC-H",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "SSC_H",
+      "name": "SSC_H"
+    },
+    {
+      "channel": "FITC-A",
+      "fluorescence": true,
+      "labels": [
+        "CD7"
+      ],
+      "marker_id": "CD7",
+      "name": "CD7"
+    },
+    {
+      "channel": "PE-A",
+      "fluorescence": true,
+      "labels": [
+        "CD56"
+      ],
+      "marker_id": "CD56",
+      "name": "CD56"
+    },
+    {
+      "channel": "PerCP-A",
+      "fluorescence": true,
+      "labels": [
+        "CD34",
+        "CD34 Cy55"
+      ],
+      "marker_id": "CD34",
+      "name": "CD34"
+    },
+    {
+      "channel": "PC7-A",
+      "fluorescence": true,
+      "labels": [
+        "CD117"
+      ],
+      "marker_id": "CD117",
+      "name": "CD117"
+    },
+    {
+      "channel": "APC-A",
+      "fluorescence": true,
+      "labels": [
+        "CD33"
+      ],
+      "marker_id": "CD33",
+      "name": "CD33"
+    },
+    {
+      "channel": "APC-H7-A",
+      "fluorescence": true,
+      "labels": [
+        "HLA-DR"
+      ],
+      "marker_id": "HLA-DR",
+      "name": "HLA_DR"
+    },
+    {
+      "channel": "Horizon V450-A",
+      "fluorescence": true,
+      "labels": [
+        "CD13",
+        "CD13 BV421"
+      ],
+      "marker_id": "CD13",
+      "name": "CD13"
+    },
+    {
+      "channel": "Horizon V500-A",
+      "fluorescence": true,
+      "labels": [
+        "CD45 KO",
+        "CD45"
+      ],
+      "marker_id": "CD45",
+      "name": "CD45"
+    }
+  ],
+  "instrument": "FACSCantoII",
+  "panel": "P1",
+  "recipe": "cytiq-fcm-arcsinh-v1",
+  "resolution_rules": [],
+  "schema_version": 2,
+  "version": "0.1.0"
+}

@@ -1,6 +1,6 @@
 # cytiq-classify
 
-Panel-specific supervised classification using a Cytiq model bundle v1 and CPU
+Panel-specific supervised classification using a Cytiq model bundle v1 or v2 and CPU
 ONNX Runtime. `ClassifyRunner::run(&ClassifyConfig)` reads an FCS, checks marker
 labels and instrument, applies the declared preprocessing, and writes
 `predictions.parquet` plus `summary.json`. The CLI adds `provenance.json`.
@@ -47,3 +47,34 @@ separate ONNX Runtime installation. Moving `cytiq` alone is sufficient on the
 supported macOS Apple Silicon and Linux x86_64/aarch64 targets; standard OS
 libraries remain required. Test using `cargo test -p cytiq-classify` and
 `cargo test -p cytiq-cli --test classify_cli`.
+
+## Vocabulary-aware bundle v2
+
+The same `cytiq classify` command also reads v2 bundles from `cytiq-ml`. Each bundle
+adds `classes.json`, `panel.json` and `label-mapping.json`, pinned by SHA-256. The
+runner checks vocabulary indices, task and decision rule, hierarchy references,
+residual definitions, panel agreement and dense float32 `[N,K]` probabilities.
+The CLI records all knowledge files in provenance. No Python runtime is needed.
+
+Multiclass uses vocabulary order and argmax; ties choose the lowest index. Its
+unknown policy is `disabled`. The learned `other` residual class has a declared
+population scope and exclusions. `--abstain-margin` is only supported for binary
+tasks. A binary phenotype v2 task retains the saved threshold and abstain band.
+Existing v1 bundle outputs retain their original columns and summary.
+
+V2 Parquet has `event_id`, `source_event_id`, `assessed`, one nullable `p_<class_id>`
+column per ordered class, then `label`. Metadata pins class order and vocabulary
+hash. Summary reports `class_counts`, `class_fractions`, task and vocabulary hash.
+Excluded events retain their rows with null predictions. Multiclass summaries
+omit the binary-specific Blast fields.
+
+The `cytiq-flowcyt-stored-v1` profile reads the stored measurements in original
+FlowCyt author exports. It applies no compensation, linearisation or arcsinh and
+rejects inputs already carrying Cytiq processing state. The instrument, detector
+names and reagent labels must match the pinned profile. This profile is scoped to
+the published nonmalignant bone marrow cohort; it does not assert that the same
+lineage definitions hold for AML/P1 or unrelated processed FCS files.
+
+`ClassifyRunner` retains one ONNX environment for the process, allowing repeated
+or concurrent library calls. Test both v1 and v2 with `cargo test -p cytiq-classify`
+and `cargo test -p cytiq-cli --test classify_cli`.

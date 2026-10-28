@@ -1,0 +1,243 @@
+{
+  "artifact_type": "panel_profile",
+  "cofactor": 150.0,
+  "context": {
+    "cohort": "nonmalignant_bone_marrow",
+    "organism": "Homo sapiens",
+    "specimen": "bone_marrow_aspirate",
+    "tissue": "bone_marrow"
+  },
+  "features": [
+    {
+      "channel": "FS INT",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "FSC_A",
+      "name": "FSC_A"
+    },
+    {
+      "channel": "SS INT",
+      "fluorescence": false,
+      "labels": [],
+      "marker_id": "SSC_A",
+      "name": "SSC_A"
+    },
+    {
+      "channel": "FL1 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD14-FITC"
+      ],
+      "marker_id": "CD14",
+      "name": "CD14"
+    },
+    {
+      "channel": "FL2 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD19-PE"
+      ],
+      "marker_id": "CD19",
+      "name": "CD19"
+    },
+    {
+      "channel": "FL3 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD13-ECD"
+      ],
+      "marker_id": "CD13",
+      "name": "CD13"
+    },
+    {
+      "channel": "FL4 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD33-PC5.5"
+      ],
+      "marker_id": "CD33",
+      "name": "CD33"
+    },
+    {
+      "channel": "FL5 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD34-PC7"
+      ],
+      "marker_id": "CD34",
+      "name": "CD34"
+    },
+    {
+      "channel": "FL6 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD117-APC"
+      ],
+      "marker_id": "CD117",
+      "name": "CD117"
+    },
+    {
+      "channel": "FL7 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD7-APC700"
+      ],
+      "marker_id": "CD7",
+      "name": "CD7"
+    },
+    {
+      "channel": "FL8 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD16-APC750"
+      ],
+      "marker_id": "CD16",
+      "name": "CD16"
+    },
+    {
+      "channel": "FL9 INT",
+      "fluorescence": true,
+      "labels": [
+        "HLA-PB"
+      ],
+      "marker_id": "HLA-DR",
+      "name": "HLA_DR"
+    },
+    {
+      "channel": "FL10 INT",
+      "fluorescence": true,
+      "labels": [
+        "CD45-KO"
+      ],
+      "marker_id": "CD45",
+      "name": "CD45"
+    }
+  ],
+  "instrument": "NAVIOS",
+  "panel": "flowcyt_bm",
+  "recipe": "cytiq-flowcyt-stored-v1",
+  "resolution_rules": [
+    {
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "https://arxiv.org/html/2403.00024v2#S2.SS1",
+          "snapshot_id": null,
+          "source": "FlowCyt CHIL 2024",
+          "status": "source_adopted"
+        }
+      ],
+      "population": "t_cells",
+      "required_features": [
+        "CD14",
+        "CD19",
+        "CD13",
+        "CD33",
+        "CD34",
+        "CD117",
+        "CD7",
+        "CD16",
+        "HLA_DR",
+        "CD45"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "https://arxiv.org/html/2403.00024v2#S2.SS1",
+          "snapshot_id": null,
+          "source": "FlowCyt CHIL 2024",
+          "status": "source_adopted"
+        }
+      ],
+      "population": "b_cells",
+      "required_features": [
+        "CD14",
+        "CD19",
+        "CD13",
+        "CD33",
+        "CD34",
+        "CD117",
+        "CD7",
+        "CD16",
+        "HLA_DR",
+        "CD45"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "https://arxiv.org/html/2403.00024v2#S2.SS1",
+          "snapshot_id": null,
+          "source": "FlowCyt CHIL 2024",
+          "status": "source_adopted"
+        }
+      ],
+      "population": "monocytes",
+      "required_features": [
+        "CD14",
+        "CD19",
+        "CD13",
+        "CD33",
+        "CD34",
+        "CD117",
+        "CD7",
+        "CD16",
+        "HLA_DR",
+        "CD45"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "https://arxiv.org/html/2403.00024v2#S2.SS1",
+          "snapshot_id": null,
+          "source": "FlowCyt CHIL 2024",
+          "status": "source_adopted"
+        }
+      ],
+      "population": "mast_cells",
+      "required_features": [
+        "CD14",
+        "CD19",
+        "CD13",
+        "CD33",
+        "CD34",
+        "CD117",
+        "CD7",
+        "CD16",
+        "HLA_DR",
+        "CD45"
+      ]
+    },
+    {
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "https://arxiv.org/html/2403.00024v2#S2.SS1",
+          "snapshot_id": null,
+          "source": "FlowCyt CHIL 2024",
+          "status": "source_adopted"
+        }
+      ],
+      "population": "hspc",
+      "required_features": [
+        "CD14",
+        "CD19",
+        "CD13",
+        "CD33",
+        "CD34",
+        "CD117",
+        "CD7",
+        "CD16",
+        "HLA_DR",
+        "CD45"
+      ]
+    }
+  ],
+  "schema_version": 2,
+  "version": "0.1.0"
+}

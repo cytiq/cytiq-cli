@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use cytiq_fcs::{ColumnData, FcsDataset, SignalState, Spillover, compensate, linear_values};
+use cytiq_fcs::{
+    ColumnData, FcsDataset, SignalState, Spillover, compensate, linear_values,
+    log_amplified_parameters,
+};
 use serde::Deserialize;
 
 use crate::ClassifyError;
@@ -46,7 +49,17 @@ pub fn feature_columns_with_normalization(
 ) -> Result<Vec<Vec<f32>>, ClassifyError> {
     normalization.check(dataset)?;
     let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
-    if !["cytiq-fcm-arcsinh-v1", "cytiq-flowcyt-stored-v1"].contains(&profile.recipe.as_str())
+    if profile.recipe == "cytiq-table-stored-v1" {
+        return Err(invalid(
+            "cytiq-table-stored-v1 is a training-only recipe without FCS feature extraction",
+        ));
+    }
+    if ![
+        "cytiq-fcm-arcsinh-v1",
+        "cytiq-flowcyt-stored-v1",
+        "cytiq-cytof-arcsinh-v1",
+    ]
+    .contains(&profile.recipe.as_str())
         || !profile.cofactor.is_finite()
         || profile.cofactor <= 0.0
         || profile.features.is_empty()
@@ -58,7 +71,16 @@ pub fn feature_columns_with_normalization(
             .eq_ignore_ascii_case("CYT")
             .then_some(v)
     });
-    if instrument != Some(profile.instrument.as_str()) {
+    // CyTOF software writes vendor and version into $CYT; its profiles name a family.
+    let matches = instrument.is_some_and(|cyt| {
+        if profile.recipe == "cytiq-cytof-arcsinh-v1" {
+            cyt.to_lowercase()
+                .contains(&profile.instrument.to_lowercase())
+        } else {
+            cyt == profile.instrument
+        }
+    });
+    if !matches {
         return Err(invalid("instrument does not match model profile"));
     }
     let mut indices = Vec::new();
@@ -90,6 +112,9 @@ pub fn feature_columns_with_normalization(
             return Err(invalid("marker label does not match panel"));
         }
         indices.push(index);
+    }
+    if profile.recipe == "cytiq-cytof-arcsinh-v1" {
+        return cytof_columns(dataset, profile, &indices);
     }
     if profile.recipe == "cytiq-flowcyt-stored-v1" {
         if dataset.text.iter().any(|(key, _)| {
@@ -207,6 +232,77 @@ pub fn feature_columns_with_normalization(
         output.push(values);
     }
     Ok(output)
+}
+
+const SIGNAL_KEYWORDS: [&str; 5] = [
+    "CYTIQ_COMPENSATION",
+    "CYTIQ_TRANSFORM",
+    "CYTIQ_SOURCE_SPILL",
+    "CYTIQ_UNMIXING",
+    "CYTIQ_NORMALIZATION",
+];
+
+/// Mass cytometry: linear stored ion counts, no compensation, `asinh(x / cofactor)`
+/// on the profile's transformed (`fluorescence`) channels, as in cytiq-ml.
+#[allow(clippy::cast_possible_truncation)]
+fn cytof_columns(
+    dataset: &FcsDataset,
+    profile: &Profile,
+    indices: &[usize],
+) -> Result<Vec<Vec<f32>>, ClassifyError> {
+    let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
+    let keyword = |key: &str| {
+        dataset.text.iter().find_map(|(candidate, value)| {
+            candidate
+                .trim_start_matches('$')
+                .eq_ignore_ascii_case(key)
+                .then_some(value)
+        })
+    };
+    if SIGNAL_KEYWORDS.iter().any(|key| keyword(key).is_some()) {
+        return Err(invalid("CyTOF recipe requires stored acquisition values"));
+    }
+    if ["SPILLOVER", "SPILL"]
+        .iter()
+        .any(|key| keyword(key).is_some_and(|value| !value.trim().is_empty()))
+    {
+        return Err(invalid("CyTOF recipe does not apply a spillover matrix"));
+    }
+    let logged = log_amplified_parameters(dataset);
+    for index in indices {
+        let parameter = &dataset.parameters[*index];
+        let gain = keyword(&format!("P{}G", parameter.index))
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .unwrap_or(1.0);
+        if logged.contains(&parameter.name.as_str())
+            || (gain.abs() > f64::EPSILON && (gain - 1.0).abs() > f64::EPSILON)
+        {
+            return Err(invalid("CyTOF recipe expects linear unit-gain channels"));
+        }
+    }
+    profile
+        .features
+        .iter()
+        .zip(indices)
+        .map(|(feature, index)| {
+            dataset.data.columns[*index]
+                .to_f64_vec()
+                .into_iter()
+                .map(|v| {
+                    let v = if feature.fluorescence {
+                        (v / profile.cofactor).asinh()
+                    } else {
+                        v
+                    } as f32;
+                    if v.is_finite() {
+                        Ok(v)
+                    } else {
+                        Err(invalid("nonfinite classifier feature"))
+                    }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]

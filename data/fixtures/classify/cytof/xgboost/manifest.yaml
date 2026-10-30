@@ -1,0 +1,73 @@
+schema_version: 4
+threshold: 0.5
+profile:
+  artifact_type: panel_profile
+  schema_version: 2
+  version: 0.1.0
+  panel: synthetic_cytof
+  instrument: Helios
+  recipe: cytiq-cytof-arcsinh-v1
+  cofactor: 5.0
+  context:
+    organism: Homo sapiens
+    tissue: blood
+    specimen: peripheral_blood_mononuclear_cells
+    cohort: synthetic
+  features:
+  - name: Event_length
+    channel: Event_length
+    marker_id: Event_length
+    labels: []
+    fluorescence: false
+  - name: CD3
+    channel: Nd144Di
+    marker_id: CD3
+    labels:
+    - CD3
+    fluorescence: true
+  - name: CD19
+    channel: Nd142Di
+    marker_id: CD19
+    labels:
+    - CD19
+    fluorescence: true
+  - name: CD56
+    channel: Sm147Di
+    marker_id: CD56
+    labels:
+    - CD56
+    fluorescence: true
+  - name: CD14
+    channel: Nd150Di
+    marker_id: CD14
+    labels:
+    - CD14
+    fluorescence: true
+  resolution_rules: []
+run_id: synthetic-cytof-fixture
+model_kind: xgboost
+classes:
+- t_cells
+- b_cells
+- nk_cells
+- monocytes
+input: features
+output: probabilities
+model_sha256: e882bec5025fbafc6b1b4ead9ea19bc13cd0fc4581ff7aefea2d15bb3db378b7
+parity:
+  status: ok
+  max_probability_error: 0.0
+  same_labels: true
+  events: 192
+  tolerance: 1.0e-05
+  cpu_seconds_per_1000: 0.0002616760411910946
+  float32_thresholds_corrected: 0
+vocabulary_sha256: bf13bc483fce9bec526ea4553d287920963bb9ee0dd79374ec260a92494581d5
+panel_sha256: 76899bada8f1c186f9e900b06fe54164bbdad51eadcdf4526a16c023783dadfe
+label_mapping_sha256: 7fad6cb090c0abe6d6ef4e0f33281966c5a728e7b231a466912557580ba472bb
+task: population_identity
+task_kind: multiclass
+decision_rule: argmax
+unknown_policy: disabled
+normalization:
+  kind: none

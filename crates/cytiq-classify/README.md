@@ -75,6 +75,18 @@ names and reagent labels must match the pinned profile. This profile is scoped t
 the published nonmalignant bone marrow cohort; it does not assert that the same
 lineage definitions hold for AML/P1 or unrelated processed FCS files.
 
+The `cytiq-cytof-arcsinh-v1` profile reads mass cytometry ion counts as stored.
+CyTOF software writes vendor and version into `$CYT`, so this profile names an
+instrument family (such as `CyTOF`) that `$CYT` must contain, case-insensitively.
+Every profile channel must be linear (`$PnE` 0) with unit gain. It applies no
+compensation, rejects a declared `$SPILL`/`$SPILLOVER` and Cytiq processing state,
+and applies `asinh(x / cofactor)` (cofactor 5 for CyTOF) to the channels the profile
+marks `fluorescence: true`. Other channels, such as `Event_length`, pass through
+unchanged. `cytiq-table-stored-v1` marks models trained on published event tables
+without acquisition FCS files. Such models are training-only, and `cytiq classify`
+rejects them. Fixtures under `data/fixtures/classify/cytof` come from
+`cytiq-ml/scripts/generate_classify_fixture.py --cytof`.
+
 `ClassifyRunner` retains one ONNX environment for the process, allowing repeated
 or concurrent library calls. Test both v1 and v2 with `cargo test -p cytiq-classify`
 and `cargo test -p cytiq-cli --test classify_cli`.

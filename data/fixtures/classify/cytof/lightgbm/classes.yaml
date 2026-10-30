@@ -1,0 +1,50 @@
+schema_version: 2
+artifact_type: class_vocabulary
+version: 0.1.0
+tree_version: 0.1.0
+task: population_identity
+task_kind: multiclass
+decision_rule: argmax
+unknown_policy: disabled
+partition_complete: true
+panel_id: synthetic_cytof
+scope: leukocytes
+hierarchy:
+  leukocytes: null
+  t_cells: leukocytes
+  b_cells: leukocytes
+  nk_cells: leukocytes
+  monocytes: leukocytes
+classes:
+- id: t_cells
+  index: 0
+  kind: population
+  parent: leukocytes
+  target: t_cells
+  state: null
+  residual_definition: null
+- id: b_cells
+  index: 1
+  kind: population
+  parent: leukocytes
+  target: b_cells
+  state: null
+  residual_definition: null
+- id: nk_cells
+  index: 2
+  kind: population
+  parent: leukocytes
+  target: nk_cells
+  state: null
+  residual_definition: null
+- id: monocytes
+  index: 3
+  kind: population
+  parent: leukocytes
+  target: monocytes
+  state: null
+  residual_definition: null
+panel_sha256: 76899bada8f1c186f9e900b06fe54164bbdad51eadcdf4526a16c023783dadfe
+tree_sha256: 853f0f3875d4b6bdbbde633c05c1072171c0fa416708c48950a9f0959a4b8ce2
+registry_sha256: 8bba665ad34616800b9f88d236146e6d6b6470a8e24a5cba41d56531ec3f7a9d
+projection_sha256: 8dfda21a8bbd97475ac1f78954d6d68a420ad4e065174084aef083fd41baf574

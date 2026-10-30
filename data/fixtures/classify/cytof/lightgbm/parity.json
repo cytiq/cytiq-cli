@@ -1,0 +1,9 @@
+{
+  "status": "ok",
+  "max_probability_error": 1.297529126365049e-07,
+  "same_labels": true,
+  "events": 192,
+  "tolerance": 1e-05,
+  "cpu_seconds_per_1000": 0.000296831247699932,
+  "float32_thresholds_corrected": 125
+}

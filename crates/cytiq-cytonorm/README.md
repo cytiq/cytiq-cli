@@ -144,4 +144,14 @@ The library writes computational artifacts; the CLI adds standard provenance.
 cargo test -p cytiq-cytonorm
 cargo test -p cytiq-cli --test cytonorm_cli
 just parity-cytonorm
+just parity-cytonorm-real
 ```
+
+The real-data pilot uses six checksum-pinned CyTOF files shipped with the R
+package: three batches, donor 1 for training and donor 2 for validation, with
+1,000 real events per file. It checks upstream R splines with fixed cluster
+assignments, untouched channels, event order, and identical fitted artifacts
+when validation is removed and the thread count changes. Independent R
+clustering and batch distances are reported without biological pass thresholds.
+See [the real-data instructions](../../parity/real/README.md#cytonorm-pilot)
+for preprocessing assumptions and output locations.

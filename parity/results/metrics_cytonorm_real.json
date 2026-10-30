@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "dataset": "CytoNorm extdata / FR-FCM-Z247",
+  "cytiq_version": "0.1.0",
+  "cytiq_build": {
+    "git_commit": "d389cd569f3489703470d24d406a1c727fa32eee",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "target": "aarch64-apple-darwin",
+    "profile": "debug"
+  },
+  "CytoNorm": "2.0.12",
+  "events": 6000,
+  "train_events": 3000,
+  "validation_events": 3000,
+  "batches": ["PTLG021", "PTLG028", "PTLG034"],
+  "normalization_markers": 37,
+  "settings": {
+    "som": {
+      "xdim": 5,
+      "ydim": 5,
+      "metaclusters": 5,
+      "scale": false,
+      "seed": 1
+    },
+    "min_cluster_events": 100,
+    "sparse_policy": "identity"
+  },
+  "source_sha256": {
+    "Gates_PTLG021_Unstim_Control_1.fcs": "852c6c346168e4e39e7d990729d41aa6cd53d0794debeb73bc396292678f58b8",
+    "Gates_PTLG021_Unstim_Control_2.fcs": "53e2e57ef6a2c376ab43ce18b096e16d3043b1ea48c6a990b4fb2d08b6166bcd",
+    "Gates_PTLG028_Unstim_Control_1.fcs": "78b8d9afab4e79e72b6efe8c4f4e50e452ec82936481de1b7056b2f11d88dcb1",
+    "Gates_PTLG028_Unstim_Control_2.fcs": "d299ad706a5d643b2bc3ac4b49899a76b7cd2f6bc214a1fe6c1f4aada14b04f4",
+    "Gates_PTLG034_Unstim_Control_1.fcs": "413a942f6fd62a0743c65fd3b3cbe5f5952771bfefcfa898f6a5dfa54ca59d43",
+    "Gates_PTLG034_Unstim_Control_2.fcs": "2b7c0a98b1ac11f9198a1e04f6193383226c92e9ac396fc393a6bf36b9a185cd"
+  },
+  "identity_compensation_preserved_values": true,
+  "unchanged_channels_and_event_order_preserved": true,
+  "validation_exclusion_and_thread_determinism": true,
+  "conditional_max_absolute_error": 0.35447384112862279,
+  "target_max_absolute_error": 1.7763568394002505e-15,
+  "conditional_max_interior_error": 0.057001950414257596,
+  "conditional_max_tail_error": 0.35447384112862279,
+  "worst_case": {
+    "sample": "Gates_PTLG028_Unstim_Control_2",
+    "role": "validation",
+    "batch": "PTLG028",
+    "metacluster": 5,
+    "marker": "CD45",
+    "event_index_one_based": 171,
+    "input": 1.9199117422103882,
+    "rust": 1.4911513481843734,
+    "R": 1.1366775070557507,
+    "outside_knots": true
+  },
+  "passed": false,
+  "compared_values": 212306,
+  "identity_values": 9694,
+  "identity_mappings": 222,
+  "total_mappings": 555,
+  "full_pipeline_ARI": {
+    "Gates_PTLG021_Unstim_Control_1": 1,
+    "Gates_PTLG021_Unstim_Control_2": 0.99104889442897082,
+    "Gates_PTLG028_Unstim_Control_1": 0.99643288407522157,
+    "Gates_PTLG028_Unstim_Control_2": 0.99661303987581229,
+    "Gates_PTLG034_Unstim_Control_1": 0.99754368861648224,
+    "Gates_PTLG034_Unstim_Control_2": 0.99684850015431847
+  },
+  "batch_distances_quantile_approx": [
+    {
+      "role": "train",
+      "comparisons": 555,
+      "mean_before": 0.23606347069489242,
+      "mean_after": 0.14587338248285656,
+      "reduction_fraction": 0.38205863849474975,
+      "fraction_improved": 0.59999999999999998
+    },
+    {
+      "role": "validation",
+      "comparisons": 555,
+      "mean_before": 0.25582485113245734,
+      "mean_after": 0.23524319583844075,
+      "reduction_fraction": 0.080452134352499316,
+      "fraction_improved": 0.33153153153153153
+    }
+  ],
+  "occupancy_cv": [
+    {
+      "cv": 0.040623056959191446,
+      "metacluster": 1,
+      "role": "train"
+    },
+    {
+      "cv": 0.27128168017763388,
+      "metacluster": 2,
+      "role": "train"
+    },
+    {
+      "cv": 0.048978548526121775,
+      "metacluster": 3,
+      "role": "train"
+    },
+    {
+      "cv": 0.5966649564829366,
+      "metacluster": 4,
+      "role": "train"
+    },
+    {
+      "cv": 0.082800410048111006,
+      "metacluster": 5,
+      "role": "train"
+    },
+    {
+      "cv": 0.088844756664541391,
+      "metacluster": 1,
+      "role": "validation"
+    },
+    {
+      "cv": 0.21917388093165813,
+      "metacluster": 2,
+      "role": "validation"
+    },
+    {
+      "cv": 0.050682213393656937,
+      "metacluster": 3,
+      "role": "validation"
+    },
+    {
+      "cv": 0.4849742261192857,
+      "metacluster": 4,
+      "role": "validation"
+    },
+    {
+      "cv": 0.017693342451566965,
+      "metacluster": 5,
+      "role": "validation"
+    }
+  ],
+  "limitations": ["Only the first 1000 real cells per file; not the full acquisitions.", "Explicit identity compensation is a harness adapter, not a CyTOF spillover estimate.", "Missing channel labels are filled from physical names in prepared copies only.", "Five metaclusters are pilot settings; the minimum remains the default 100 events.", "Sparse mappings explicitly retain original values; inspect their QC reasons.", "Distances are equal-weight means of within-cluster quantile-grid approximations.", "Real-data distances and stochastic ARI are descriptive, not biological acceptance criteria."]
+}

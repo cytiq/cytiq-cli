@@ -31,6 +31,12 @@ parity-cytonorm:
     cargo build -p cytiq-cli --locked
     R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm.R target/debug/cytiq
 
+# ---- Validate CytoNorm on six real CyTOF controls with a held-out donor
+[group('validation')]
+parity-cytonorm-real:
+    cargo build -p cytiq-cli --locked
+    R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm_real.R target/debug/cytiq
+
 # ---- Regenerate the independent R numerical fixtures for CytoNorm
 [group('validation')]
 parity-cytonorm-fixture:

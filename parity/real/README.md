@@ -67,3 +67,80 @@ Notes:
   in March 2023 with an incomplete chain, so it cannot be downloaded over
   verified TLS. Download them by hand and point `CYTIQ_REAL_DATA` (QC chain) or
   `cytiq autospill` at them.
+
+## CytoNorm pilot
+
+```bash
+just parity-setup                 # once, if parity/.env is absent
+just parity-cytonorm-real
+```
+
+This separate pilot uses the six real CyTOF control excerpts included in
+CytoNorm 2.0.12, pinned by SHA-256 in `parity/cytonorm_real.R`. The upstream
+[dataset description](https://github.com/saeyslab/CytoNorm/tree/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9#identifying-the-data)
+identifies three batches (PTLG021, PTLG028, PTLG034), donor 1 as training
+controls and donor 2 as validation. Each file contains the first 1,000 cells
+of an acquisition from FR-FCM-Z247. No data downloads are needed after setup.
+
+The pilot uses the README's 37 biological markers and arcsinh cofactor 5.
+The strict cytiq input contract requires two explicit adapters on prepared
+copies: missing marker labels are filled with their physical channel names,
+and `cytiq compensate` applies a saved identity matrix because these CyTOF
+files have no spillover matrix. The script asserts exact value preservation
+through both steps. This matrix is a test adapter, not an estimate of mass
+cytometry spillover; the original package data remain unchanged.
+
+For this small cohort, settings are a 5×5 SOM, five metaclusters, 3,000 training
+events, the default minimum 100 events per mapping, and explicit `sparse_policy: identity`.
+Unsupported mappings retain their original values; their counts and reasons
+remain visible. These are pilot settings, not a recommended production panel.
+
+The run fails on checksum mismatch, CLI errors, nonfinite output, changed
+untouched channels/event order/acquisition identity, validation affecting any
+fitted artifact, or differences from independent R targets (>1e-12) and
+upstream splines (>1e-9). The numerical comparison independently determines
+eligible training distributions, then holds Rust cluster assignments fixed.
+It also checks exact identity behavior for unsupported mappings. It reports
+independent full-pipeline R clustering ARI and within-donor pairwise batch
+distances before/after normalization; neither has an automatic pass threshold.
+The latter is an equal-weight mean across cluster/marker/batch-pair comparisons
+of mean absolute distances on the 1–99% quantile grid, not upstream histogram EMD.
+Validation distances compare donor 2 across batches, rather than to donor 1.
+
+Generated files live in the ignored `parity/.out/cytonorm-real/` directory:
+
+- `batches.json`, `prepared/`, and `identity-compensation.csv`: reproducible inputs;
+- `model/`: portable model, training/validation QC, and provenance;
+- `normalized/`: all six normalized FCS files with QC and provenance;
+- `diagnostics/report.html`: interactive spline and distribution plots;
+- `metrics.json` and `batch-distances.csv`: checks and descriptive measurements.
+- `spline-errors.csv` and `spline-comparison.pdf`: numerical differences from R.
+
+The compact metrics are also saved in `parity/results/metrics_cytonorm_real.json`,
+including when the numerical check fails.
+
+Run from the repository root. An optional binary and output directory can be
+passed directly: `R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm_real.R
+target/release/cytiq parity/.out/cytonorm-real-release`. This pilot is separate
+from `just parity-real`; it does not establish biological comparability or
+performance on full acquisitions.
+
+### Observed result (2026-10-28)
+
+The first real-data run fails numerical parity: targets agree to 1.8e-15,
+but normalized signals differ from R by up to 0.0570 inside the knot range
+and 0.3545 in the tails. The largest difference is CD45, PTLG028, donor 2,
+metacluster 5, event 171: input 1.919912 maps to 1.491151 in cytiq and
+1.136678 in R. Inspecting the fitted coefficients against R `splinefun`
+shows matching knots with different derivatives. For this batch/cluster/marker,
+the lower endpoint slope is 1.414269 in cytiq versus 1.907556 in R.
+The stricter circular slope bound in `MonotoneSpline::fit` needs investigation
+before claiming numerical parity on real data. The harness retains the 1e-9
+tolerance and exits non-zero after saving all measurements.
+
+Clustering agrees closely (ARI 0.991–1.000), and value preservation,
+validation exclusion, and thread determinism pass. Mean pairwise quantile
+distance falls 38.2% on training and 8.0% on validation. Of 555 mappings,
+222 (40%) use identity fallback for the two small populations; these account
+for 9,694 of 222,000 event/marker values (4.37%). These descriptive distances
+include unchanged sparse mappings and do not establish biological validity.

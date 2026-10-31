@@ -29,6 +29,11 @@ error rather than a best-effort guess (duplicate keywords, HEADER/TEXT offset
 mismatch, non-UTF-8 TEXT, unsupported `$MODE`/`$BYTEORD`/widths, DATA length
 mismatch).
 
+It also never lets a size declared in the file drive an allocation or a loop
+before that size is checked. Every segment is checked against the file length
+before it is read, and DATA against `$TOT` × row width. TEXT is capped at
+16 MiB and `$PAR` at 65,535 (`FcsError::LimitExceeded`).
+
 Writing (`write_fcs3_1_f32*`, `write_fcs3_1_f64*`): FCS 3.1, little-endian
 32-bit or 64-bit float, one column per parameter, optional `$PnS` labels and
 extra TEXT keywords. `write_fcs3_1_exact_with_options` takes f64 columns and

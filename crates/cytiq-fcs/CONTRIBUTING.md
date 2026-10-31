@@ -21,6 +21,8 @@ this crate.
 - `src/lineage.rs` — `Original_ID` and `source_event_ids`.
 - `src/compensation.rs` — `Spillover`, `invert_matrix`, `compensate` and their
   unit tests.
+- `src/limits.rs` — bounds on sizes the file declares (`TEXT_BYTES_MAX`,
+  `PARAMETERS_MAX`), each with the reason for its value.
 - `src/error.rs` — `FcsError`, exported as `cytiq_fcs::Error`.
 
 ## Invariants
@@ -32,6 +34,12 @@ this crate.
   segments together.
 - DATA offsets come from TEXT; when the HEADER also has them, they must match.
   Segments must be in bounds and must not overlap.
+- No value read from the file sizes an allocation or a loop before it is
+  bounded. Check a segment against the file length before reading it, a count
+  against `limits.rs` before allocating for it, and DATA length against the
+  layout before reading DATA. Use checked arithmetic on declared sizes, and
+  keep per-keyword work linear in the TEXT size (`$Pn*` keywords are grouped in
+  one pass).
 - `TextSegment::pairs` preserve file order and raw values. `cytiq-meta` exports
   them verbatim, so do not normalize or reorder them.
 - `Parameter::keywords` hold only that parameter's `$Pn*` keywords
@@ -66,6 +74,13 @@ just verify
 
 - `tests/reader.rs` — fixture reads (`data/fixtures/fcs/*.fcs`), synthetic files
   built with `build_fcs`, error cases and writer round-trips.
+- `tests/limits.rs` — crafted files whose keywords lie about sizes; each must
+  return a specific error, not panic, abort or hang.
+- `tests/characterization.rs` — digests of every fixture read
+  (`data/fixtures/characterization/fcs.json`); the ignored
+  `writes_real_data_digests` writes the same digests for `$CYTIQ_REAL_DATA`
+  to `$CYTIQ_DIGESTS_OUT`, to compare a reader change on local data.
+- `tests/common/mod.rs` — `build_fcs` and `build_fcs_overriding` builders.
 - `src/compensation.rs` `#[cfg(test)]` — spillover parsing, inversion, and
   compensation.
 

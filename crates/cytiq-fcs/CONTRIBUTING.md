@@ -49,13 +49,14 @@ this crate.
 - The writer emits one fixed layout (FCS 3.1, `F` 32-bit or `D` 64-bit,
   `$BYTEORD=1,2,3,4`). Every derived FCS file in the workspace depends on it,
   so changing it changes every command's output. It must keep rejecting
-  non-finite values and overrides of generated keywords.
+  non-finite values, overrides of generated keywords, and TEXT keys or values
+  that are empty or start with `|` (they cannot be escaped).
 - Event identifiers must survive every stage exactly: stages that write FCS go
   through `write_fcs3_1_exact_with_options` and record `CYTIQ_ACQUISITION`.
 - Spillover matrices are row-major, rows = fluorochromes, columns = detectors.
   `compensate` panics on shape mismatch; callers check shapes first.
 - No `unsafe`, and no dependencies beyond `log`, `thiserror`, `serde` /
-  `serde_json` and `sha2`.
+  `serde_json` and `sha2`. Dev-dependencies (`proptest`) are for tests only.
 
 ## Where changes belong
 
@@ -81,6 +82,14 @@ just verify
   `writes_real_data_digests` writes the same digests for `$CYTIQ_REAL_DATA`
   to `$CYTIQ_DIGESTS_OUT`, to compare a reader change on local data.
 - `tests/common/mod.rs` — `build_fcs` and `build_fcs_overriding` builders.
+- `tests/properties.rs` — proptest properties: mutated and arbitrary bytes
+  never panic and accepted files are consistent; finite datasets round-trip
+  through the writer; spillover parsing accepts only square finite matrices.
+  Failing seeds are kept in `properties.proptest-regressions`; commit them.
+  Raise `PROPTEST_CASES` for a longer run.
+- `fuzz/` — cargo-fuzz targets `read_fcs` and `spillover_keyword`, outside the
+  workspace. Run `just fuzz-fcs [target] [seconds]` (nightly + cargo-fuzz).
+  Turn every crash into a test in `tests/limits.rs`.
 - `src/compensation.rs` `#[cfg(test)]` — spillover parsing, inversion, and
   compensation.
 

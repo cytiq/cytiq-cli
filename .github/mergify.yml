@@ -1,12 +1,22 @@
+queue_rules:
+  # Without merge conditions the queue merged as soon as it opened its draft
+  # pull request, so the CI run on the draft checked nothing.
+  - name: default
+    merge_conditions:
+      - check-success=quality
+      - check-success=test
 pull_request_rules:
   - name: Auto-merge Dependabot updates
     conditions:
       - author=dependabot[bot]
       - base=main
-      - check-success=check
-      - check-success=fmt
-      - check-success=clippy
+      - check-success=quality
       - check-success=test
+      # package.yml runs on manifest and lockfile changes, the only packaging
+      # paths a Dependabot update touches besides that workflow itself.
+      - or:
+          - check-success=docker
+          - -files~=^(Cargo\.lock|(crates/[^/]+/)?Cargo\.toml|\.github/workflows/package\.yml)$
     actions:
       merge:
         method: squash

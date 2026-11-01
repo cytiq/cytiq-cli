@@ -552,6 +552,7 @@ dependencies = [
  "cytiq-fcs",
  "cytiq-mask",
  "cytiq-provenance",
+ "cytiq-publish",
  "ort",
  "parquet",
  "ryu",
@@ -634,6 +635,7 @@ dependencies = [
  "cytiq-flowsom",
  "cytiq-mask",
  "cytiq-provenance",
+ "cytiq-publish",
  "cytiq-transform",
  "log",
  "parquet",
@@ -685,6 +687,7 @@ dependencies = [
  "csv",
  "cytiq-fcs",
  "cytiq-mask",
+ "cytiq-publish",
  "log",
  "plotly",
  "rayon",
@@ -727,6 +730,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "cytiq-fcs",
+ "cytiq-publish",
  "log",
  "parquet",
  "thiserror",
@@ -738,6 +742,7 @@ version = "0.1.0"
 dependencies = [
  "cytiq-fcs",
  "cytiq-provenance",
+ "cytiq-publish",
  "log",
  "serde",
  "serde_json",
@@ -777,10 +782,19 @@ dependencies = [
 name = "cytiq-provenance"
 version = "0.1.0"
 dependencies = [
+ "cytiq-publish",
  "log",
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-publish"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
  "thiserror",
 ]
 
@@ -823,6 +837,7 @@ dependencies = [
  "csv",
  "cytiq-density",
  "cytiq-fcs",
+ "cytiq-publish",
  "log",
  "plotly",
  "rayon",

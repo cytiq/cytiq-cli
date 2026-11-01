@@ -21,7 +21,8 @@ this crate.
   nulls when reading or combining.
 - Rows are matched by `source_event_id` only, never by position, so masks
   from files with different row sets (raw vs PeacoQC output) combine safely.
-- Writers in other crates build an `EventMask` and call `write_parquet`; keep
+- Writers in other crates build an `EventMask` and call `write_parquet`, or
+  `stage_parquet` to publish the mask with their other outputs; keep
   Arrow/Parquet code in this crate.
 
 ## Where changes belong

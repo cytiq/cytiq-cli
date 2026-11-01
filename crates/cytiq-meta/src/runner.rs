@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{ColumnData, FcsDataset, FcsReader, Parameter, ParameterDataType, ParameterWidth};
+use cytiq_publish::{Existing, Publication};
 use log::{debug, info};
 use serde::Serialize;
 
@@ -87,8 +87,9 @@ impl MetaRunner {
     /// Returns an error when the input cannot be read or parsed, the output
     /// exists without `overwrite`, or the document cannot be written.
     pub fn run(config: &MetaConfig) -> Result<MetaRunResult, MetaError> {
+        let existing = Existing::overwrite(config.overwrite);
         if let Some(output) = config.output.as_deref() {
-            prepare_output(output, config.overwrite)?;
+            Publication::new(existing).check(output)?;
         }
 
         let metadata = read_metadata(&config.input)?;
@@ -96,7 +97,14 @@ impl MetaRunner {
         document.push(b'\n');
 
         if let Some(output) = config.output.as_deref() {
-            write_atomically(output, &document)?;
+            cytiq_publish::write_file(output, existing, |writer| {
+                writer
+                    .write_all(&document)
+                    .map_err(|source| MetaError::OutputWrite {
+                        path: output.to_path_buf(),
+                        source,
+                    })
+            })?;
             info!("wrote FCS metadata to {}", output.display());
         } else {
             let mut stdout = io::stdout().lock();
@@ -217,39 +225,4 @@ fn parameter_metadata(parameter: &Parameter) -> ParameterMetadata {
         },
         keywords: parameter.keywords.iter().cloned().collect(),
     }
-}
-
-fn prepare_output(output: &Path, overwrite: bool) -> Result<(), MetaError> {
-    if output.exists() && !overwrite {
-        return Err(MetaError::OutputExists {
-            path: output.to_path_buf(),
-        });
-    }
-    if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
-        fs::create_dir_all(parent).map_err(|source| MetaError::OutputDirectoryCreate {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-    Ok(())
-}
-
-/// Write through a sibling temporary file so a failed run never leaves a
-/// truncated metadata record behind.
-fn write_atomically(output: &Path, document: &[u8]) -> Result<(), MetaError> {
-    let mut temp_name = output.as_os_str().to_owned();
-    temp_name.push(".tmp");
-    let temp_path = PathBuf::from(temp_name);
-    let write_error = |path: &Path| {
-        let path = path.to_path_buf();
-        move |source| MetaError::OutputWrite { path, source }
-    };
-
-    let mut writer = BufWriter::new(File::create(&temp_path).map_err(write_error(&temp_path))?);
-    writer
-        .write_all(document)
-        .and_then(|()| writer.flush())
-        .map_err(write_error(&temp_path))?;
-    drop(writer);
-    fs::rename(&temp_path, output).map_err(write_error(output))
 }

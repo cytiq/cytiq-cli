@@ -18,6 +18,7 @@ members = [
     "crates/cytiq-peacoqc",
     "crates/cytiq-preflight",
     "crates/cytiq-provenance",
+    "crates/cytiq-publish",
     "crates/cytiq-qc",
     "crates/cytiq-spillqc",
     "crates/cytiq-transform",

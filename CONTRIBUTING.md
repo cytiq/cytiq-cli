@@ -7,7 +7,7 @@ This repository is a small Rust workspace named `cytiq`. Keep contributor guidan
 ## Project Structure
 
 - `crates/cytiq-cli/` contains the CLI binary entry point.
-- `crates/cytiq-*/` contain the library crates behind each command (`cytiq-fcs` is the shared FCS reader/writer, `cytiq-density` the shared density primitives).
+- `crates/cytiq-*/` contain the library crates behind each command (`cytiq-fcs` is the shared FCS reader/writer, `cytiq-density` the shared density primitives, `cytiq-publish` the all-or-nothing output publication every command writes through).
 - `parity/` contains the scripts and report that compare results against the upstream R/Python tools.
 - `data/` contains checked-in sample and research assets such as `data/data.fcs` and `data/CD22/`.
 - `docker/Dockerfile` is the place for container build logic.

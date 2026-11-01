@@ -23,8 +23,9 @@ this crate.
   from parsing.
 - Segment offsets come from the HEADER first and fall back to the
   `$BEGIN*`/`$END*` TEXT keywords only when the HEADER field is empty.
-- Output is all-or-nothing: check `overwrite` before reading the input, write to
-  `<output>.tmp`, then rename. Never write a partial file to the final path.
+- Output is all-or-nothing: check `overwrite` before reading the input, then
+  write through `cytiq_publish::write_file`, which stages a synced temporary
+  file beside the output and renames it. Never write to the final path.
 - Write only the document to stdout. Diagnostics go through `log` and end up on
   stderr.
 

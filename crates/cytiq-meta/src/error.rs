@@ -18,12 +18,6 @@ pub enum MetaError {
     },
     #[error("output `{path}` already exists; pass --overwrite to replace it")]
     OutputExists { path: PathBuf },
-    #[error("failed to create output directory `{path}`: {source}")]
-    OutputDirectoryCreate {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("failed to write `{path}`: {source}")]
     OutputWrite {
         path: PathBuf,
@@ -32,4 +26,18 @@ pub enum MetaError {
     },
     #[error("failed to serialize FCS metadata: {0}")]
     Serialize(#[from] serde_json::Error),
+}
+
+impl From<cytiq_publish::PublishError> for MetaError {
+    fn from(error: cytiq_publish::PublishError) -> Self {
+        use cytiq_publish::PublishError;
+        match error {
+            PublishError::Exists { path } => Self::OutputExists { path },
+            PublishError::Io { path, source } => Self::OutputWrite { path, source },
+            PublishError::StagedTwice { ref path } => Self::OutputWrite {
+                path: path.clone(),
+                source: std::io::Error::other(error.to_string()),
+            },
+        }
+    }
 }

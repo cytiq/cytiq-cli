@@ -7,6 +7,7 @@ edition.workspace = true
 arrow-array = "58.3.0"
 arrow-schema = "58.1.0"
 cytiq-fcs = { path = "../cytiq-fcs" }
+cytiq-publish = { path = "../cytiq-publish" }
 log = "0.4.30"
 parquet = { version = "58.3.0", default-features = false, features = ["arrow"] }
 thiserror = "2.0.17"

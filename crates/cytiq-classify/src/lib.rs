@@ -11,6 +11,7 @@ use std::sync::{Arc, OnceLock};
 use arrow_array::{ArrayRef, BooleanArray, Float32Array, RecordBatch, StringArray, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
 use cytiq_fcs::FcsReader;
+use cytiq_publish::{Existing, Publication};
 use ort::{session::Session, value::Tensor};
 use parquet::arrow::ArrowWriter;
 use serde::Serialize;
@@ -39,6 +40,8 @@ pub enum ClassifyError {
     Parquet(#[from] parquet::errors::ParquetError),
     #[error(transparent)]
     Ort(#[from] ort::Error),
+    #[error(transparent)]
+    Publish(#[from] cytiq_publish::PublishError),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -296,10 +299,14 @@ impl ClassifyRunner {
                 object.remove(key);
             }
         }
-        serde_json::to_writer_pretty(File::create(temp.path().join("summary.json"))?, &summary)?;
-        for name in ["predictions.parquet", "summary.json"] {
-            fs::rename(temp.path().join(name), config.output.join(name))?;
-        }
+        let mut publication = Publication::new(Existing::overwrite(config.overwrite));
+        publication.stage_path(config.output.join("predictions.parquet"), |path| {
+            fs::rename(temp.path().join("predictions.parquet"), path).map_err(ClassifyError::from)
+        })?;
+        publication.stage_file(config.output.join("summary.json"), |writer| {
+            serde_json::to_writer_pretty(writer, &summary).map_err(ClassifyError::from)
+        })?;
+        publication.commit()?;
         Ok(result)
     }
 }

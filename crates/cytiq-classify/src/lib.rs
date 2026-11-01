@@ -4,13 +4,14 @@ mod features;
 mod serialization;
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{self, File};
+use std::fs::File;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use arrow_array::{ArrayRef, BooleanArray, Float32Array, RecordBatch, StringArray, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
-use cytiq_fcs::FcsReader;
+use cytiq_fcs::{FcsDataset, FcsReadLimits, FcsReader, FcsStream};
 use cytiq_publish::{Existing, Publication};
 use ort::{session::Session, value::Tensor};
 use parquet::arrow::ArrowWriter;
@@ -89,6 +90,11 @@ pub struct ClassifyRunner;
 impl ClassifyRunner {
     /// Classify one FCS, preserving input event order and lineage.
     ///
+    /// The input is read `batch_size` events at a time: the panel, signal
+    /// state and normalization are checked from TEXT before the model loads,
+    /// and each batch's lineage, mask, features and predictions are computed
+    /// on that batch alone, so memory holds one batch rather than the file.
+    ///
     /// # Errors
     /// Returns a typed error for incompatible inputs, invalid bundles or output failures.
     #[allow(
@@ -115,22 +121,32 @@ impl ClassifyRunner {
                 return Err(invalid("output exists; pass --overwrite to replace it"));
             }
         }
-        let dataset = FcsReader::open(&config.input)?.read()?;
-        let acquisition = cytiq_fcs::acquisition_id(&config.input, &dataset.text)?;
-        let keep = cytiq_mask::read_combined(&config.masks)?
-            .map(|m| m.keep_for(&dataset, &acquisition))
-            .transpose()?
-            .unwrap_or_else(|| vec![true; dataset.event_count()]);
-        let source = cytiq_fcs::source_event_ids(&dataset)?
-            .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
-        let columns = feature_columns_with_normalization(
-            &dataset,
-            &bundle.profile,
-            bundle
-                .normalization
-                .as_ref()
-                .unwrap_or(&NormalizationContract::None),
-        )?;
+        let batch_size = NonZeroUsize::new(config.batch_size)
+            .ok_or_else(|| invalid("invalid batch size, threads or abstain margin"))?;
+        let FcsStream { metadata, batches } =
+            FcsReader::open(&config.input)?.stream(batch_size, FcsReadLimits::default())?;
+        let acquisition = cytiq_fcs::acquisition_id(&config.input, &metadata.text)?;
+        let mask = cytiq_mask::read_combined(&config.masks)?;
+        let mask_keep = mask
+            .as_ref()
+            .map(|mask| mask.keep_by_source(&acquisition))
+            .transpose()?;
+        let normalization = bundle
+            .normalization
+            .as_ref()
+            .unwrap_or(&NormalizationContract::None);
+        let events = metadata.event_count;
+        // One dataset holds the file's metadata and, in turn, each batch of its events.
+        let mut window = FcsDataset {
+            version: metadata.version,
+            header: metadata.header,
+            text: metadata.text,
+            parameters: metadata.parameters,
+            data: batches.empty_batch(),
+            analysis: None,
+        };
+        // An empty batch runs every TEXT check of the recipe before the model loads.
+        feature_columns_with_normalization(&window, &bundle.profile, normalization)?;
         let environment = runtime_environment()?;
         let mut builder = Session::builder(environment)?;
         if let Some(threads) = config.threads {
@@ -176,20 +192,13 @@ impl ClassifyRunner {
             );
         }
         let schema = Arc::new(Schema::new_with_metadata(fields, metadata));
-        fs::create_dir_all(&config.output)?;
-        let temp = tempfile::tempdir_in(&config.output)?;
-        let mut writer = ArrowWriter::try_new(
-            File::create(temp.path().join("predictions.parquet"))?,
-            schema.clone(),
-            None,
-        )?;
         let mut result = ClassifyRunResult {
             normalization: bundle.normalization.clone(),
             schema_version: bundle.schema_version,
             acquisition_sha256: acquisition,
             model_sha256: bundle.model_sha256.clone(),
             run_id: bundle.run_id.clone(),
-            events: dataset.event_count(),
+            events,
             assessed: 0,
             blast: 0,
             non_blast: 0,
@@ -205,70 +214,87 @@ impl ClassifyRunner {
             vocabulary_sha256: bundle.vocabulary_sha256.clone(),
             task: bundle.task.clone(),
         };
-        for start in (0..dataset.event_count()).step_by(config.batch_size) {
-            let end = (start + config.batch_size).min(dataset.event_count());
-            let selected = (start..end).filter(|i| keep[*i]).collect::<Vec<_>>();
-            let mut probabilities = vec![None; end - start];
-            if !selected.is_empty() {
-                let values = selected
-                    .iter()
-                    .flat_map(|i| columns.iter().map(move |c| c[*i]))
-                    .collect::<Vec<_>>();
-                let tensor = Tensor::from_array(([selected.len(), columns.len()], values))?;
-                let outputs = session.run(ort::inputs!["features" => tensor])?;
-                let probabilities_output = outputs
-                    .get("probabilities")
-                    .ok_or_else(|| invalid("ONNX probability output missing"))?;
-                let (shape, data) = probabilities_output.try_extract_tensor::<f32>()?;
-                let rows = i64::try_from(selected.len()).map_err(|_| invalid("batch too large"))?;
-                let k = bundle.classes.len();
-                let columns = i64::try_from(k).map_err(|_| invalid("too many classes"))?;
-                if shape.as_ref() != [rows, columns]
-                    || data
+        let mut publication = Publication::new(Existing::overwrite(config.overwrite));
+        publication.stage_path(config.output.join("predictions.parquet"), |path| {
+            let mut writer = ArrowWriter::try_new(File::create(path)?, schema.clone(), None)?;
+            let mut start = 0_usize;
+            for batch in batches {
+                window.data = batch?;
+                let end = start + window.event_count();
+                let source = batch_source_ids(&window, start..end, mask_keep.is_some())?;
+                let keep = match &mask_keep {
+                    Some(mask) => mask.keep(&source)?,
+                    None => vec![true; end - start],
+                };
+                // Masked events are featurized too: a nonfinite feature fails the run either way.
+                let columns =
+                    feature_columns_with_normalization(&window, &bundle.profile, normalization)?;
+                let selected = (0..end - start).filter(|i| keep[*i]).collect::<Vec<_>>();
+                let mut probabilities = vec![None; end - start];
+                if !selected.is_empty() {
+                    let values = selected
                         .iter()
-                        .any(|p| !p.is_finite() || !(0.0..=1.0).contains(p))
-                {
-                    return Err(invalid("invalid ONNX probabilities"));
-                }
-                for (i, row) in selected.iter().zip(data.chunks_exact(k)) {
-                    if (row.iter().sum::<f32>() - 1.0).abs() > 1e-5 {
-                        return Err(invalid("ONNX probabilities do not sum to one"));
+                        .flat_map(|i| columns.iter().map(move |c| c[*i]))
+                        .collect::<Vec<_>>();
+                    let tensor = Tensor::from_array(([selected.len(), columns.len()], values))?;
+                    let outputs = session.run(ort::inputs!["features" => tensor])?;
+                    let probabilities_output = outputs
+                        .get("probabilities")
+                        .ok_or_else(|| invalid("ONNX probability output missing"))?;
+                    let (shape, data) = probabilities_output.try_extract_tensor::<f32>()?;
+                    let rows =
+                        i64::try_from(selected.len()).map_err(|_| invalid("batch too large"))?;
+                    let k = bundle.classes.len();
+                    let columns = i64::try_from(k).map_err(|_| invalid("too many classes"))?;
+                    if shape.as_ref() != [rows, columns]
+                        || data
+                            .iter()
+                            .any(|p| !p.is_finite() || !(0.0..=1.0).contains(p))
+                    {
+                        return Err(invalid("invalid ONNX probabilities"));
                     }
-                    probabilities[*i - start] = Some(row.to_vec());
+                    for (i, row) in selected.iter().zip(data.chunks_exact(k)) {
+                        if (row.iter().sum::<f32>() - 1.0).abs() > 1e-5 {
+                            return Err(invalid("ONNX probabilities do not sum to one"));
+                        }
+                        probabilities[*i] = Some(row.to_vec());
+                    }
                 }
-            }
-            let labels = probabilities
-                .iter()
-                .map(|row| {
-                    row.as_ref()
-                        .map(|row| decide(&bundle, row, config.abstain_margin, &mut result))
-                })
-                .collect::<Vec<_>>();
-            let mut arrays: Vec<ArrayRef> = vec![
-                Arc::new(UInt64Array::from_iter_values(start as u64..end as u64)),
-                Arc::new(UInt64Array::from(source[start..end].to_vec())),
-                Arc::new(BooleanArray::from(keep[start..end].to_vec())),
-            ];
-            for column in 0..bundle.classes.len() {
-                arrays.push(Arc::new(Float32Array::from(
-                    probabilities
-                        .iter()
-                        .map(|row| {
-                            row.as_ref().map(|values| {
-                                if bundle.schema_version == 1 && column == 0 {
-                                    1.0 - values[1]
-                                } else {
-                                    values[column]
-                                }
+                let labels = probabilities
+                    .iter()
+                    .map(|row| {
+                        row.as_ref()
+                            .map(|row| decide(&bundle, row, config.abstain_margin, &mut result))
+                    })
+                    .collect::<Vec<_>>();
+                let mut arrays: Vec<ArrayRef> = vec![
+                    Arc::new(UInt64Array::from_iter_values(start as u64..end as u64)),
+                    Arc::new(UInt64Array::from(source)),
+                    Arc::new(BooleanArray::from(keep)),
+                ];
+                for column in 0..bundle.classes.len() {
+                    arrays.push(Arc::new(Float32Array::from(
+                        probabilities
+                            .iter()
+                            .map(|row| {
+                                row.as_ref().map(|values| {
+                                    if bundle.schema_version == 1 && column == 0 {
+                                        1.0 - values[1]
+                                    } else {
+                                        values[column]
+                                    }
+                                })
                             })
-                        })
-                        .collect::<Vec<_>>(),
-                )));
+                            .collect::<Vec<_>>(),
+                    )));
+                }
+                arrays.push(Arc::new(StringArray::from(labels)));
+                writer.write(&RecordBatch::try_new(schema.clone(), arrays)?)?;
+                start = end;
             }
-            arrays.push(Arc::new(StringArray::from(labels)));
-            writer.write(&RecordBatch::try_new(schema.clone(), arrays)?)?;
-        }
-        writer.close()?;
+            writer.close()?;
+            Ok::<(), ClassifyError>(())
+        })?;
         if result.assessed > 0 {
             result.blast_fraction = Some(result.blast as f64 / result.assessed as f64);
             result.non_blast_fraction = Some(result.non_blast as f64 / result.assessed as f64);
@@ -299,15 +325,26 @@ impl ClassifyRunner {
                 object.remove(key);
             }
         }
-        let mut publication = Publication::new(Existing::overwrite(config.overwrite));
-        publication.stage_path(config.output.join("predictions.parquet"), |path| {
-            fs::rename(temp.path().join("predictions.parquet"), path).map_err(ClassifyError::from)
-        })?;
         publication.stage_file(config.output.join("summary.json"), |writer| {
             serde_json::to_writer_pretty(writer, &summary).map_err(ClassifyError::from)
         })?;
         publication.commit()?;
         Ok(result)
+    }
+}
+
+/// Raw-file rows of a batch holding rows `rows` of the input: `Original_ID`
+/// when the input has it, the rows themselves otherwise. With a mask, a bad
+/// `Original_ID` is reported as the mask's lineage error, as for a whole file.
+fn batch_source_ids(
+    window: &FcsDataset,
+    rows: std::ops::Range<usize>,
+    masked: bool,
+) -> Result<Vec<u64>, ClassifyError> {
+    match cytiq_fcs::source_event_ids(window) {
+        Ok(ids) => Ok(ids.unwrap_or_else(|| (rows.start as u64..rows.end as u64).collect())),
+        Err(error) if masked => Err(cytiq_mask::MaskError::Lineage(error).into()),
+        Err(error) => Err(error.into()),
     }
 }
 

@@ -37,6 +37,18 @@ assessed events; `provenance.json` records model, input and mask hashes.
 Existing outputs require `--overwrite`. `--batch-size` defaults to 65536;
 `--threads` caps ONNX CPU threads.
 
+The input is read `--batch-size` events at a time (`cytiq_fcs::FcsReader::stream`),
+so memory holds one batch of events and features plus the masks, not the file.
+The panel, instrument, signal state and normalization are checked from TEXT
+before the model loads; each batch's lineage, mask decisions, features and
+predictions are computed on that batch alone, with the same results as for the
+whole file, so batch boundaries and outputs do not depend on how the file is
+read. Masked events are still featurized: a nonfinite feature anywhere fails the
+run. `predictions.parquet` is written in place of a staged file and published
+with `summary.json` only when every batch succeeds; a failure publishes nothing
+and leaves no new output directory. When an input has several defects, the
+first one met while reading is reported.
+
 ONNX Runtime 1.31.0 is linked statically by `ort` 2.0.0-rc.15 using its
 `download-binaries` feature. The crate handles downloading, SHA-256 verification
 and caching the prebuilt library during Cargo builds; no project download script

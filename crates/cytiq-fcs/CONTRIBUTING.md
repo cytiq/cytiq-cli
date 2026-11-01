@@ -92,10 +92,27 @@ just verify
   Failing seeds are kept in `properties.proptest-regressions`; commit them.
   Raise `PROPTEST_CASES` for a longer run.
 - `fuzz/` — cargo-fuzz targets `read_fcs` and `spillover_keyword`, outside the
-  workspace. Run `just fuzz-fcs [target] [seconds]` (nightly + cargo-fuzz).
-  Turn every crash into a test in `tests/limits.rs`.
+  workspace. What they check lives in `fuzz/checks.rs`: `read_fcs` also reads
+  every input with tight `FcsReadLimits` and requires the same dataset, the
+  same error or `LimitExceeded`. Run `just fuzz-fcs [target] [seconds]`
+  (nightly + cargo-fuzz). CI fuzzes each target weekly for 10 minutes, on
+  demand, and for one minute on pull requests that change this crate
+  (`.github/workflows/fuzz.yml`).
+- `tests/fuzz_regressions.rs` — includes `fuzz/checks.rs` and replays every
+  file in `tests/fuzz_regressions/<target>/` through it, and runs the checks
+  on every fixture, so `cargo test` covers what the fuzzer found.
 - `src/compensation.rs` `#[cfg(test)]` — spillover parsing, inversion, and
   compensation.
+
+When the fuzzer finds a crash (locally in `fuzz/artifacts/<target>/`, in CI as
+the `fuzz-crash-<target>` artifact):
+
+1. Copy the input to `tests/fuzz_regressions/<target>/crash-<sha1>`, keeping
+   cargo-fuzz's name; `replays_every_fuzz_regression` now fails.
+2. Fix the reader, and add a named test for the case to `tests/limits.rs` or
+   `tests/reader.rs` that asserts the specific error.
+3. Commit the input with the fix. Never name these directories `corpus` or
+   `artifacts`: `fuzz/.gitignore` ignores those names.
 
 Add a failing case for every new rejection path, and keep fixtures tiny and
 deterministic (see `data/fixtures/fcs/README.md`).

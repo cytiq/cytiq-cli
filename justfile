@@ -58,14 +58,21 @@ parity-smoke-fixture:
     parity/make_smoke.sh
 
 # ---- Fuzz read_fcs (seeded from fixtures and $CYTIQ_REAL_DATA) or spillover_keyword; needs nightly and cargo-fuzz
+# Saved regressions seed both targets. Seeds are named after their path, so
+# fixtures that share a file name do not overwrite each other.
 [group('validation')]
 fuzz-fcs target="read_fcs" seconds="300":
     mkdir -p crates/cytiq-fcs/fuzz/corpus/{{ target }}
+    for seed in crates/cytiq-fcs/tests/fuzz_regressions/{{ target }}/*; do \
+      cp "$seed" "crates/cytiq-fcs/fuzz/corpus/{{ target }}/regression-$(basename "$seed")"; \
+    done
     if [[ "{{ target }}" == read_fcs ]]; then \
-      find data/fixtures "${CYTIQ_REAL_DATA:-data/fixtures}" -name '*.fcs' -size -4M \
-        -exec cp {} crates/cytiq-fcs/fuzz/corpus/read_fcs/ \; ; \
+      find data/fixtures "${CYTIQ_REAL_DATA:-data/fixtures}" -name '*.fcs' -size -4M -print0 | \
+        while IFS= read -r -d '' seed; do \
+          cp "$seed" "crates/cytiq-fcs/fuzz/corpus/read_fcs/seed-$(printf '%s' "$seed" | tr '/' '_')"; \
+        done; \
     fi
-    cd crates/cytiq-fcs && cargo +nightly fuzz run {{ target }} -- -max_total_time={{ seconds }}
+    cd crates/cytiq-fcs && cargo +nightly fuzz run {{ target }} -- -max_total_time={{ seconds }} -timeout=10
 
 # ---- Run the application
 [group('build')]

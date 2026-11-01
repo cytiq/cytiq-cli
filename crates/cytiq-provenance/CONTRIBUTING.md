@@ -16,7 +16,8 @@ this crate.
 - `arguments` is the command line verbatim. Do not normalise or reorder it.
 - Records are written through `cytiq-publish`: a synced temporary file in the
   same directory, renamed into place. `files_under` skips temporary files and
-  directories (`*.tmp`) and provenance records.
+  directories (`*.tmp`, which covers the `*.old.tmp` backups a crash can
+  leave) and provenance records.
 - Inputs are hashed by `snapshot_inputs` before the command runs, never at
   `finish`.
 - The CLI decides which files are inputs and outputs of each command

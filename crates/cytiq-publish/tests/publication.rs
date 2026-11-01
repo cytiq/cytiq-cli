@@ -159,27 +159,119 @@ fn a_directory_in_the_way_fails_the_commit_before_anything_is_published() {
     );
 }
 
+/// Stage `locked/second.csv` after whatever `publication` holds, then commit
+/// with `locked` read-only: that rename fails after the earlier ones succeed.
+/// The staged temporary stays in `locked`, which also prevents its removal.
 #[cfg(unix)]
-#[test]
-fn a_failing_rename_keeps_earlier_outputs_and_discards_later_ones() {
+fn commit_failing_at_a_locked_directory(
+    mut publication: Publication,
+    root: &Path,
+) -> Result<(), PublishError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let root = tempfile::tempdir().unwrap();
-    let locked = root.path().join("locked");
+    let locked = root.join("locked");
     fs::create_dir(&locked).unwrap();
-    let mut publication = Publication::new(Existing::Replace);
-    write_text(&mut publication, &root.path().join("first.csv"), "1").unwrap();
     write_text(&mut publication, &locked.join("second.csv"), "2").unwrap();
-    write_text(&mut publication, &root.path().join("last.json"), "{}").unwrap();
-    // A rename into a directory without write permission fails at commit.
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
     let result = publication.commit();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
-    assert_eq!(listing(root.path()), ["first.csv", "locked"]);
-    // The second output was not published; its temporary may remain, since
-    // the locked directory also prevented its removal.
     assert!(!locked.join("second.csv").exists());
+    result
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_unpublishes_outputs_published_before_it() {
+    let root = tempfile::tempdir().unwrap();
+    let mut publication = Publication::new(Existing::Replace);
+    write_text(&mut publication, &root.path().join("first.csv"), "1").unwrap();
+    let result = commit_failing_at_a_locked_directory(publication, root.path());
+    assert!(
+        matches!(&result, Err(PublishError::Io { path, .. }) if path.ends_with("locked/second.csv")),
+        "{result:?}"
+    );
+    assert_eq!(listing(root.path()), ["locked"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_restores_files_replaced_before_it() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("first.csv");
+    fs::write(&target, "previous").unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+    let mut publication = Publication::new(Existing::Replace);
+    write_text(&mut publication, &target, "new").unwrap();
+    let result = commit_failing_at_a_locked_directory(publication, root.path());
+    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "previous");
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    assert_eq!(listing(root.path()), ["first.csv", "locked"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_restores_directories_replaced_before_it() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("model");
+    fs::create_dir(&target).unwrap();
+    fs::write(target.join("old.json"), "old").unwrap();
+    let mut publication = Publication::new(Existing::Replace);
+    let staged = publication.stage_dir(&target).unwrap();
+    fs::write(staged.join("new.json"), "new").unwrap();
+    let result = commit_failing_at_a_locked_directory(publication, root.path());
+    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
+    assert_eq!(listing(&target), ["old.json"]);
+    assert_eq!(fs::read_to_string(target.join("old.json")).unwrap(), "old");
+    assert_eq!(listing(root.path()), ["locked", "model"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_removes_directories_published_before_it() {
+    let root = tempfile::tempdir().unwrap();
+    let mut publication = Publication::new(Existing::Refuse);
+    let staged = publication.stage_dir(root.path().join("model")).unwrap();
+    fs::write(staged.join("new.json"), "new").unwrap();
+    let result = commit_failing_at_a_locked_directory(publication, root.path());
+    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
+    assert_eq!(listing(root.path()), ["locked"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_removes_parent_directories_it_created() {
+    let root = tempfile::tempdir().unwrap();
+    let mut publication = Publication::new(Existing::Refuse);
+    write_text(&mut publication, &root.path().join("a/b/first.csv"), "1").unwrap();
+    let result = commit_failing_at_a_locked_directory(publication, root.path());
+    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
+    assert_eq!(listing(root.path()), ["locked"]);
+}
+
+#[test]
+fn replacing_outputs_leaves_no_backups_behind() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("out.csv");
+    let directory = root.path().join("model");
+    fs::write(&file, "previous").unwrap();
+    fs::create_dir(&directory).unwrap();
+    fs::write(directory.join("old.json"), "old").unwrap();
+
+    let mut publication = Publication::new(Existing::Replace);
+    write_text(&mut publication, &file, "new").unwrap();
+    let staged = publication.stage_dir(&directory).unwrap();
+    fs::write(staged.join("new.json"), "new").unwrap();
+    publication.commit().unwrap();
+
+    assert_eq!(listing(root.path()), ["model", "out.csv"]);
+    assert_eq!(fs::read_to_string(&file).unwrap(), "new");
+    assert_eq!(listing(&directory), ["new.json"]);
 }
 
 #[test]

@@ -34,10 +34,12 @@ impl From<cytiq_publish::PublishError> for MetaError {
         match error {
             PublishError::Exists { path } => Self::OutputExists { path },
             PublishError::Io { path, source } => Self::OutputWrite { path, source },
-            PublishError::StagedTwice { ref path } => Self::OutputWrite {
-                path: path.clone(),
-                source: std::io::Error::other(error.to_string()),
-            },
+            PublishError::StagedTwice { .. } | PublishError::RollbackFailed { .. } => {
+                Self::OutputWrite {
+                    path: error.path().to_path_buf(),
+                    source: std::io::Error::other(error.to_string()),
+                }
+            }
         }
     }
 }

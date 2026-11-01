@@ -157,3 +157,9 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" cytiq:dev autospill \
 
 The image runs as an unprivileged user (UID 10001), with `/data` as its working
 directory. `--user` makes outputs in the mounted directory belong to you.
+
+Releases are published as `ghcr.io/cytiq/cytiq-cli:<version>` (and `:latest`)
+for `linux/amd64`, with SBOM and provenance attestations. Pin the digest when
+you deploy, e.g. in `cytiq-argo`'s WorkflowTemplates. Pushing an `X.Y.Z-rcN` tag
+publishes `:X.Y.Z-rcN` and opens the changelog PR; merging it tags `X.Y.Z` and
+publishes the release image (`.github/workflows/cd.yml`).

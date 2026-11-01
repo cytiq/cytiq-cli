@@ -4,6 +4,7 @@ mod data;
 mod error;
 mod header;
 mod layout;
+mod limits;
 mod lineage;
 mod linear;
 mod margins;
@@ -22,6 +23,7 @@ use crate::data::{decode_data, read_raw_segment};
 use crate::error::FcsError;
 use crate::header::read_header;
 use crate::layout::resolve_layout;
+use crate::limits::TEXT_BYTES_MAX;
 use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
 
@@ -89,19 +91,23 @@ impl<R: Read + Seek> FcsReader<R> {
         self.reader.seek(SeekFrom::Start(0)).map_err(FcsError::Io)?;
 
         let header = read_header(&mut self.reader)?;
+        ensure_in_file("TEXT", header.text, file_len)?;
+        ensure_text_within_limit(header.text.len())?;
         let primary_segment = read_text_segment(&mut self.reader, header.text, "TEXT")?;
-        let primary_text = build_text(primary_segment.clone(), None)?;
+        let mut text = build_text(primary_segment, None)?;
         let supplemental_range = parse_segment_range(
-            primary_text.primary(),
+            text.primary(),
             "$BEGINSTEXT",
             "$ENDSTEXT",
             "supplemental TEXT",
             false,
         )?;
-        let supplemental = supplemental_range
-            .map(|range| read_text_segment(&mut self.reader, range, "supplemental TEXT"))
-            .transpose()?;
-        let text = build_text(primary_segment, supplemental)?;
+        if let Some(range) = supplemental_range {
+            ensure_in_file("supplemental TEXT", range, file_len)?;
+            ensure_text_within_limit(header.text.len().saturating_add(range.len()))?;
+            let segment = read_text_segment(&mut self.reader, range, "supplemental TEXT")?;
+            text.add_supplemental(segment)?;
+        }
 
         let data_range = resolve_required_range(&header, &text, "$BEGINDATA", "$ENDDATA", "DATA")?;
         let analysis_range =
@@ -240,14 +246,7 @@ fn validate_segments(
     }
 
     for (name, range) in &segments {
-        if range.end >= file_len {
-            return Err(FcsError::SegmentOutOfBounds {
-                name,
-                start: range.start,
-                end: range.end,
-                file_len,
-            });
-        }
+        ensure_in_file(name, *range, file_len)?;
     }
 
     segments.sort_by_key(|(_, range)| range.start);
@@ -263,4 +262,29 @@ fn validate_segments(
     }
 
     Ok(())
+}
+
+fn ensure_in_file(name: &'static str, range: ByteRange, file_len: u64) -> Result<(), FcsError> {
+    if range.end >= file_len {
+        Err(FcsError::SegmentOutOfBounds {
+            name,
+            start: range.start,
+            end: range.end,
+            file_len,
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_text_within_limit(text_bytes: u64) -> Result<(), FcsError> {
+    if text_bytes > TEXT_BYTES_MAX {
+        Err(FcsError::LimitExceeded {
+            what: "TEXT bytes",
+            value: text_bytes,
+            limit: TEXT_BYTES_MAX,
+        })
+    } else {
+        Ok(())
+    }
 }

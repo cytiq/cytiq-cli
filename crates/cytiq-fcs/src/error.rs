@@ -48,6 +48,12 @@ pub enum FcsError {
         first: &'static str,
         second: &'static str,
     },
+    #[error("{what} is {value}, beyond the supported limit of {limit}")]
+    LimitExceeded {
+        what: &'static str,
+        value: u64,
+        limit: u64,
+    },
     #[error("DATA length mismatch: expected {expected} bytes, found {actual}")]
     DataLengthMismatch { expected: u64, actual: u64 },
     #[error("failed to parse {data_type} value `{value}` for parameter {parameter}")]

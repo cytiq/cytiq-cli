@@ -55,7 +55,7 @@ this crate.
 - FSC/SSC gate, KDE and generic statistics shared with other crates:
   `cytiq-density`.
 - Display scales: `cytiq-transform::scales`.
-- CLI flags and output path handling: `crates/cytiq-cli/src/main.rs`.
+- CLI flags and output path handling: `crates/cytiq-cli/src/commands/autospill.rs` and `autospread.rs`.
 
 ## Testing
 

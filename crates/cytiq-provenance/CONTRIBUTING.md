@@ -20,7 +20,7 @@ this crate.
 - Inputs are hashed by `snapshot_inputs` before the command runs, never at
   `finish`.
 - The CLI decides which files are inputs and outputs of each command
-  (`crates/cytiq-cli/src/main.rs`, `snapshot_inputs` and `record_provenance`).
+  (`crates/cytiq-cli/src/commands/*.rs` call `snapshot_inputs`, and `record_provenance` in `src/provenance.rs`).
   When a command gains an input or output file, add it there and to its
   `*_cli.rs` provenance check.
 

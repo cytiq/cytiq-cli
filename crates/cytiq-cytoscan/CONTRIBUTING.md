@@ -45,7 +45,7 @@ this crate.
 ## Where changes belong
 
 - FCS parsing, spillover parsing and matrix inversion belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs`; this crate takes a
+- CLI flags belong in `crates/cytiq-cli/src/commands/cytoscan.rs`; this crate takes a
   `CytoScanConfig` and has no `clap` dependency.
 
 ## Testing

@@ -55,7 +55,7 @@ this crate.
 ## Where changes belong
 
 - FCS reading/writing and keyword handling → `cytiq-fcs`.
-- Flags and `--help` text → `crates/cytiq-cli/src/main.rs`.
+- Flags and `--help` text → `crates/cytiq-cli/src/commands/autospectral.rs`.
 - A shared KDE scatter gate (the parity report suggests reusing the
   `cytiq-autospill` gate) → `cytiq-density`, not a copy in this crate.
 - Fixture changes → `data/fixtures/autospectral/` and its README.

@@ -37,3 +37,6 @@ this crate.
 cargo test -p cytiq-mask
 cargo test -p cytiq-cli --test mask_cli
 ```
+
+`tests/properties.rs` checks generated masks: Parquet round-trips exactly, and
+`combine` matches rows by `source_event_id` whatever their order.

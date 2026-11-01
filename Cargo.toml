@@ -37,5 +37,8 @@ pedantic = "warn"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+# Integer overflow aborts instead of wrapping silently. Measured on the parity
+# suite and a 225 MB spectral PeacoQC run: no difference beyond noise.
+overflow-checks = true
 panic = "abort"
 strip = "symbols"

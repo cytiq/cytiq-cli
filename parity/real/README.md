@@ -18,7 +18,12 @@ A dataset's `chain` picks the comparison:
   workflow (`define.flow.control`, `clean.controls`,
   `get.fluorophore.spectra`, `unmix.ols`) for the cytometer named by
   `autospectral_cytometer`, and compares spectra and unmixed abundances;
-- `flowsom_gating` is specific to FlowSOM's 68983 sample.
+- `flowsom_gating` is specific to FlowSOM's 68983 sample;
+- `classify` runs `cytiq classify` with the cytiq-ml bundle in
+  `CYTIQ_CLASSIFY_BUNDLE` on every file and compares it with that model's
+  native probabilities in `CYTIQ_CLASSIFY_GOLDEN` (written by cytiq-ml's
+  `scripts/export_classify_golden.py`, which also records the model and file
+  hashes the comparison checks). Skipped when either variable is unset.
 
 To add a dataset, add an entry with its source, licence, instrument, SHA-256,
 cytometry type and panel. A downloaded dataset is marked `optional`: it is
@@ -33,6 +38,8 @@ only it can satisfy are marked `optional` too.
 | `celesta_mdsc_sample` | the same archive: `Myeloid SP_042.fcs`, 56,458-event mouse spleen sample with the FACSDiva compensation | as `peacoqc_111` |
 | `symphony_omip24_controls` (slow) | [Zenodo 22994607](https://doi.org/10.5281/zenodo.22994607) `Table 8.zip` (CC-BY-4.0, 193 MB): 24 single-stain human PBMC controls of a 24-colour OMIP, 27,000–60,000 events each, BD FACSymphony A3 or A5 (`5B-3R-8V-7UV-3YG`, FACSDiva 9.1; the record does not name the model) | as `celesta_mdsc_controls`; R autospill needs about 25 minutes, so it runs only with `CYTIQ_REAL_SLOW=1` |
 | `aurora_pbmc_spectral` | [Mendeley Data xzt3h3gnx9](https://doi.org/10.17632/xzt3h3gnx9.1) (CC-BY-4.0, 340 MB): AutoSpectral's own example, a 9-colour human PBMC panel on a 5-laser Cytek Aurora (64 detectors): an unstained and 9 single-stain cell controls (60,000–81,000 events each), one fully stained sample (418,152 events) | `cytiq autospectral` against R AutoSpectral: spectra per fluorophore (cosine, and AutoSpectral's own spread without `clean.controls`), the AF spectrum apart, the unmixing solver on the same spectra, and abundances of every 10th sample event, also with AutoSpectral's AF spectrum swapped in |
+| `flowcyt_case27`, `flowcyt_case4` (slow) | [Yareta FlowCyt archive](https://doi.org/10.26037/yareta:54dmqf5nj5d2hoyaprnzh52rz4) (CC-BY-4.0, 3.4 GB): `Case27_A.fcs` (209,970 events) and `Case4_A.fcs` (624,323), human bone marrow, 10 colours, Beckman Coulter Navios exported by Kaluza (FCS 3.0, big-endian float32, `$SPILLOVER`) | as `peacoqc_111`; PeacoQC removes 4.8% and 10.5% of their events |
+| `flowcyt_classify` (slow) | the same archive: case 27's five labelled Kaluza gates (`O/N/G/P/K`) and all its events (`A`); case 27 is in cytiq-ml's FlowCyt test split | `cytiq classify` against the native cytiq-ml model, with `CYTIQ_CLASSIFY_BUNDLE` and `CYTIQ_CLASSIFY_GOLDEN` set |
 | `user_<name>` | every `*.fcs` with `$SPILL` in `$CYTIQ_REAL_DATA` | as `peacoqc_111`, for data that cannot be committed |
 
 The run also executes the ignored >100 MB FCS round-trip test of
@@ -49,6 +56,14 @@ Notes:
   gate at `gateResolution="256"` on biex axes. See `parity/REPORT.md` §2.10.
 - Downloads use `curl`, which trusts the system certificate store (Python's
   `urllib` rejects TLS-inspecting proxies).
+- The FlowCyt datasets need the 3.4 GB Yareta archive, so they run only with
+  `CYTIQ_REAL_SLOW=1`. Yareta builds the ZIP on request, so a fresh download
+  may not match the pinned archive digest even though every member does. With
+  a local copy, seed the cache instead of downloading:
+  `ln FlowCyt.zip parity/.data/real-cache/9d588510a90dab3ddc6929cb5a2af2e7a5b038b64a3857dcb534092dd1af73a2`.
+  For the classify dataset, export the golden from cytiq-ml with
+  `uv run --extra boosting python scripts/export_classify_golden.py <bundle> <golden-dir> Case27_{O,N,G,P,K,A}.fcs`
+  and set `CYTIQ_CLASSIFY_BUNDLE=<bundle> CYTIQ_CLASSIFY_GOLDEN=<golden-dir>`.
 - AutoSpectral's AF spectrum is its least stable output: it is the `rlm`
   slope against the AF control's brightest detector on average, over 1,000
   random events. Between random draws it moves to a cosine of 0.91–0.94, and

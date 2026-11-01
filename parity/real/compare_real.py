@@ -7,6 +7,7 @@ Exits with 1 when a rule in parity/real/tolerances.json is violated.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -24,6 +25,8 @@ from compare import _offdiag, check_tolerances, spillqc_agreement  # noqa: E402
 # autospill's `marker.forbidden.char`, each replaced by `-` in its matrix and
 # gate names.
 AUTOSPILL_FORBIDDEN = " !\"#$%&'()*,/:;?@[\\]^{|}~"
+# cytiq-ml's export check: ONNX probabilities within this of the native model.
+CLASSIFY_PARITY_TOLERANCE = 1e-5
 
 
 def _r(value: float, digits: int = 6) -> float:
@@ -219,6 +222,34 @@ def compare_autospectral_chain(directory: Path) -> dict:
             "unmixing": unmixing}
 
 
+def compare_classify_chain(directory: Path) -> dict:
+    """`cytiq classify` against the native model's probabilities for the same
+    files. A label may differ only where the native top two probabilities are
+    within the export parity tolerance of each other."""
+    golden = json.loads((directory / "golden" / "golden.json").read_text())
+    model = hashlib.sha256((directory / "bundle" / "model.onnx").read_bytes()).hexdigest()
+    if model != golden["model_sha256"]:
+        raise ValueError(f"{directory.name}: golden is for model {golden['model_sha256']}, bundle has {model}")
+    classes = golden["classes"]
+    out = {}
+    for stem, digest in sorted(golden["files"].items()):
+        if hashlib.sha256((directory / f"{stem}.fcs").read_bytes()).hexdigest() != digest:
+            raise ValueError(f"{directory.name}: golden for {stem}.fcs was computed on other bytes")
+        native = np.load(directory / "golden" / f"{stem}.npy")
+        table = pq.read_table(directory / "classify" / stem / "predictions.parquet")
+        rust = np.column_stack([table[f"p_{name}"].to_numpy() for name in classes]).astype(np.float64)
+        labels = np.asarray(table["label"].to_pylist(), dtype=object)
+        expected = np.asarray(classes, dtype=object)[native.argmax(axis=1)]
+        top = np.sort(native, axis=1)
+        tied = top[:, -1] - top[:, -2] <= CLASSIFY_PARITY_TOLERANCE
+        disagree = labels != expected
+        out[stem] = {"events": int(native.shape[0]),
+                     "max_abs_probability_delta": _r(float(np.max(np.abs(rust - native)))),
+                     "label_disagreements": int(disagree.sum()),
+                     "label_disagreements_beyond_ties": int((disagree & ~tied).sum())}
+    return out
+
+
 def main() -> None:
     out_dir, target = Path(sys.argv[1]), Path(sys.argv[2])
     metrics: dict = {"real": {}}
@@ -233,6 +264,8 @@ def main() -> None:
             metrics["real"][directory.name] = {"autospill": compare_autospill_chain(directory)}
         if (directory / "control_file.csv").exists():
             metrics["real"][directory.name] = {"autospectral": compare_autospectral_chain(directory)}
+        if (directory / "golden").exists():
+            metrics["real"][directory.name] = {"classify": compare_classify_chain(directory)}
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(metrics, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))

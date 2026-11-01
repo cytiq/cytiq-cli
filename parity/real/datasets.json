@@ -1,5 +1,5 @@
 {
-  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill), `autospectral` (spectral single-stain controls under `controls/` with AutoSpectral's `control_file.csv`, stained samples under `sample/`, `autospectral_cytometer` naming the get.autospectral.param cytometer; spectra and unmixed abundances vs R AutoSpectral) `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R) or `compensaid` (`cytiq spillqc` vs CompensAID on a raw `$SPILL` file through the vignette chain, and on `preprocessed.fcs` when present). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
+  "_comment": "Real acquisitions for parity/real/run_real.sh. Each file comes from an installed R package (`r_package` + `path` under its library directory), a `url`, or is a `member` of the dataset's zip `archive` (`url` + `sha256`), and must match `sha256`. `chain` picks the comparison: `qc` (margins, compensation, logicle, PeacoQC; any `$SPILL` file), `autospill` (single-stain controls listed in `controls` as filename, dye = detector `$PnN`, antigen, wavelength; spillover matrix and gates vs R autospill), `autospectral` (spectral single-stain controls under `controls/` with AutoSpectral's `control_file.csv`, stained samples under `sample/`, `autospectral_cytometer` naming the get.autospectral.param cytometer; spectra and unmixed abundances vs R AutoSpectral) `flowsom_gating` (FlowSOM 68983 only: manual gating vs FlowKit and FlowJo, FlowSOM vs R) or `compensaid` (`cytiq spillqc` vs CompensAID on a raw `$SPILL` file through the vignette chain, and on `preprocessed.fcs` when present), or `classify` (`cytiq classify` with the cytiq-ml bundle in CYTIQ_CLASSIFY_BUNDLE on every file, against that model's native probabilities in CYTIQ_CLASSIFY_GOLDEN; skipped when either is unset). `instrument`, `source` and `license` record where downloaded files come from. Downloaded datasets are `optional`: skipped with a warning when the download fails. `slow` datasets run only with CYTIQ_REAL_SLOW=1.",
   "datasets": [
     {
       "name": "flowsom_68983",
@@ -169,6 +169,56 @@
         "controls/D9 CD56 fresh Spark NIR 685 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/58ed0b18-ddb9-4117-8ec7-137575f7115b/file_downloaded", "sha256": "92116d193b0818368ddb8d663e825f381970745df276eba363857a01e36fca20"},
         "controls/D10 CCR6 fresh APC-Fire 810 (Cells)_PBMC 1hr RT.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/9a2859a6-5534-43f5-8432-d1926745b86a/file_downloaded", "sha256": "bc1a314b389a96b0933b7106198260aa1a624e0fcf1763a94d51420f342b6a93"},
         "sample/E1 Fresh_100ul_TS_BS_005.fcs": {"url": "https://data.mendeley.com/public-files/datasets/xzt3h3gnx9/files/af871446-f746-4fc3-b6e4-02fab01863ec/file_downloaded", "sha256": "d9fa4cdd1e10a8d6d4f1d4d1b866358584e732bb3b78f10b6e6bf6915f5b895f"}
+      }
+    },
+    {
+      "name": "flowcyt_case27",
+      "chain": "qc",
+      "cytometry": "conventional",
+      "instrument": "Beckman Coulter Navios, exported by Kaluza (FCS 3.0, big-endian float32)",
+      "source": "https://doi.org/10.26037/yareta:54dmqf5nj5d2hoyaprnzh52rz4",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "slow": true,
+      "panel": "human bone marrow, 10 colours, FlowCyt CHIL 2024 case 27, all events (209,970)",
+      "archive": {"url": "https://access.yareta.unige.ch/access/metadata/759f2b03-f779-476a-a79c-28d289de8c99/download", "sha256": "9d588510a90dab3ddc6929cb5a2af2e7a5b038b64a3857dcb534092dd1af73a2"},
+      "files": {
+        "sample.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_A.fcs", "sha256": "ce54b7ff023bd436d14a30c612158c313225255d87db552d61d9965f22f0ab44"}
+      }
+    },
+    {
+      "name": "flowcyt_case4",
+      "chain": "qc",
+      "cytometry": "conventional",
+      "instrument": "Beckman Coulter Navios, exported by Kaluza (FCS 3.0, big-endian float32)",
+      "source": "https://doi.org/10.26037/yareta:54dmqf5nj5d2hoyaprnzh52rz4",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "slow": true,
+      "panel": "human bone marrow, 10 colours, FlowCyt CHIL 2024 case 4, all events (624,323)",
+      "archive": {"url": "https://access.yareta.unige.ch/access/metadata/759f2b03-f779-476a-a79c-28d289de8c99/download", "sha256": "9d588510a90dab3ddc6929cb5a2af2e7a5b038b64a3857dcb534092dd1af73a2"},
+      "files": {
+        "sample.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case4_A.fcs", "sha256": "b575f07c52389699e90eb1e97fb8dc6ad0734de1bf8ee3ffb1d4aa651bac619a"}
+      }
+    },
+    {
+      "name": "flowcyt_classify",
+      "chain": "classify",
+      "cytometry": "conventional",
+      "instrument": "Beckman Coulter Navios, exported by Kaluza (FCS 3.0, big-endian float32)",
+      "source": "https://doi.org/10.26037/yareta:54dmqf5nj5d2hoyaprnzh52rz4",
+      "license": "CC-BY-4.0",
+      "optional": true,
+      "slow": true,
+      "panel": "human bone marrow, 10 colours, FlowCyt CHIL 2024 case 27 (a cytiq-ml test-split case): the five labelled Kaluza gates and all events",
+      "archive": {"url": "https://access.yareta.unige.ch/access/metadata/759f2b03-f779-476a-a79c-28d289de8c99/download", "sha256": "9d588510a90dab3ddc6929cb5a2af2e7a5b038b64a3857dcb534092dd1af73a2"},
+      "files": {
+        "Case27_O.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_O.fcs", "sha256": "4bec3a5823bb677cfa137f2f0d1ec15db55102601708f5f11eda5b7adf5b735f"},
+        "Case27_N.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_N.fcs", "sha256": "11b5dc35d70b043b1e069fb298ccb813de70b3036d590c91f3820cdcbf0fadb9"},
+        "Case27_G.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_G.fcs", "sha256": "2c802ae0c9253e1dbdea124643d2571fd3a942e91ead1dc2c580daf4d96f36f4"},
+        "Case27_P.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_P.fcs", "sha256": "dcd51ff8d0e8e069e00f6c9d7bccf296ca65d9639d24b81d6f176be881e0ddfb"},
+        "Case27_K.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_K.fcs", "sha256": "1a8c628693994a4e48fc3de86e43dcfc873f0ec0294f164bad02d86ad67e4be0"},
+        "Case27_A.fcs": {"member": "researchdata/flowcyt_benchmark/raw/Case27_A.fcs", "sha256": "ce54b7ff023bd436d14a30c612158c313225255d87db552d61d9965f22f0ab44"}
       }
     }
   ]

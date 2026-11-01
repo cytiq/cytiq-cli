@@ -7,6 +7,16 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
+    # One pull request (and one CI run) per group instead of one per crate.
+    # arrow-* and parquet release in lockstep and only build when bumped together.
+    groups:
+      arrow:
+        patterns:
+          - "arrow-*"
+          - "parquet"
+      patch:
+        update-types:
+          - patch
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -15,3 +25,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
+    groups:
+      actions:
+        patterns:
+          - "*"

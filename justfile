@@ -57,6 +57,16 @@ parity-ci-fixture:
 parity-smoke-fixture:
     parity/make_smoke.sh
 
+# ---- Fuzz read_fcs (seeded from fixtures and $CYTIQ_REAL_DATA) or spillover_keyword; needs nightly and cargo-fuzz
+[group('validation')]
+fuzz-fcs target="read_fcs" seconds="300":
+    mkdir -p crates/cytiq-fcs/fuzz/corpus/{{ target }}
+    if [[ "{{ target }}" == read_fcs ]]; then \
+      find data/fixtures "${CYTIQ_REAL_DATA:-data/fixtures}" -name '*.fcs' -size -4M \
+        -exec cp {} crates/cytiq-fcs/fuzz/corpus/read_fcs/ \; ; \
+    fi
+    cd crates/cytiq-fcs && cargo +nightly fuzz run {{ target }} -- -max_total_time={{ seconds }}
+
 # ---- Run the application
 [group('build')]
 run *args:

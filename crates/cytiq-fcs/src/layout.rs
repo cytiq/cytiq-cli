@@ -1,4 +1,5 @@
 use crate::error::FcsError;
+use crate::limits::PARAMETERS_MAX;
 use crate::types::{FcsText, FcsVersion, Parameter, ParameterDataType, ParameterWidth};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,10 +66,11 @@ pub(crate) fn resolve_layout(
     }
 
     let row_count = parse_required_usize(text, "$TOT")?;
-    let parameter_count = parse_required_usize(text, "$PAR")?;
+    let parameter_count = parse_parameter_count(text)?;
     let dataset_type = parse_data_type(required_value(text, "$DATATYPE")?)?;
     let byte_order_raw = required_value(text, "$BYTEORD")?;
 
+    let mut keywords_by_parameter = group_parameter_keywords(text, parameter_count);
     let mut parameters = Vec::with_capacity(parameter_count);
     let mut max_numeric_width = 0_usize;
     let mut has_numeric = false;
@@ -93,7 +95,7 @@ pub(crate) fn resolve_layout(
             dataset_type
         };
 
-        let keywords = collect_parameter_keywords(text, index_u16);
+        let keywords = std::mem::take(&mut keywords_by_parameter[index - 1]);
         let (width, encoding) = parse_width(index_u16, width_value, data_type)?;
         match encoding {
             ParameterEncoding::AsciiFixed { .. } => {}
@@ -305,17 +307,48 @@ fn optional_parameter_value<'a>(text: &'a FcsText, index: usize, suffix: &str) -
     text.get(&key)
 }
 
-fn collect_parameter_keywords(text: &FcsText, index: u16) -> Vec<(String, String)> {
-    let prefix = format!("$P{index}");
-    // `$P1` must not pick up `$P10*`, `$P11*`, ...
-    text.iter()
-        .filter(|(key, _)| {
-            key.strip_prefix(&prefix)
-                .and_then(|suffix| suffix.chars().next())
-                .is_some_and(|next| !next.is_ascii_digit())
-        })
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+fn parse_parameter_count(text: &FcsText) -> Result<usize, FcsError> {
+    let count = parse_required_usize(text, "$PAR")?;
+    if count == 0 {
+        return Err(FcsError::InvalidKeywordValue {
+            key: "$PAR".to_owned(),
+            value: required_value(text, "$PAR")?.to_owned(),
+        });
+    }
+    if count > PARAMETERS_MAX {
+        return Err(FcsError::LimitExceeded {
+            what: "$PAR",
+            value: u64::try_from(count).unwrap_or(u64::MAX),
+            limit: u64::try_from(PARAMETERS_MAX).unwrap_or(u64::MAX),
+        });
+    }
+    Ok(count)
+}
+
+/// Each parameter's `$Pn*` keywords in TEXT order, in one pass over TEXT.
+fn group_parameter_keywords(text: &FcsText, parameter_count: usize) -> Vec<Vec<(String, String)>> {
+    let mut groups = vec![Vec::new(); parameter_count];
+    for (key, value) in text.iter() {
+        if let Some(index) = parameter_keyword_index(key)
+            && (1..=parameter_count).contains(&index)
+        {
+            groups[index - 1].push((key.to_owned(), value.to_owned()));
+        }
+    }
+    groups
+}
+
+/// The `n` of a `$Pn*` keyword. The digits must be followed by more
+/// characters, and `n` has no leading zero, so `$P1` alone and `$P01N` belong
+/// to no parameter, and `$P1` never picks up `$P10*`.
+fn parameter_keyword_index(key: &str) -> Option<usize> {
+    let rest = key.strip_prefix("$P")?;
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    let (number, suffix) = rest.split_at(digits);
+    if number.is_empty() || number.starts_with('0') || suffix.is_empty() {
+        return None;
+    }
+    number.parse().ok()
 }
 
 fn ensure_consistent_fcs30_width(

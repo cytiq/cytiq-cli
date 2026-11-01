@@ -54,14 +54,14 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 | `RunRecorder::with_build`, `set_config`, `set_constants`, `set_algorithms` | Build info, effective configuration, fixed algorithm constants, upstream versions |
 | `RunRecord`, `FileRecord`, `BuildInfo`, `Platform`, `SCHEMA_VERSION` (2) | The document |
 | `record_path_for_file`, `record_path_for_dir` | Where a command's record goes |
-| `files_under` | Every file of an output directory, sorted, without records and `.tmp` files |
+| `files_under` | Every file of an output directory, sorted, without records and `.tmp` files or directories |
 | `hash_file` | Streamed SHA-256 (also used by `cytiq-meta`) |
 | `ProvenanceError` | Error type |
 
 ## Rules
 
-- Records are written through a `.tmp` sibling and renamed, so a failed run
-  never leaves half a record.
+- Records are written through `cytiq-publish` (a synced temporary file,
+  renamed into place), so a failed run never leaves half a record.
 - Paths that are not files (optional inputs and outputs that were not given)
   are skipped.
 - An input that changed during the run and is not also an output fails

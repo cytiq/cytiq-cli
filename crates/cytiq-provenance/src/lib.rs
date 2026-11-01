@@ -12,10 +12,11 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, Read, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use cytiq_publish::{Existing, PublishError};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -321,7 +322,7 @@ pub fn record_path_for_dir(output_dir: &Path) -> PathBuf {
 }
 
 /// Every file under `dir`, recursively and sorted, except provenance records
-/// and temporary files. A missing directory yields nothing.
+/// and temporary files and directories. A missing directory yields nothing.
 #[must_use]
 pub fn files_under(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -333,7 +334,9 @@ pub fn files_under(dir: &Path) -> Vec<PathBuf> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                pending.push(path);
+                if !is_temporary(&path) {
+                    pending.push(path);
+                }
             } else if !is_record_or_temporary(&path) {
                 files.push(path);
             }
@@ -344,14 +347,18 @@ pub fn files_under(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn is_record_or_temporary(path: &Path) -> bool {
-    let temporary = path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("tmp"));
     let record = path
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == "provenance.json" || name.ends_with(".provenance.json"));
-    temporary || record
+    is_temporary(path) || record
+}
+
+/// Staged outputs (`cytiq-publish`) are `.tmp` files or directories until
+/// they are renamed into place.
+fn is_temporary(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("tmp"))
 }
 
 /// Size and lowercase hex SHA-256 of a file, streamed.
@@ -392,11 +399,15 @@ fn write_record(path: &Path, record: &RunRecord) -> Result<(), ProvenanceError> 
     };
     let mut bytes = serde_json::to_vec_pretty(record).map_err(|error| write_error(error.into()))?;
     bytes.push(b'\n');
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    fs::write(&temporary, bytes).map_err(write_error)?;
-    fs::rename(&temporary, path).map_err(write_error)
+    cytiq_publish::write_file(path, Existing::Replace, |writer| {
+        writer
+            .write_all(&bytes)
+            .map_err(|source| PublishError::io(path, source))
+    })
+    .map_err(|error| match error {
+        PublishError::Io { source, .. } => write_error(source),
+        other => write_error(io::Error::other(other)),
+    })
 }
 
 /// Plain option structs always serialize; anything else is recorded as its
@@ -434,6 +445,31 @@ mod tests {
     }
 
     const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn files_under_skips_records_and_staged_outputs() {
+        let directory = temp_dir("files-under");
+        fs::create_dir_all(directory.join("nested")).unwrap();
+        fs::create_dir_all(directory.join(".model.a1b2c3.tmp")).unwrap();
+        for name in [
+            "data.csv",
+            "nested/part.parquet",
+            "provenance.json",
+            "out.fcs.provenance.json",
+            ".data.csv.x9y8z7.tmp",
+            ".model.a1b2c3.tmp/model.json",
+        ] {
+            fs::write(directory.join(name), name).unwrap();
+        }
+        assert_eq!(
+            files_under(&directory),
+            [
+                directory.join("data.csv"),
+                directory.join("nested/part.parquet")
+            ]
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn hashes_empty_small_and_multibuffer_files_with_sizes() {

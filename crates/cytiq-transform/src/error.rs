@@ -101,12 +101,6 @@ pub enum TransformError {
     NonFcsOutput { path: PathBuf },
     #[error("input and output both resolve to `{path}`; pass `--overwrite` to replace it")]
     SameInputOutput { path: PathBuf },
-    #[error("failed to create output directory `{path}`: {source}")]
-    OutputDirectoryCreate {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("failed to create metadata parent directory `{path}`: {source}")]
     MetadataDirectoryCreate {
         path: PathBuf,
@@ -163,13 +157,8 @@ pub enum TransformError {
         #[source]
         source: std::io::Error,
     },
-    #[error("failed to replace `{path}` with transformed output `{temp_path}`: {source}")]
-    OutputReplace {
-        path: PathBuf,
-        temp_path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
+    #[error("failed to publish transformed output: {0}")]
+    Publish(#[from] cytiq_publish::PublishError),
     #[error("failed to build transform worker thread pool with {threads} threads: {source}")]
     ThreadPoolBuild {
         threads: usize,

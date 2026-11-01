@@ -73,7 +73,10 @@ let keep: Vec<bool> = analysis.keep_for(&dataset, &acquisition)?; // one entry p
   acquisitions, and `keep_for` rejects a dataset of another acquisition.
 - Reading rejects a mask without acquisition metadata (written before schema
   version 2): regenerate it with the current cytiq.
-- `write_parquet` writes through a `.tmp` sibling and renames.
+- `write_parquet` publishes through `cytiq-publish` (a synced temporary file
+  beside the target, renamed into place). `stage_parquet` stages the mask in a
+  caller's `Publication`, so it is published together with the outputs it
+  describes.
 - `combine` keys rows by `source_event_id` and follows the first mask's rows.
   An event is kept only when every mask has it and keeps it. Filter columns
   are concatenated; a repeated name is prefixed with the 1-based index of its

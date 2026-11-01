@@ -8,6 +8,7 @@ use cytiq_fcs::{
     TransformContract,
 };
 use cytiq_flowsom::{FlowSomConfig, FlowSomModel, Metaclustering};
+use cytiq_publish::{Existing, Publication};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -440,26 +441,24 @@ fn train_inner(config: &TrainConfig) -> Result<RunResult> {
     model.validate()?;
     let mut qc = cohort_qc(&samples, &model)?;
     qc["sampling"] = json!(sampling);
-    fs::create_dir_all(parent(&config.output))?;
-    let stage = tempfile::Builder::new()
-        .prefix(".cytonorm-")
-        .tempdir_in(parent(&config.output))?;
-    write_json(&stage.path().join("som.json"), &model.som)?;
-    write_json(&stage.path().join("markers.json"), &model.markers)?;
-    write_mappings(&stage.path().join("splines.parquet"), &model.mappings)?;
-    write_json(&stage.path().join("training-qc.json"), &qc)?;
+    let mut publication = Publication::new(Existing::overwrite(config.overwrite));
+    let stage = publication.stage_dir(&config.output)?;
+    write_json(&stage.join("som.json"), &model.som)?;
+    write_json(&stage.join("markers.json"), &model.markers)?;
+    write_mappings(&stage.join("splines.parquet"), &model.mappings)?;
+    write_json(&stage.join("training-qc.json"), &qc)?;
     for name in ["som.json", "markers.json", "splines.parquet"] {
         model.document.files.insert(
             name.into(),
-            cytiq_provenance::hash_file(&stage.path().join(name))?.1,
+            cytiq_provenance::hash_file(&stage.join(name))?.1,
         );
     }
-    write_json(&stage.path().join("model.json"), &model.document)?;
-    let model = CytoNormModel::load(stage.path())?;
+    write_json(&stage.join("model.json"), &model.document)?;
+    let model = CytoNormModel::load(&stage)?;
     if let Some(debug) = &config.debug_dir {
         write_diagnostics(debug, &model, &qc, config.overwrite)?;
     }
-    publish_directory(&stage, &config.output, config.overwrite)?;
+    publication.commit()?;
     let mut outputs = CytoNormModel::input_files(&config.output);
     outputs.push(config.output.join("training-qc.json"));
     if let Some(debug) = &config.debug_dir {
@@ -543,17 +542,15 @@ fn apply_inner(config: &ApplyConfig) -> Result<RunResult> {
         clusters,
     };
     let qc = cohort_qc(std::slice::from_ref(&sample), &model)?;
-    fs::create_dir_all(parent(&config.output))?;
-    let stage = tempfile::tempdir_in(parent(&config.output))?;
-    let staged_fcs = stage.path().join("normalized.fcs");
-    let staged_qc = stage.path().join("qc.json");
-    write_normalized_fcs(&staged_fcs, &config.input, &dataset, &sample, &model)?;
-    write_json(&staged_qc, &qc)?;
+    let mut publication = Publication::new(Existing::overwrite(config.overwrite));
+    publication.stage_path(&config.output, |path| {
+        write_normalized_fcs(path, &config.input, &dataset, &sample, &model)
+    })?;
+    publication.stage_path(&qc_path, |path| write_json(path, &qc))?;
     if let Some(debug) = &config.debug_dir {
         write_diagnostics(debug, &model, &qc, config.overwrite)?;
     }
-    fs::rename(&staged_qc, &qc_path)?;
-    fs::rename(&staged_fcs, &config.output)?;
+    publication.commit()?;
     let mut outputs = vec![config.output.clone(), qc_path];
     if let Some(debug) = &config.debug_dir {
         outputs.push(debug.join("report.html"));
@@ -1046,23 +1043,6 @@ fn check_separate_debug(output: &Path, debug: &Path) -> Result<()> {
     let debug = resolved(debug)?;
     if output.starts_with(&debug) || debug.starts_with(&output) {
         return Err(invalid("debug-dir must be separate from the output path"));
-    }
-    Ok(())
-}
-fn publish_directory(stage: &tempfile::TempDir, output: &Path, overwrite: bool) -> Result<()> {
-    if output.exists() {
-        if !overwrite {
-            return Err(invalid("output appeared during training"));
-        }
-        let backup = tempfile::tempdir_in(parent(output))?;
-        let old = backup.path().join("previous");
-        fs::rename(output, &old)?;
-        if let Err(e) = fs::rename(stage.path(), output) {
-            fs::rename(&old, output)?;
-            return Err(e.into());
-        }
-    } else {
-        fs::rename(stage.path(), output)?;
     }
     Ok(())
 }

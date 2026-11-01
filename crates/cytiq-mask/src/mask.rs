@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
-use std::fs::{self, File};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
 use cytiq_fcs::FcsDataset;
+use cytiq_publish::{Existing, Publication};
 use log::debug;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -118,6 +118,22 @@ impl EventMask {
     /// Returns an error when columns have different lengths, the acquisition
     /// is not a SHA-256, or the file cannot be written.
     pub fn write_parquet(&self, path: &Path) -> Result<(), MaskError> {
+        let mut publication = Publication::new(Existing::Replace);
+        self.stage_parquet(&mut publication, path)?;
+        publication.commit().map_err(MaskError::from)
+    }
+
+    /// Stage this mask at `path` in `publication`, so that it is published
+    /// together with the outputs it describes.
+    ///
+    /// # Errors
+    /// [`MaskError`] when the mask is inconsistent, the target is refused or
+    /// Parquet encoding fails.
+    pub fn stage_parquet(
+        &self,
+        publication: &mut Publication,
+        path: &Path,
+    ) -> Result<(), MaskError> {
         self.validate()?;
         debug!("writing event mask to {}", path.display());
         let parquet_error = |message: String| MaskError::Parquet {
@@ -149,23 +165,17 @@ impl EventMask {
                 KeyValue::new(EVENT_ID_BASE_KEY.to_owned(), "0".to_owned()),
             ]))
             .build();
-        let io_error = |source| MaskError::Io {
-            path: path.to_path_buf(),
-            source,
-        };
-        let mut temporary = OsString::from(path.as_os_str());
-        temporary.push(".tmp");
-        let temporary = PathBuf::from(temporary);
-        let file = File::create(&temporary).map_err(io_error)?;
-        let mut writer = ArrowWriter::try_new(file, schema, Some(properties))
-            .map_err(|error| parquet_error(error.to_string()))?;
-        writer
-            .write(&batch)
-            .map_err(|error| parquet_error(error.to_string()))?;
-        writer
-            .close()
-            .map_err(|error| parquet_error(error.to_string()))?;
-        fs::rename(&temporary, path).map_err(io_error)
+        publication.stage_file(path, |file| {
+            let mut writer = ArrowWriter::try_new(file, schema, Some(properties))
+                .map_err(|error| parquet_error(error.to_string()))?;
+            writer
+                .write(&batch)
+                .map_err(|error| parquet_error(error.to_string()))?;
+            writer
+                .close()
+                .map_err(|error| parquet_error(error.to_string()))?;
+            Ok(())
+        })
     }
 
     /// Read a mask written by any cytiq stage.
@@ -470,7 +480,15 @@ mod tests {
         let read = EventMask::read_parquet(&path).unwrap();
         assert_eq!(read, mask);
         assert_eq!(read.acquisition, RAW);
-        assert!(!path.with_extension("parquet.tmp").exists());
+        let leftovers = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter(|entry| {
+                let name = entry.as_ref().unwrap().file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".round-trip.parquet.") && name.ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
     }
 
     #[test]

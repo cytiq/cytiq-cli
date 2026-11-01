@@ -39,6 +39,8 @@ pub enum CytoNormError {
     Parquet(#[from] parquet::errors::ParquetError),
     #[error("Arrow: {0}")]
     Arrow(#[from] arrow_schema::ArrowError),
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, CytoNormError>;

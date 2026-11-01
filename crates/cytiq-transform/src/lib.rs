@@ -17,12 +17,14 @@ use scales::{FlowJoBiexp, Hyperlog, Logicle, ScaleParameterError};
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
     ColumnData, FcsDataset, FcsReader, FcsWriteOptions, FcsWriteParameter, MARGINS_KEYWORD,
     ORIGINAL_ID_PARAMETER, Parameter, SOURCE_SPILLOVER_KEYWORD, TRANSFORM_KEYWORD,
 };
+use cytiq_publish::{Existing, Publication};
 pub use error::TransformError;
 use export::write_debug_artifacts;
 use log::{debug, info};
@@ -612,7 +614,13 @@ fn transform_one(
             transformed_margin_bounds(&plan.input, &dataset, &selection.channels, &operator)?,
         )
         .with_text_keyword(TRANSFORM_KEYWORD, metadata);
-    write_fcs_output(plan, &parameters, &transformed.columns, &options)?;
+    write_fcs_output(
+        plan,
+        &parameters,
+        &transformed.columns,
+        &options,
+        Existing::overwrite(config.overwrite),
+    )?;
     Ok(result)
 }
 
@@ -1108,43 +1116,25 @@ impl TransformOperator {
     }
 }
 
+/// Stage the output beside its target and rename it into place, so neither a
+/// failed write nor a same-file transform ever leaves a partial FCS behind.
 fn write_fcs_output(
     plan: &OutputPlan,
     parameters: &[FcsWriteParameter],
     columns: &[Vec<f64>],
     options: &FcsWriteOptions,
+    existing: Existing,
 ) -> Result<(), TransformError> {
-    if let Some(parent) = plan
-        .output
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|source| TransformError::OutputDirectoryCreate {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-    if plan.same_file {
-        let temp_path = temporary_output_path(&plan.output);
-        cytiq_fcs::write_fcs3_1_exact_with_options(&temp_path, parameters, columns, options)
-            .map_err(|source| TransformError::FcsWrite {
-                path: temp_path.clone(),
+    let mut publication = Publication::new(existing);
+    publication.stage_path(&plan.output, |path| {
+        cytiq_fcs::write_fcs3_1_exact_with_options(path, parameters, columns, options).map_err(
+            |source| TransformError::FcsWrite {
+                path: plan.output.clone(),
                 source,
-            })?;
-        fs::rename(&temp_path, &plan.output).map_err(|source| TransformError::OutputReplace {
-            path: plan.output.clone(),
-            temp_path,
-            source,
-        })?;
-        return Ok(());
-    }
-
-    cytiq_fcs::write_fcs3_1_exact_with_options(&plan.output, parameters, columns, options).map_err(
-        |source| TransformError::FcsWrite {
-            path: plan.output.clone(),
-            source,
-        },
-    )
+            },
+        )
+    })?;
+    Ok(publication.commit()?)
 }
 
 fn prepare_metadata_output(config: &TransformConfig) -> Result<(), TransformError> {
@@ -1187,9 +1177,13 @@ fn write_metadata_json(
             source,
         }
     })?;
-    fs::write(path, bytes).map_err(|source| TransformError::MetadataWrite {
-        path: path.to_path_buf(),
-        source,
+    cytiq_publish::write_file(path, Existing::overwrite(config.overwrite), |writer| {
+        writer
+            .write_all(&bytes)
+            .map_err(|source| TransformError::MetadataWrite {
+                path: path.to_path_buf(),
+                source,
+            })
     })
 }
 
@@ -1298,16 +1292,6 @@ fn comparable_path(path: &Path) -> PathBuf {
         std::env::current_dir()
             .map_or_else(|_| path.to_path_buf(), |directory| directory.join(path))
     }
-}
-
-fn temporary_output_path(output: &Path) -> PathBuf {
-    let mut path = output.to_path_buf();
-    let file_name = output
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("output.fcs");
-    path.set_file_name(format!(".{file_name}.cytiq-transform.tmp"));
-    path
 }
 
 fn method_parameters(config: &TransformConfig) -> TransformParameters {

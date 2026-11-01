@@ -32,8 +32,18 @@ impl ByteRange {
         Self { start, end }
     }
 
+    /// Length of the inclusive range.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `start <= end < u64::MAX`; the reader checks every range
+    /// against the file length before asking for its length.
     #[must_use]
     pub const fn len(self) -> u64 {
+        assert!(
+            self.start <= self.end && self.end < u64::MAX,
+            "byte range must be validated before taking its length"
+        );
         self.end - self.start + 1
     }
 
@@ -99,6 +109,15 @@ impl FcsText {
         self.primary
             .iter()
             .chain(self.supplemental.iter().flat_map(TextSegment::iter))
+    }
+
+    /// Merge a supplemental TEXT segment, rejecting keywords already present.
+    pub(crate) fn add_supplemental(&mut self, segment: TextSegment) -> Result<(), FcsError> {
+        for (key, value) in &segment.pairs {
+            Self::insert_lookup(&mut self.lookup, key, value)?;
+        }
+        self.supplemental = Some(segment);
+        Ok(())
     }
 
     pub(crate) fn insert_lookup(

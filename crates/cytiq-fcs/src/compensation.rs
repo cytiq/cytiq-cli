@@ -95,12 +95,18 @@ impl Spillover {
                 "spillover channel count must be greater than zero".to_owned(),
             ));
         }
-        let expected_len = 1 + size + size * size;
-        if tokens.len() != expected_len {
-            return Err(FcsError::InvalidSpillover(format!(
-                "expected {expected_len} comma-separated values for {size} channels, found {}",
-                tokens.len()
-            )));
+        let expected_len = size
+            .checked_mul(size)
+            .and_then(|values| values.checked_add(size))
+            .and_then(|values| values.checked_add(1));
+        if expected_len != Some(tokens.len()) {
+            return Err(FcsError::InvalidSpillover(match expected_len {
+                Some(expected_len) => format!(
+                    "expected {expected_len} comma-separated values for {size} channels, found {}",
+                    tokens.len()
+                ),
+                None => format!("spillover channel count {size} is too large"),
+            }));
         }
         let channels = tokens[1..=size]
             .iter()
@@ -154,12 +160,19 @@ impl Spillover {
 /// [`FcsError::InvalidSpillover`] when `matrix` does not hold `size²` values.
 #[allow(clippy::cast_precision_loss)]
 pub fn invert_matrix(matrix: &[f64], size: usize) -> Result<Vec<f64>, FcsError> {
-    if matrix.len() != size * size {
-        return Err(FcsError::InvalidSpillover(format!(
-            "expected {} matrix values, found {}",
-            size * size,
-            matrix.len()
-        )));
+    match size.checked_mul(size) {
+        Some(expected) if expected == matrix.len() => {}
+        Some(expected) => {
+            return Err(FcsError::InvalidSpillover(format!(
+                "expected {expected} matrix values, found {}",
+                matrix.len()
+            )));
+        }
+        None => {
+            return Err(FcsError::InvalidSpillover(format!(
+                "matrix size {size} is too large"
+            )));
+        }
     }
     let scale = matrix
         .iter()

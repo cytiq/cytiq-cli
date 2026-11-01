@@ -23,16 +23,17 @@ pub(crate) fn decode_data<R: Read + Seek>(
     range: ByteRange,
     layout: &ResolvedLayout,
 ) -> Result<EventColumns, FcsError> {
-    let buffer = read_raw_segment(reader, range)?;
+    // Check the declared layout against the segment before reading it, so a
+    // lying `$TOT` or `$PnB` never sizes a read.
     let expected_bytes = expected_data_length(layout)?;
-    let actual_bytes =
-        u64::try_from(buffer.len()).map_err(|_| FcsError::InvalidText("DATA is too large"))?;
+    let actual_bytes = range.len();
     if expected_bytes != actual_bytes {
         return Err(FcsError::DataLengthMismatch {
             expected: expected_bytes,
             actual: actual_bytes,
         });
     }
+    let buffer = read_raw_segment(reader, range)?;
 
     let mut columns = layout
         .parameters()

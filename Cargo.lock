@@ -103,49 +103,19 @@ checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
 name = "arrow-array"
-version = "58.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae33dad492b7df00a217563a7b0ef2874df68a0deea1b1a3acf628152f7f7a69"
-dependencies = [
- "ahash",
- "arrow-buffer 58.4.0",
- "arrow-data 58.4.0",
- "arrow-schema 58.4.0",
- "chrono",
- "half",
- "hashbrown 0.17.1",
- "num-complex",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-array"
 version = "60.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f3d22a41d3df78b71df0b685af219ae3a94188ab98d6fb29c958eb55c3247f4"
 dependencies = [
  "ahash",
- "arrow-buffer 60.1.0",
- "arrow-data 60.1.0",
- "arrow-schema 60.1.0",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "chrono",
  "half",
  "hashbrown 0.17.1",
  "num-complex",
  "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "arrow-buffer"
-version = "58.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9552f96391c005e6ab449fa941420935e7e062489b12b8b1b08879b2163f5b5"
-dependencies = [
- "bytes",
- "half",
- "num-bigint 0.4.8",
  "num-traits",
 ]
 
@@ -167,22 +137,9 @@ version = "60.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1913e57a64fbf2c4502fa6d54b547d6a1ae59e3146cbc15321d47468c937abd1"
 dependencies = [
- "arrow-array 60.1.0",
- "arrow-buffer 60.1.0",
- "arrow-schema 60.1.0",
-]
-
-[[package]]
-name = "arrow-data"
-version = "58.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b24852db04738907e06c04ea61e42fe7fda962a34513022dc0d0e754fb7976b"
-dependencies = [
- "arrow-buffer 58.4.0",
- "arrow-schema 58.4.0",
- "half",
- "num-integer",
- "num-traits",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
 ]
 
 [[package]]
@@ -191,8 +148,8 @@ version = "60.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "415b7fbc4cf56b080bb5677a4ae74211b5c79e571ed37a1d547633ec07f3b43b"
 dependencies = [
- "arrow-buffer 60.1.0",
- "arrow-schema 60.1.0",
+ "arrow-buffer",
+ "arrow-schema",
  "half",
  "num-integer",
  "num-traits",
@@ -204,19 +161,13 @@ version = "60.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45f3e766bccf5a0cb57a5de52a4cba450dea5171547c2cb5939b486d08887cba"
 dependencies = [
- "arrow-array 60.1.0",
- "arrow-buffer 60.1.0",
- "arrow-data 60.1.0",
- "arrow-schema 60.1.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
  "arrow-select",
  "flatbuffers",
 ]
-
-[[package]]
-name = "arrow-schema"
-version = "58.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e"
 
 [[package]]
 name = "arrow-schema"
@@ -231,11 +182,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5af3f6656c5f2c6944f93d9a357a7f204c93d5f349385a44cf46c4a26fbcf30"
 dependencies = [
  "ahash",
- "arrow-array 60.1.0",
- "arrow-buffer 60.1.0",
+ "arrow-array",
+ "arrow-buffer",
  "arrow-cmp",
- "arrow-data 60.1.0",
- "arrow-schema 60.1.0",
+ "arrow-data",
+ "arrow-schema",
  "num-traits",
 ]
 
@@ -625,8 +576,8 @@ dependencies = [
 name = "cytiq-autospill"
 version = "0.1.0"
 dependencies = [
- "arrow-array 58.4.0",
- "arrow-schema 58.4.0",
+ "arrow-array",
+ "arrow-schema",
  "csv",
  "cytiq-density",
  "cytiq-fcs",
@@ -647,8 +598,8 @@ dependencies = [
 name = "cytiq-classify"
 version = "0.1.0"
 dependencies = [
- "arrow-array 58.4.0",
- "arrow-schema 58.4.0",
+ "arrow-array",
+ "arrow-schema",
  "cytiq-fcs",
  "cytiq-mask",
  "cytiq-provenance",
@@ -685,7 +636,7 @@ dependencies = [
 name = "cytiq-cli"
 version = "0.1.0"
 dependencies = [
- "arrow-array 58.4.0",
+ "arrow-array",
  "clap",
  "csv",
  "cytiq-autospectral",
@@ -730,8 +681,8 @@ dependencies = [
 name = "cytiq-cytonorm"
 version = "0.1.0"
 dependencies = [
- "arrow-array 58.4.0",
- "arrow-schema 58.4.0",
+ "arrow-array",
+ "arrow-schema",
  "cytiq-density",
  "cytiq-fcs",
  "cytiq-flowsom",
@@ -832,8 +783,8 @@ dependencies = [
 name = "cytiq-mask"
 version = "0.1.0"
 dependencies = [
- "arrow-array 58.4.0",
- "arrow-schema 58.4.0",
+ "arrow-array",
+ "arrow-schema",
  "cytiq-fcs",
  "cytiq-publish",
  "log",
@@ -1666,11 +1617,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "806eaa0f1c0436dcb43bee8e6a82bf2efff90521a60172f8281cb9ef577b43a4"
 dependencies = [
  "ahash",
- "arrow-array 60.1.0",
- "arrow-buffer 60.1.0",
- "arrow-data 60.1.0",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
  "arrow-ipc",
- "arrow-schema 60.1.0",
+ "arrow-schema",
  "arrow-select",
  "base64",
  "bytes",

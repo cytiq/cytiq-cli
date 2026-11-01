@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arrow-array = "58.3.0"
-arrow-schema = "58.3.0"
+arrow-array = "60.1.0"
+arrow-schema = "60.1.0"
 cytiq-density = { path = "../cytiq-density" }
 cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-flowsom = { path = "../cytiq-flowsom" }

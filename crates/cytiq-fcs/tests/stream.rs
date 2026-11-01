@@ -231,7 +231,7 @@ fn empty_batch_has_the_columns_of_every_batch() {
         .expect("fixture streams");
     let kind = |column: &ColumnData| std::mem::discriminant(column);
     let empty = stream.batches.empty_batch();
-    assert!(empty.columns.iter().all(|column| column.len() == 0));
+    assert!(empty.columns.iter().all(ColumnData::is_empty));
     for batch in stream.batches {
         let batch = batch.expect("fixture batch");
         let kinds = batch.columns.iter().map(kind).collect::<Vec<_>>();

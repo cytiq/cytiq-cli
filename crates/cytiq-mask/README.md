@@ -60,7 +60,8 @@ let keep: Vec<bool> = analysis.keep_for(&dataset, &acquisition)?; // one entry p
 
 | Item | Purpose |
 | --- | --- |
-| `EventMask` | In-memory mask: `new`, `with_filter`, `read_parquet`, `write_parquet`, `combine`, `keep_for`, `kept` |
+| `EventMask` | In-memory mask: `new`, `with_filter`, `read_parquet`, `write_parquet`, `combine`, `keep_for`, `keep_by_source`, `kept` |
+| `SourceKeep` | `keep` for events by raw-file row, from `keep_by_source(acquisition)`, for inputs read in batches |
 | `read_combined` | Read and combine the masks passed with `--mask` (`None` for none) |
 | `MaskCombineRunner::run` / `MaskCombineConfig` | The `cytiq mask combine` command |
 | `EVENT_ID_COLUMN`, `SOURCE_EVENT_ID_COLUMN`, `KEEP_COLUMN` | Reserved column names |
@@ -83,7 +84,9 @@ let keep: Vec<bool> = analysis.keep_for(&dataset, &acquisition)?; // one entry p
   mask (`2.margin_pass`).
 - `keep_for` matches dataset rows to mask rows through the dataset's
   `Original_ID` (or row number when it has none). A dataset row missing from
-  the mask is an error.
+  the mask is an error. `keep_by_source` checks the acquisition and builds the
+  lookup once; its `SourceKeep::keep` answers for any batch of raw-file rows,
+  and `keep_for` is that lookup over the whole dataset.
 - Reading rejects masks without `keep`/`source_event_id`, with nulls in them,
   with non-Boolean filter columns, or with a repeated `source_event_id`.
 

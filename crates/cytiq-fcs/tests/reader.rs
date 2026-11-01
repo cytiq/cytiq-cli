@@ -113,6 +113,128 @@ fn reads_analysis_segment_bytes() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// TEXT pairs for list-mode DATA of `data_type` with one `$PnB` per parameter.
+fn layout_pairs(
+    byte_order: &str,
+    data_type: &str,
+    rows: usize,
+    widths: &[&str],
+) -> Vec<(String, String)> {
+    let mut pairs = vec![
+        ("$BYTEORD".to_owned(), byte_order.to_owned()),
+        ("$DATATYPE".to_owned(), data_type.to_owned()),
+        ("$MODE".to_owned(), "L".to_owned()),
+        ("$NEXTDATA".to_owned(), "0".to_owned()),
+        ("$PAR".to_owned(), widths.len().to_string()),
+        ("$TOT".to_owned(), rows.to_string()),
+    ];
+    for (index, width) in widths.iter().enumerate() {
+        let n = index + 1;
+        pairs.push((format!("$P{n}B"), (*width).to_owned()));
+        pairs.push((format!("$P{n}E"), "0,0".to_owned()));
+        pairs.push((format!("$P{n}N"), format!("P{n}")));
+        pairs.push((format!("$P{n}R"), "1024".to_owned()));
+    }
+    pairs
+}
+
+fn read_layout(
+    version: &str,
+    pairs: &[(String, String)],
+    data: Vec<u8>,
+) -> Result<cytiq_fcs::FcsDataset, cytiq_fcs::Error> {
+    let pairs = pairs
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    FcsReader::new(std::io::Cursor::new(build_fcs(
+        version, pairs, None, data, None,
+    )))
+    .read()
+}
+
+#[test]
+fn reads_ascii_data() -> Result<(), Box<dyn Error>> {
+    let pairs = layout_pairs("1,2,3,4", "A", 2, &["3", "5"]);
+    let dataset = read_layout("FCS3.1", &pairs, b"  7  123 12    9".to_vec())?;
+
+    assert_uint_column(dataset.data.column(0), &[7, 12]);
+    assert_uint_column(dataset.data.column(1), &[123, 9]);
+    Ok(())
+}
+
+#[test]
+fn reads_big_endian_fcs3_1_data() -> Result<(), Box<dyn Error>> {
+    let pairs = layout_pairs("4,3,2,1", "I", 2, &["16"]);
+    let dataset = read_layout(
+        "FCS3.1",
+        &pairs,
+        encode_u16_rows(&[[0x0102], [0xa0b0]], false),
+    )?;
+    assert_uint_column(dataset.data.column(0), &[0x0102, 0xa0b0]);
+
+    let pairs = layout_pairs("4,3,2,1", "F", 2, &["32", "32"]);
+    let data = [1.5_f32, -2.0, 0.25, 1e6]
+        .iter()
+        .flat_map(|value| value.to_be_bytes())
+        .collect();
+    let dataset = read_layout("FCS3.1", &pairs, data)?;
+    assert_f32_column(dataset.data.column(0), &[1.5, 0.25]);
+    assert_f32_column(dataset.data.column(1), &[-2.0, 1e6]);
+    Ok(())
+}
+
+#[test]
+fn reads_fcs3_0_permuted_byte_order() -> Result<(), Box<dyn Error>> {
+    // `$BYTEORD=3,4,1,2`: the least significant byte is stored third.
+    let pairs = layout_pairs("3,4,1,2", "I", 1, &["32"]);
+    let dataset = read_layout("FCS3.0", &pairs, vec![0x0b, 0x0a, 0x0d, 0x0c])?;
+
+    assert_uint_column(dataset.data.column(0), &[0x0a0b_0c0d]);
+    Ok(())
+}
+
+#[test]
+fn reads_rows_across_data_chunk_boundaries() -> Result<(), Box<dyn Error>> {
+    // 3-byte rows: 1.2 MB of DATA, not a multiple of the 1 MiB read chunk.
+    const ROWS: usize = 400_000;
+    let first = (0..ROWS).map(|row| (row % 251) as u64).collect::<Vec<_>>();
+    let second = (0..ROWS)
+        .map(|row| (row * 7 % 65_521) as u64)
+        .collect::<Vec<_>>();
+    let mut data = Vec::with_capacity(ROWS * 3);
+    for (low, wide) in first.iter().zip(&second) {
+        data.push(u8::try_from(*low)?);
+        data.extend(u16::try_from(*wide)?.to_le_bytes());
+    }
+
+    let pairs = layout_pairs("1,2,3,4", "I", ROWS, &["8", "16"]);
+    let dataset = read_layout("FCS3.1", &pairs, data)?;
+
+    assert_uint_column(dataset.data.column(0), &first);
+    assert_uint_column(dataset.data.column(1), &second);
+    Ok(())
+}
+
+#[test]
+fn rejects_ascii_value_in_a_later_chunk() {
+    // 20-byte rows: the bad value sits past the first 1 MiB of DATA.
+    const ROWS: usize = 60_000;
+    let mut data = (0..ROWS)
+        .flat_map(|row| format!("{row:>20}").into_bytes())
+        .collect::<Vec<_>>();
+    let last = data.len() - 20;
+    data[last..].copy_from_slice(format!("{:>20}", "x1").as_bytes());
+
+    let pairs = layout_pairs("1,2,3,4", "A", ROWS, &["20"]);
+    let error = read_layout("FCS3.1", &pairs, data).expect_err("`x1` is not an integer");
+
+    assert!(
+        matches!(&error, cytiq_fcs::Error::EventValueParse { parameter: 1, value, .. } if value.trim() == "x1"),
+        "{error}"
+    );
+}
+
 #[test]
 fn parses_escaped_text_delimiter() -> Result<(), Box<dyn Error>> {
     let bytes = build_fcs(

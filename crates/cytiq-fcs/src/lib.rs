@@ -19,7 +19,7 @@ use std::path::Path;
 
 use log::debug;
 
-use crate::data::{decode_data, read_raw_segment};
+use crate::data::{decode_data, decoded_data_length, ensure_data_length, read_raw_segment};
 use crate::error::FcsError;
 use crate::header::read_header;
 use crate::layout::resolve_layout;
@@ -33,6 +33,7 @@ pub use crate::compensation::{
     is_spillover_keyword,
 };
 pub use crate::error::FcsError as Error;
+pub use crate::limits::FcsReadLimits;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
 pub use crate::linear::{ensure_linear_scale, linear_values, log_amplified_parameters};
 pub use crate::margins::{
@@ -79,20 +80,32 @@ impl<R: Read + Seek> FcsReader<R> {
         Self { reader }
     }
 
-    /// Read the FCS dataset from the wrapped reader.
+    /// Read the FCS dataset from the wrapped reader, within the default
+    /// [`FcsReadLimits`].
     ///
     /// # Errors
     ///
     /// Returns an error when the file does not conform to the supported FCS
-    /// 3.0, 3.1, or 3.2 layouts, when required metadata is missing, or when the
-    /// underlying reader fails.
-    pub fn read(mut self) -> Result<FcsDataset, FcsError> {
+    /// 3.0, 3.1, or 3.2 layouts, when required metadata is missing, when it
+    /// declares more than the limits allow, or when the underlying reader
+    /// fails.
+    pub fn read(self) -> Result<FcsDataset, FcsError> {
+        self.read_with_limits(FcsReadLimits::default())
+    }
+
+    /// Read the FCS dataset, refusing a file whose decoded DATA or ANALYSIS
+    /// exceeds `limits` before allocating for either.
+    ///
+    /// # Errors
+    ///
+    /// As [`FcsReader::read`]; [`FcsError::LimitExceeded`] names the limit.
+    pub fn read_with_limits(mut self, limits: FcsReadLimits) -> Result<FcsDataset, FcsError> {
         let file_len = file_length(&mut self.reader)?;
         self.reader.seek(SeekFrom::Start(0)).map_err(FcsError::Io)?;
 
         let header = read_header(&mut self.reader)?;
         ensure_in_file("TEXT", header.text, file_len)?;
-        ensure_text_within_limit(header.text.len())?;
+        ensure_within_limit("TEXT bytes", header.text.len(), TEXT_BYTES_MAX)?;
         let primary_segment = read_text_segment(&mut self.reader, header.text, "TEXT")?;
         let mut text = build_text(primary_segment, None)?;
         let supplemental_range = parse_segment_range(
@@ -104,7 +117,11 @@ impl<R: Read + Seek> FcsReader<R> {
         )?;
         if let Some(range) = supplemental_range {
             ensure_in_file("supplemental TEXT", range, file_len)?;
-            ensure_text_within_limit(header.text.len().saturating_add(range.len()))?;
+            ensure_within_limit(
+                "TEXT bytes",
+                header.text.len().saturating_add(range.len()),
+                TEXT_BYTES_MAX,
+            )?;
             let segment = read_text_segment(&mut self.reader, range, "supplemental TEXT")?;
             text.add_supplemental(segment)?;
         }
@@ -121,6 +138,15 @@ impl<R: Read + Seek> FcsReader<R> {
         )?;
 
         let resolved_layout = resolve_layout(header.version, &text)?;
+        ensure_data_length(data_range, &resolved_layout)?;
+        ensure_within_limit(
+            "decoded DATA bytes",
+            decoded_data_length(&resolved_layout),
+            limits.decoded_bytes_max,
+        )?;
+        if let Some(range) = analysis_range {
+            ensure_within_limit("ANALYSIS bytes", range.len(), limits.analysis_bytes_max)?;
+        }
         let parameters = resolved_layout.public_parameters();
         let data = decode_data(&mut self.reader, data_range, &resolved_layout)?;
         let analysis = analysis_range
@@ -277,13 +303,9 @@ fn ensure_in_file(name: &'static str, range: ByteRange, file_len: u64) -> Result
     }
 }
 
-fn ensure_text_within_limit(text_bytes: u64) -> Result<(), FcsError> {
-    if text_bytes > TEXT_BYTES_MAX {
-        Err(FcsError::LimitExceeded {
-            what: "TEXT bytes",
-            value: text_bytes,
-            limit: TEXT_BYTES_MAX,
-        })
+fn ensure_within_limit(what: &'static str, value: u64, limit: u64) -> Result<(), FcsError> {
+    if value > limit {
+        Err(FcsError::LimitExceeded { what, value, limit })
     } else {
         Ok(())
     }

@@ -18,36 +18,97 @@ pub(crate) fn read_raw_segment<R: Read + Seek>(
     Ok(bytes)
 }
 
+/// Rows are read from DATA this many bytes at a time, so decoding holds the
+/// columns and one chunk instead of the whole segment as well. A chunk holds
+/// at least one row, which is at most 65,535 × 20 ASCII bytes (~1.25 MiB).
+const DATA_CHUNK_BYTES: usize = 1 << 20;
+
+/// Check DATA against `$TOT` × row width before anything reads it, so a lying
+/// `$TOT` or `$PnB` never sizes a read.
+pub(crate) fn ensure_data_length(
+    range: ByteRange,
+    layout: &ResolvedLayout,
+) -> Result<(), FcsError> {
+    let expected_bytes = expected_data_length(layout)?;
+    let actual_bytes = range.len();
+    if expected_bytes == actual_bytes {
+        Ok(())
+    } else {
+        Err(FcsError::DataLengthMismatch {
+            expected: expected_bytes,
+            actual: actual_bytes,
+        })
+    }
+}
+
+/// Bytes the decoded columns take: `$TOT` × the decoded width of a row.
+pub(crate) fn decoded_data_length(layout: &ResolvedLayout) -> u64 {
+    let row_width = layout
+        .parameters()
+        .iter()
+        .map(|parameter| parameter.encoding.decoded_bytes() as u64)
+        .sum::<u64>();
+    row_width.saturating_mul(layout.row_count() as u64)
+}
+
+/// Decode DATA, whose length [`ensure_data_length`] has checked.
 pub(crate) fn decode_data<R: Read + Seek>(
     reader: &mut R,
     range: ByteRange,
     layout: &ResolvedLayout,
 ) -> Result<EventColumns, FcsError> {
-    // Check the declared layout against the segment before reading it, so a
-    // lying `$TOT` or `$PnB` never sizes a read.
-    let expected_bytes = expected_data_length(layout)?;
-    let actual_bytes = range.len();
-    if expected_bytes != actual_bytes {
-        return Err(FcsError::DataLengthMismatch {
-            expected: expected_bytes,
-            actual: actual_bytes,
-        });
-    }
-    let buffer = read_raw_segment(reader, range)?;
-
+    reader
+        .seek(SeekFrom::Start(range.start))
+        .map_err(FcsError::Io)?;
+    let rows = layout.row_count();
     let mut columns = layout
         .parameters()
         .iter()
-        .map(new_column)
+        .map(|parameter| new_column(parameter, rows))
         .collect::<Vec<_>>();
-    let mut offset = 0_usize;
+    read_rows(reader, layout, rows, &mut columns)?;
+    Ok(EventColumns { columns })
+}
 
-    for _ in 0..layout.row_count() {
+/// Read and decode the next `rows` rows, appending them to `columns`.
+fn read_rows<R: Read>(
+    reader: &mut R,
+    layout: &ResolvedLayout,
+    rows: usize,
+    columns: &mut [ColumnData],
+) -> Result<(), FcsError> {
+    let row_width = layout
+        .parameters()
+        .iter()
+        .map(|parameter| parameter.encoding.stored_bytes())
+        .sum::<usize>()
+        .max(1);
+    let rows_per_chunk = (DATA_CHUNK_BYTES / row_width).max(1);
+    let mut buffer = Vec::new();
+    let mut remaining = rows;
+    while remaining > 0 {
+        let chunk_rows = remaining.min(rows_per_chunk);
+        buffer.resize(chunk_rows * row_width, 0);
+        reader.read_exact(&mut buffer).map_err(FcsError::Io)?;
+        decode_rows(&buffer, row_width, layout, columns)?;
+        remaining -= chunk_rows;
+    }
+    Ok(())
+}
+
+fn decode_rows(
+    bytes: &[u8],
+    row_width: usize,
+    layout: &ResolvedLayout,
+    columns: &mut [ColumnData],
+) -> Result<(), FcsError> {
+    for row in bytes.chunks_exact(row_width) {
+        let mut offset = 0_usize;
         for (column, parameter) in columns.iter_mut().zip(layout.parameters()) {
             match parameter.encoding {
                 ParameterEncoding::AsciiFixed { width } => {
                     let end = offset + width;
-                    let raw = &buffer[offset..end];
+                    let raw = &row[offset..end];
                     let value = parse_ascii_value(raw, parameter.public.index)?;
                     if let ColumnData::UInt(values) = column {
                         values.push(value);
@@ -56,7 +117,7 @@ pub(crate) fn decode_data<R: Read + Seek>(
                 }
                 ParameterEncoding::Integer { width_bytes } => {
                     let end = offset + width_bytes;
-                    let raw = &buffer[offset..end];
+                    let raw = &row[offset..end];
                     let value = decode_integer(raw, layout.byte_order())?;
                     if let ColumnData::UInt(values) = column {
                         values.push(value);
@@ -65,7 +126,7 @@ pub(crate) fn decode_data<R: Read + Seek>(
                 }
                 ParameterEncoding::Float32 => {
                     let end = offset + 4;
-                    let raw = &buffer[offset..end];
+                    let raw = &row[offset..end];
                     let value = decode_f32(raw, layout.byte_order())?;
                     if let ColumnData::F32(values) = column {
                         values.push(value);
@@ -74,7 +135,7 @@ pub(crate) fn decode_data<R: Read + Seek>(
                 }
                 ParameterEncoding::Float64 => {
                     let end = offset + 8;
-                    let raw = &buffer[offset..end];
+                    let raw = &row[offset..end];
                     let value = decode_f64(raw, layout.byte_order())?;
                     if let ColumnData::F64(values) = column {
                         values.push(value);
@@ -84,23 +145,20 @@ pub(crate) fn decode_data<R: Read + Seek>(
             }
         }
     }
-
-    Ok(EventColumns { columns })
+    Ok(())
 }
 
 fn expected_data_length(layout: &ResolvedLayout) -> Result<u64, FcsError> {
-    let row_width =
-        layout
-            .parameters()
-            .iter()
-            .map(parameter_width)
-            .try_fold(0_u64, |accumulator, width| {
-                width.and_then(|value| {
-                    accumulator
-                        .checked_add(value)
-                        .ok_or(FcsError::UnsupportedLayout("row width overflowed u64"))
-                })
-            })?;
+    let row_width = layout
+        .parameters()
+        .iter()
+        .map(|parameter| u64::try_from(parameter.encoding.stored_bytes()))
+        .try_fold(0_u64, |accumulator, width| {
+            width
+                .ok()
+                .and_then(|value| accumulator.checked_add(value))
+                .ok_or(FcsError::UnsupportedLayout("row width overflowed u64"))
+        })?;
     let rows = u64::try_from(layout.row_count())
         .map_err(|_| FcsError::UnsupportedLayout("row count overflowed u64"))?;
     row_width
@@ -108,24 +166,14 @@ fn expected_data_length(layout: &ResolvedLayout) -> Result<u64, FcsError> {
         .ok_or(FcsError::UnsupportedLayout("DATA length overflowed u64"))
 }
 
-fn parameter_width(parameter: &ResolvedParameter) -> Result<u64, FcsError> {
-    match parameter.encoding {
-        ParameterEncoding::AsciiFixed { width } => u64::try_from(width)
-            .map_err(|_| FcsError::UnsupportedLayout("ASCII width overflowed u64")),
-        ParameterEncoding::Integer { width_bytes } => u64::try_from(width_bytes)
-            .map_err(|_| FcsError::UnsupportedLayout("integer width overflowed u64")),
-        ParameterEncoding::Float32 => Ok(4),
-        ParameterEncoding::Float64 => Ok(8),
-    }
-}
-
-fn new_column(parameter: &ResolvedParameter) -> ColumnData {
+/// A column with room for every row; its decoded size is already bounded.
+fn new_column(parameter: &ResolvedParameter, rows: usize) -> ColumnData {
     match parameter.encoding {
         ParameterEncoding::AsciiFixed { .. } | ParameterEncoding::Integer { .. } => {
-            ColumnData::UInt(Vec::new())
+            ColumnData::UInt(Vec::with_capacity(rows))
         }
-        ParameterEncoding::Float32 => ColumnData::F32(Vec::new()),
-        ParameterEncoding::Float64 => ColumnData::F64(Vec::new()),
+        ParameterEncoding::Float32 => ColumnData::F32(Vec::with_capacity(rows)),
+        ParameterEncoding::Float64 => ColumnData::F64(Vec::with_capacity(rows)),
     }
 }
 

@@ -2,10 +2,12 @@
 //! specific `Err` before the reader allocates or loops on the lie, never as a
 //! panic, an abort or a hang.
 
-use std::io::Cursor;
+use std::cell::Cell;
+use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use cytiq_fcs::{Error, FcsReader, Spillover};
+use cytiq_fcs::{Error, FcsReadLimits, FcsReader, Spillover};
 
 mod common;
 
@@ -219,4 +221,196 @@ fn rejects_spillover_channel_count_that_overflows() {
             "{raw}: {error}"
         );
     }
+}
+
+/// Two 16-bit events of one parameter: 4 bytes stored, 16 decoded.
+fn two_u16_events(analysis: Option<Vec<u8>>) -> Vec<u8> {
+    build_fcs(
+        "FCS3.1",
+        one_parameter(),
+        None,
+        encode_u16_rows(&[[1], [2]], true),
+        analysis,
+    )
+}
+
+fn limits(decoded_bytes_max: u64, analysis_bytes_max: u64) -> FcsReadLimits {
+    FcsReadLimits {
+        decoded_bytes_max,
+        analysis_bytes_max,
+    }
+}
+
+#[test]
+fn rejects_decoded_data_beyond_the_limit() {
+    let error = FcsReader::new(Cursor::new(two_u16_events(None)))
+        .read_with_limits(limits(15, 0))
+        .expect_err("16 decoded bytes over a limit of 15 must fail");
+    assert!(
+        matches!(
+            error,
+            Error::LimitExceeded {
+                what: "decoded DATA bytes",
+                value: 16,
+                limit: 15
+            }
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reads_decoded_data_exactly_at_the_limit() {
+    let dataset = FcsReader::new(Cursor::new(two_u16_events(None)))
+        .read_with_limits(limits(16, 0))
+        .expect("16 decoded bytes fit a limit of 16");
+    assert_eq!(dataset.data.columns[0].len(), 2);
+}
+
+#[test]
+fn limits_decoded_size_not_stored_size() {
+    // Integers widen to u64: 4 stored bytes are 16 in memory.
+    let error = FcsReader::new(Cursor::new(two_u16_events(None)))
+        .read_with_limits(limits(4, 0))
+        .expect_err("the stored size is not what is allocated");
+    assert!(
+        matches!(error, Error::LimitExceeded { value: 16, .. }),
+        "{error}"
+    );
+
+    // F stays 4 bytes a value.
+    let mut pairs = one_parameter();
+    pairs.retain(|(key, _)| !matches!(*key, "$DATATYPE" | "$P1B"));
+    pairs.extend([("$DATATYPE", "F"), ("$P1B", "32")]);
+    let data = [1.0_f32, 2.0]
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+    let bytes = build_fcs("FCS3.1", pairs, None, data, None);
+    FcsReader::new(Cursor::new(bytes))
+        .read_with_limits(limits(8, 0))
+        .expect("two f32 values decode to 8 bytes");
+}
+
+#[test]
+fn rejects_analysis_beyond_the_limit() {
+    let error = FcsReader::new(Cursor::new(two_u16_events(Some(vec![b'A'; 5]))))
+        .read_with_limits(limits(16, 4))
+        .expect_err("5 ANALYSIS bytes over a limit of 4 must fail");
+    assert!(
+        matches!(
+            error,
+            Error::LimitExceeded {
+                what: "ANALYSIS bytes",
+                value: 5,
+                limit: 4
+            }
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn reads_analysis_exactly_at_the_limit() {
+    let dataset = FcsReader::new(Cursor::new(two_u16_events(Some(vec![b'A'; 4]))))
+        .read_with_limits(limits(16, 4))
+        .expect("4 ANALYSIS bytes fit a limit of 4");
+    assert_eq!(dataset.analysis, Some(b"AAAA".to_vec()));
+}
+
+/// A reader that records how far into the file anything was read.
+struct Watched {
+    inner: Cursor<Vec<u8>>,
+    furthest: Rc<Cell<u64>>,
+}
+
+impl Read for Watched {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.furthest
+            .set(self.furthest.get().max(self.inner.position()));
+        Ok(read)
+    }
+}
+
+impl Seek for Watched {
+    fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+        self.inner.seek(position)
+    }
+}
+
+fn furthest_read(bytes: Vec<u8>, limits: FcsReadLimits) -> (Result<(), Error>, u64) {
+    let furthest = Rc::new(Cell::new(0));
+    let reader = Watched {
+        inner: Cursor::new(bytes),
+        furthest: Rc::clone(&furthest),
+    };
+    let result = FcsReader::new(reader).read_with_limits(limits).map(drop);
+    (result, furthest.get())
+}
+
+fn data_start(bytes: &[u8]) -> u64 {
+    std::str::from_utf8(&bytes[26..34])
+        .expect("HEADER offsets are ASCII")
+        .trim()
+        .parse()
+        .expect("HEADER offsets are numbers")
+}
+
+#[test]
+fn rejects_oversized_data_before_reading_it() {
+    let bytes = two_u16_events(None);
+    let start = data_start(&bytes);
+
+    let (result, furthest) = furthest_read(bytes, limits(15, 0));
+
+    assert!(
+        matches!(result, Err(Error::LimitExceeded { .. })),
+        "{result:?}"
+    );
+    assert!(
+        furthest <= start,
+        "read up to {furthest}, DATA starts at {start}"
+    );
+}
+
+#[test]
+fn rejects_oversized_analysis_before_decoding_data() {
+    let bytes = two_u16_events(Some(vec![b'A'; 5]));
+    let start = data_start(&bytes);
+
+    let (result, furthest) = furthest_read(bytes, limits(16, 4));
+
+    assert!(
+        matches!(
+            result,
+            Err(Error::LimitExceeded {
+                what: "ANALYSIS bytes",
+                ..
+            })
+        ),
+        "{result:?}"
+    );
+    assert!(
+        furthest <= start,
+        "read up to {furthest}, DATA starts at {start}"
+    );
+}
+
+#[test]
+fn read_uses_the_default_limits() {
+    let bytes = two_u16_events(Some(b"ANAL".to_vec()));
+    let read = FcsReader::new(Cursor::new(bytes.clone()))
+        .read()
+        .expect("a small file reads");
+    let limited = FcsReader::new(Cursor::new(bytes))
+        .read_with_limits(FcsReadLimits::default())
+        .expect("a small file reads within the defaults");
+
+    assert_eq!(read, limited);
+    assert_eq!(
+        FcsReadLimits::default(),
+        limits(8 << 30, 16 << 20),
+        "README and limits.rs state these values"
+    );
 }

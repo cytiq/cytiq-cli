@@ -32,7 +32,12 @@ mismatch).
 It also never lets a size declared in the file drive an allocation or a loop
 before that size is checked. Every segment is checked against the file length
 before it is read, and DATA against `$TOT` × row width. TEXT is capped at
-16 MiB and `$PAR` at 65,535 (`FcsError::LimitExceeded`).
+16 MiB and `$PAR` at 65,535 (`FcsError::LimitExceeded`). `FcsReadLimits` caps
+what a read allocates for DATA and ANALYSIS, checked before either is read:
+the decoded columns at 8 GiB (8 bytes per `A`, `I` or `D` value, 4 per `F`)
+and ANALYSIS at 16 MiB by default; `read_with_limits` takes other limits.
+DATA is decoded 1 MiB at a time, so a read holds the columns and one chunk,
+never the raw segment as well.
 
 Writing (`write_fcs3_1_f32*`, `write_fcs3_1_f64*`): FCS 3.1, little-endian
 32-bit or 64-bit float, one column per parameter, optional `$PnS` labels and
@@ -87,6 +92,7 @@ write_fcs3_1_f32_with_options(
 | Item | Purpose |
 | --- | --- |
 | `FcsReader::open` / `FcsReader::new` / `FcsReader::read` | Read a file or any `Read + Seek` into `FcsDataset` |
+| `FcsReader::read_with_limits`, `FcsReadLimits` | Read with other bounds on decoded DATA and ANALYSIS bytes (`Default` is what `read` uses) |
 | `FcsDataset` | `version`, `header`, `text`, `parameters`, `data`, `analysis`; `event_count`, `find_parameter` |
 | `Text` (`FcsText`), `TextSegment` | TEXT keywords: `get` lookup plus ordered pairs of primary and supplemental segments |
 | `Parameter`, `ParameterDataType`, `ParameterWidth` | Per-parameter metadata including all `$Pn*` keywords |

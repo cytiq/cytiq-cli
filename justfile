@@ -72,7 +72,11 @@ fuzz-fcs target="read_fcs" seconds="300":
           cp "$seed" "crates/cytiq-fcs/fuzz/corpus/read_fcs/seed-$(printf '%s' "$seed" | tr '/' '_')"; \
         done; \
     fi
-    cd crates/cytiq-fcs && cargo +nightly fuzz run {{ target }} -- -max_total_time={{ seconds }} -timeout=10
+    # cargo-fuzz otherwise builds for the triple it was built for, which is
+    # musl (no sanitizers) for prebuilt Linux binaries.
+    cd crates/cytiq-fcs && cargo +nightly fuzz run {{ target }} \
+      --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" \
+      -- -max_total_time={{ seconds }} -timeout=10
 
 # ---- Run the application
 [group('build')]

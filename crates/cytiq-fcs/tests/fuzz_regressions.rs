@@ -9,8 +9,11 @@ use cytiq_fcs::{FcsReader, is_spillover_keyword};
 #[path = "../fuzz/checks.rs"]
 mod checks;
 
+/// The check one fuzz target runs on an input.
+type Check = fn(&[u8]);
+
 /// Each target's inputs live in `tests/fuzz_regressions/<target>/`.
-const TARGETS: [(&str, fn(&[u8])); 2] = [
+const TARGETS: [(&str, Check); 2] = [
     ("read_fcs", checks::read_fcs),
     ("spillover_keyword", checks::spillover_keyword),
 ];

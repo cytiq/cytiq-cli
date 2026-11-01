@@ -8,6 +8,9 @@ use serde::Deserialize;
 
 use crate::ClassifyError;
 
+/// Analysis software that writes itself into `$CYT` when it re-exports a file.
+const REEXPORT_SOFTWARE: &str = "Kaluza";
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Feature {
     pub name: String,
@@ -66,18 +69,25 @@ pub fn feature_columns_with_normalization(
     {
         return Err(invalid("unsupported feature recipe"));
     }
-    let instrument = dataset.text.iter().find_map(|(k, v)| {
-        k.trim_start_matches('$')
-            .eq_ignore_ascii_case("CYT")
-            .then_some(v)
-    });
+    let keyword = |name: &str| {
+        dataset.text.iter().find_map(|(k, v)| {
+            k.trim_start_matches('$')
+                .eq_ignore_ascii_case(name)
+                .then_some(v)
+        })
+    };
     // CyTOF software writes vendor and version into $CYT; its profiles name a family.
-    let matches = instrument.is_some_and(|cyt| {
+    // Kaluza re-exports name Kaluza in $CYT and keep the acquiring cytometer in
+    // $OriginalInstrument, in its own case (FlowCyt: `Navios` for `NAVIOS`).
+    let matches = keyword("CYT").is_some_and(|cyt| {
         if profile.recipe == "cytiq-cytof-arcsinh-v1" {
             cyt.to_lowercase()
                 .contains(&profile.instrument.to_lowercase())
+        } else if cyt == REEXPORT_SOFTWARE {
+            keyword("OriginalInstrument")
+                .is_some_and(|original| original.eq_ignore_ascii_case(&profile.instrument))
         } else {
-            cyt == profile.instrument
+            *cyt == profile.instrument
         }
     });
     if !matches {

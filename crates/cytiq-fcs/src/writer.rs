@@ -398,6 +398,7 @@ fn encode_header_and_text<T: DataValue>(
     for (key, value) in &options.text_keywords {
         set_pair(&mut pairs, key.trim(), value);
     }
+    validate_text_pairs(&pairs)?;
 
     let text_len = u64::try_from(encode_text(&pairs).len())
         .map_err(|_| FcsError::InvalidWriterInput("TEXT segment length exceeds supported range"))?;
@@ -500,6 +501,27 @@ fn validate_parameters(parameters: &[FcsWriteParameter]) -> Result<(), FcsError>
         }
     }
 
+    Ok(())
+}
+
+/// The delimiter is escaped by doubling it, so a key or value that is empty or
+/// starts with the delimiter reads back as an escape instead. FCS 3.1 forbids
+/// both; refuse them rather than write a file that reads back differently.
+fn validate_text_pairs(pairs: &[(String, String)]) -> Result<(), FcsError> {
+    let unrepresentable = pairs
+        .iter()
+        .flat_map(|(key, value)| [key, value])
+        .any(|token| {
+            token
+                .as_bytes()
+                .first()
+                .is_none_or(|first| *first == TEXT_DELIMITER)
+        });
+    if unrepresentable {
+        return Err(FcsError::InvalidWriterInput(
+            "TEXT keywords and values must be non-empty and must not start with `|`",
+        ));
+    }
     Ok(())
 }
 

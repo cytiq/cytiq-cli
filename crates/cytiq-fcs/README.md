@@ -39,7 +39,9 @@ Writing (`write_fcs3_1_f32*`, `write_fcs3_1_f64*`): FCS 3.1, little-endian
 extra TEXT keywords. `write_fcs3_1_exact_with_options` takes f64 columns and
 writes f32 unless a value would change (event identifiers above 2^24, 32-bit
 integer data). This is the layout used for every FCS file `cytiq` generates;
-it is not a general writer.
+it is not a general writer. TEXT is delimited by `|`, escaped by doubling, so a
+key or value that is empty or starts with `|` is refused rather than written
+ambiguously.
 
 Acquisition identity: `acquisition_id` returns the `CYTIQ_ACQUISITION` keyword
 of a derived file, or the SHA-256 of a raw file. Stages that write FCS record

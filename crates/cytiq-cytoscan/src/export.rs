@@ -7,6 +7,7 @@
 use std::fs;
 use std::path::Path;
 
+use cytiq_publish::{Existing, Publication};
 use nalgebra::{DMatrix, DVector, SymmetricEigen};
 use plotly::box_plot::BoxPoints;
 use plotly::common::{ColorScale, ColorScalePalette, Line, Marker, Mode, Title};
@@ -116,18 +117,18 @@ pub(crate) fn write_outputs(
     test_files: &[LoadedFile],
     reference_files: &[LoadedFile],
 ) -> Result<(), CytoScanError> {
-    fs::create_dir_all(&config.output_dir).map_err(|source| {
-        CytoScanError::OutputDirectoryCreate {
-            path: config.output_dir.clone(),
-            source,
-        }
+    // The three outputs describe one run: publish them together.
+    let mut publication = Publication::new(Existing::Replace);
+    publication.stage_path(config.output_dir.join(SUMMARY_FILE_NAME), |path| {
+        write_summary_csv(path, result)
     })?;
-    write_summary_csv(&config.output_dir.join(SUMMARY_FILE_NAME), result)?;
-    write_feature_matrix_csv(
-        &config.output_dir.join(FEATURES_FILE_NAME),
-        &result.test_features,
-    )?;
-    write_config_json(&config.output_dir.join(CONFIG_FILE_NAME), result)?;
+    publication.stage_path(config.output_dir.join(FEATURES_FILE_NAME), |path| {
+        write_feature_matrix_csv(path, &result.test_features)
+    })?;
+    publication.stage_path(config.output_dir.join(CONFIG_FILE_NAME), |path| {
+        write_config_json(path, result)
+    })?;
+    publication.commit()?;
     if let Some(debug_dir) = config.debug_dir.as_deref() {
         write_debug_artifacts(debug_dir, result, test_files, reference_files)?;
     }
@@ -235,32 +236,37 @@ fn write_debug_artifacts(
     test_files: &[LoadedFile],
     reference_files: &[LoadedFile],
 ) -> Result<(), CytoScanError> {
-    fs::create_dir_all(debug_dir).map_err(|source| CytoScanError::DebugDirectoryCreate {
-        path: debug_dir.to_path_buf(),
-        source,
-    })?;
+    let mut publication = Publication::new(Existing::Replace);
     if let Some(reference_features) = result.reference_features.as_ref() {
-        write_feature_matrix_csv(
-            &debug_dir.join(REFERENCE_FEATURES_FILE_NAME),
-            reference_features,
-        )?;
+        publication.stage_path(debug_dir.join(REFERENCE_FEATURES_FILE_NAME), |path| {
+            write_feature_matrix_csv(path, reference_features)
+        })?;
     }
-    write_aggregate_sampling_csv(&debug_dir.join(AGGREGATE_SAMPLING_FILE_NAME), result)?;
-    write_model_diagnostics_json(&debug_dir.join(MODEL_DIAGNOSTICS_FILE_NAME), result)?;
+    publication.stage_path(debug_dir.join(AGGREGATE_SAMPLING_FILE_NAME), |path| {
+        write_aggregate_sampling_csv(path, result)
+    })?;
+    publication.stage_path(debug_dir.join(MODEL_DIAGNOSTICS_FILE_NAME), |path| {
+        write_model_diagnostics_json(path, result)
+    })?;
     let pca = calculate_pca(result);
     let heatmap = calculate_feature_heatmap(result);
     let boxplot_samples = collect_boxplot_samples(result, test_files, reference_files);
-    write_pca_coordinates_csv(&debug_dir.join(PCA_COORDINATES_FILE_NAME), &pca)?;
-    write_pca_loadings_csv(&debug_dir.join(PCA_LOADINGS_FILE_NAME), &pca)?;
-    write_feature_heatmap_csv(&debug_dir.join(FEATURE_HEATMAP_FILE_NAME), &heatmap)?;
-    write_boxplot_samples_csv(&debug_dir.join(BOXPLOT_SAMPLES_FILE_NAME), &boxplot_samples)?;
-    write_report_html(
-        &debug_dir.join(REPORT_FILE_NAME),
-        result,
-        &pca,
-        &heatmap,
-        &boxplot_samples,
-    )
+    publication.stage_path(debug_dir.join(PCA_COORDINATES_FILE_NAME), |path| {
+        write_pca_coordinates_csv(path, &pca)
+    })?;
+    publication.stage_path(debug_dir.join(PCA_LOADINGS_FILE_NAME), |path| {
+        write_pca_loadings_csv(path, &pca)
+    })?;
+    publication.stage_path(debug_dir.join(FEATURE_HEATMAP_FILE_NAME), |path| {
+        write_feature_heatmap_csv(path, &heatmap)
+    })?;
+    publication.stage_path(debug_dir.join(BOXPLOT_SAMPLES_FILE_NAME), |path| {
+        write_boxplot_samples_csv(path, &boxplot_samples)
+    })?;
+    publication.stage_path(debug_dir.join(REPORT_FILE_NAME), |path| {
+        write_report_html(path, result, &pca, &heatmap, &boxplot_samples)
+    })?;
+    Ok(publication.commit()?)
 }
 
 fn write_aggregate_sampling_csv(path: &Path, result: &CytoScanResult) -> Result<(), CytoScanError> {

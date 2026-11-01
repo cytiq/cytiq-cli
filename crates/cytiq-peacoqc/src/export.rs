@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cytiq_mask::EventMask;
+use cytiq_publish::Publication;
 use plotly::common::{Mode, Title};
 use plotly::{Bar, Layout, Plot, Scatter};
 
@@ -32,7 +33,8 @@ pub fn write_debug_artifacts(
 /// is the 0-based input row, `source_event_id` the 0-based raw-file row (from
 /// `Original_ID` when the input has one). A null filter column means the
 /// filter did not assess the event, never that it passed.
-pub(crate) fn write_masks_parquet(
+pub(crate) fn stage_masks_parquet(
+    publication: &mut Publication,
     path: &Path,
     acquisition: &str,
     mask: &[EventMaskRecord],
@@ -60,7 +62,7 @@ pub(crate) fn write_masks_parquet(
     )
     .with_filter("margin_pass", margin_pass)
     .with_filter("peacoqc_pass", peacoqc_pass)
-    .write_parquet(path)
+    .stage_parquet(publication, path)
     .map_err(|error| PeacoQcError::ParquetWrite {
         path: path.to_path_buf(),
         message: error.to_string(),

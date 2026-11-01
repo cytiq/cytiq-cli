@@ -9,6 +9,7 @@ cytiq-compensate = { path = "../cytiq-compensate" }
 cytiq-density = { path = "../cytiq-density" }
 cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-peacoqc = { path = "../cytiq-peacoqc" }
+cytiq-publish = { path = "../cytiq-publish" }
 cytiq-transform = { path = "../cytiq-transform" }
 log = "0.4.30"
 plotly = "0.14.1"

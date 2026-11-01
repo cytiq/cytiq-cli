@@ -300,6 +300,29 @@ fn cli_writes_exact_original_ids_above_f32_precision() {
     assert_eq!(kept_ids, written_ids);
 }
 
+#[test]
+fn cli_publishes_no_fcs_when_its_mask_cannot_be_written() {
+    let directory = create_temp_dir("cytiq-cli-peacoqc-blocked-mask");
+    let input = directory.join("sample.fcs");
+    let output = directory.join("sample.peacoqc.fcs");
+    write_peacoqc_fixture_fcs(&input);
+    // A non-empty directory where the mask goes: the FCS must not appear alone.
+    let masks = directory.join("sample.peacoqc.masks.parquet");
+    fs::create_dir(&masks).unwrap();
+    fs::write(masks.join("keep"), "keep").unwrap();
+
+    let result = run_peacoqc(&input, &output, None);
+    assert!(!result.status.success());
+    assert!(!output.exists(), "the FCS was published without its mask");
+    assert_eq!(fs::read_to_string(masks.join("keep")).unwrap(), "keep");
+    let leftovers = fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with('.'))
+        .collect::<Vec<_>>();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
 fn run_peacoqc(input: &Path, output: &Path, debug_dir: Option<&Path>) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_cytiq"));
     command.args([

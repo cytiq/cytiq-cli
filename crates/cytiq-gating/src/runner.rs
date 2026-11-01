@@ -1,9 +1,10 @@
-use std::fs::{self, File};
-use std::io::{BufWriter, Write};
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::FcsReader;
 use cytiq_mask::{EVENT_ID_COLUMN, EventMask, KEEP_COLUMN, SOURCE_EVENT_ID_COLUMN};
+use cytiq_publish::{Existing, Publication, Staging};
 use log::{debug, info};
 use rayon::ThreadPoolBuilder;
 
@@ -110,23 +111,16 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
     let results = strategy.gate_sample_masked(&dataset, mask.as_deref())?;
     let report = results.report();
 
-    if let Some(parent) = config
-        .output
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|source| GatingError::OutputWrite {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-    match config.format {
-        OutputFormat::Csv => write_csv(&config.output, &report)?,
-        OutputFormat::Json => write_json(&config.output, &report)?,
-    }
+    // Counts and membership mask appear together or not at all.
+    let mut publication = Publication::new(Existing::Replace);
+    publication.stage_file(&config.output, |writer| match config.format {
+        OutputFormat::Csv => write_csv(writer, &config.output, &report),
+        OutputFormat::Json => write_json(writer, &config.output, &report),
+    })?;
     if let Some((path, acquisition)) = config.membership.as_ref().zip(acquisition) {
         let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
-        write_membership(
+        stage_membership(
+            &mut publication,
             path,
             &results,
             dataset.event_count(),
@@ -134,6 +128,7 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
             source_event_ids,
         )?;
     }
+    publication.commit()?;
 
     Ok(GatingRunResult {
         event_count: results.event_count(),
@@ -145,7 +140,8 @@ fn run_inner(config: &GatingConfig) -> Result<GatingRunResult, GatingError> {
 /// One row per input event in the cytiq mask layout: a nullable Boolean
 /// column per gate in evaluation order (null outside the event mask), and
 /// `keep` marking events inside the event mask.
-fn write_membership(
+fn stage_membership(
+    publication: &mut Publication,
     path: &Path,
     results: &GatingResults,
     rows: usize,
@@ -171,16 +167,16 @@ fn write_membership(
         mask = mask.with_filter(id, column);
     }
     debug!("writing gate membership to {}", path.display());
-    mask.write_parquet(path)?;
+    mask.stage_parquet(publication, path)?;
     Ok(())
 }
 
-fn write_csv(path: &Path, report: &[GateCount]) -> Result<(), GatingError> {
+fn write_csv(file: &mut Staging<'_>, path: &Path, report: &[GateCount]) -> Result<(), GatingError> {
     let csv_error = |source| GatingError::CsvWrite {
         path: path.to_path_buf(),
         source,
     };
-    let mut writer = csv::Writer::from_path(path).map_err(csv_error)?;
+    let mut writer = csv::Writer::from_writer(file);
     for row in report {
         writer.serialize(row).map_err(csv_error)?;
     }
@@ -190,16 +186,21 @@ fn write_csv(path: &Path, report: &[GateCount]) -> Result<(), GatingError> {
     })
 }
 
-fn write_json(path: &Path, report: &[GateCount]) -> Result<(), GatingError> {
-    let io_error = |source| GatingError::OutputWrite {
-        path: path.to_path_buf(),
-        source,
-    };
-    let mut writer = BufWriter::new(File::create(path).map_err(io_error)?);
-    serde_json::to_writer_pretty(&mut writer, report).map_err(|source| GatingError::JsonWrite {
-        path: path.to_path_buf(),
-        source,
+fn write_json(
+    writer: &mut Staging<'_>,
+    path: &Path,
+    report: &[GateCount],
+) -> Result<(), GatingError> {
+    serde_json::to_writer_pretty(&mut *writer, report).map_err(|source| {
+        GatingError::JsonWrite {
+            path: path.to_path_buf(),
+            source,
+        }
     })?;
-    writer.write_all(b"\n").map_err(io_error)?;
-    writer.flush().map_err(io_error)
+    writer
+        .write_all(b"\n")
+        .map_err(|source| GatingError::OutputWrite {
+            path: path.to_path_buf(),
+            source,
+        })
 }

@@ -451,8 +451,10 @@ fn load_controls(
         .iter()
         .map(|row| row.dye.clone())
         .collect::<Vec<_>>();
-    let prepared_controls =
-        parallel_try_map(manifest_rows, "control loading", |dye_index, row| {
+    let prepared_controls = parallel_try_map::<_, _, AutospillError, _>(
+        manifest_rows,
+        "control loading",
+        |dye_index, row| {
             let path = input_dir.join(&row.filename);
             if !path.is_file() {
                 return Err(AutospillError::MissingControlFile { path });
@@ -506,7 +508,8 @@ fn load_controls(
                 dye_index,
                 is_autofluorescence: is_autofluorescence_dye(&row.dye),
             })
-        })?;
+        },
+    )?;
 
     let primary_channels = prepared_controls
         .iter()
@@ -650,7 +653,7 @@ fn load_controls(
                 dye_index,
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, AutospillError>>()?;
 
     debug!(
         "prepared {} control matrices with detector width {}",
@@ -882,7 +885,7 @@ fn estimate_spillover(
                 )
         })
         .collect::<Vec<_>>();
-    let coefficient_rows = parallel_try_map(
+    let coefficient_rows = parallel_try_map::<_, _, AutospillError, _>(
         controls,
         "initial spillover estimation",
         |index, control| {
@@ -1069,7 +1072,7 @@ fn compensation_error(
 ) -> Result<RegressionMatrices, AutospillError> {
     let dye_count = loaded.controls.len();
     let compensation_array = dmat_to_array2(compensation);
-    let row_results = parallel_try_map(
+    let row_results = parallel_try_map::<_, _, AutospillError, _>(
         &loaded.controls,
         "compensation error estimation",
         |index, control| {

@@ -361,6 +361,20 @@ impl EventMask {
         dataset: &FcsDataset,
         acquisition: &str,
     ) -> Result<Vec<bool>, MaskError> {
+        let keep = self.keep_by_source(acquisition)?;
+        let source_event_ids = cytiq_fcs::source_event_ids(dataset)
+            .map_err(MaskError::Lineage)?
+            .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
+        keep.keep(&source_event_ids)
+    }
+
+    /// Look `keep` up by source event, for events that arrive in batches. The
+    /// lookup is built once; `acquisition` is checked here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the mask belongs to another acquisition.
+    pub fn keep_by_source(&self, acquisition: &str) -> Result<SourceKeep<'_>, MaskError> {
         if self.acquisition != acquisition {
             return Err(MaskError::AcquisitionMismatch {
                 expected: acquisition.to_owned(),
@@ -368,21 +382,10 @@ impl EventMask {
                 what: "the event mask".to_owned(),
             });
         }
-        let lookup = self.row_lookup();
-        let source_event_ids = cytiq_fcs::source_event_ids(dataset)
-            .map_err(MaskError::Lineage)?
-            .unwrap_or_else(|| (0..dataset.event_count() as u64).collect());
-        source_event_ids
-            .iter()
-            .map(|source_event_id| {
-                lookup
-                    .get(source_event_id)
-                    .map(|row| self.keep[*row])
-                    .ok_or(MaskError::MissingEvent {
-                        source_event_id: *source_event_id,
-                    })
-            })
-            .collect()
+        Ok(SourceKeep {
+            keep: &self.keep,
+            rows: self.row_lookup(),
+        })
     }
 
     fn row_lookup(&self) -> HashMap<u64, usize> {
@@ -390,6 +393,34 @@ impl EventMask {
             .iter()
             .enumerate()
             .map(|(row, source_event_id)| (*source_event_id, row))
+            .collect()
+    }
+}
+
+/// A mask's `keep`, looked up by the raw-file row of each event.
+#[derive(Debug)]
+pub struct SourceKeep<'a> {
+    keep: &'a [bool],
+    rows: HashMap<u64, usize>,
+}
+
+impl SourceKeep<'_> {
+    /// `keep` for each of `source_event_ids`, in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the mask has no row for one of them.
+    pub fn keep(&self, source_event_ids: &[u64]) -> Result<Vec<bool>, MaskError> {
+        source_event_ids
+            .iter()
+            .map(|source_event_id| {
+                self.rows
+                    .get(source_event_id)
+                    .map(|row| self.keep[*row])
+                    .ok_or(MaskError::MissingEvent {
+                        source_event_id: *source_event_id,
+                    })
+            })
             .collect()
     }
 }
@@ -582,6 +613,27 @@ mod tests {
         cytiq_fcs::FcsReader::new(std::io::Cursor::new(bytes))
             .read()
             .unwrap()
+    }
+
+    #[test]
+    fn keep_by_source_matches_keep_for_across_batches() {
+        let mask = EventMask::new(RAW, vec![true, false, true, false, true], None);
+        let derived = dataset(Some(vec![1.0, 3.0, 4.0]));
+        let whole = mask.keep_for(&derived, RAW).unwrap();
+        let keep = mask.keep_by_source(RAW).unwrap();
+        let batched = [&[0_u64, 2][..], &[3]]
+            .iter()
+            .flat_map(|ids| keep.keep(ids).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(batched, whole);
+        assert!(matches!(
+            keep.keep(&[7]),
+            Err(MaskError::MissingEvent { source_event_id: 7 })
+        ));
+        assert!(matches!(
+            mask.keep_by_source(OTHER),
+            Err(MaskError::AcquisitionMismatch { .. })
+        ));
     }
 
     #[test]

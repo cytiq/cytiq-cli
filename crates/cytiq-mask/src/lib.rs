@@ -30,6 +30,6 @@ mod runner;
 pub use crate::error::MaskError;
 pub use crate::mask::{
     ACQUISITION_KEY, EVENT_ID_BASE_KEY, EVENT_ID_COLUMN, EventMask, KEEP_COLUMN, SCHEMA_VERSION,
-    SCHEMA_VERSION_KEY, SOURCE_EVENT_ID_COLUMN, read_combined,
+    SCHEMA_VERSION_KEY, SOURCE_EVENT_ID_COLUMN, SourceKeep, read_combined,
 };
 pub use crate::runner::{MaskCombineConfig, MaskCombineRunner};

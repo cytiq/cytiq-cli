@@ -39,6 +39,14 @@ and ANALYSIS at 16 MiB by default; `read_with_limits` takes other limits.
 DATA is decoded 1 MiB at a time, so a read holds the columns and one chunk,
 never the raw segment as well.
 
+`FcsReader::stream(batch_size, limits)` checks a file exactly as
+`read_with_limits` does, then returns its `FcsMetadata` (everything but the
+events and ANALYSIS) and `EventBatches`, an iterator that decodes DATA
+`batch_size` events at a time in file order. A batch decodes to the columns
+`read` gives for those rows, bit for bit; memory holds one batch, not the file.
+A stream never reads ANALYSIS, so `analysis_bytes_max` does not apply to it.
+After a batch fails to decode, the iterator ends.
+
 Writing (`write_fcs3_1_f32*`, `write_fcs3_1_f64*`): FCS 3.1, little-endian
 32-bit or 64-bit float, one column per parameter, optional `$PnS` labels and
 extra TEXT keywords. `write_fcs3_1_exact_with_options` takes f64 columns and
@@ -93,6 +101,7 @@ write_fcs3_1_f32_with_options(
 | --- | --- |
 | `FcsReader::open` / `FcsReader::new` / `FcsReader::read` | Read a file or any `Read + Seek` into `FcsDataset` |
 | `FcsReader::read_with_limits`, `FcsReadLimits` | Read with other bounds on decoded DATA and ANALYSIS bytes (`Default` is what `read` uses) |
+| `FcsReader::stream`, `FcsStream`, `FcsMetadata`, `EventBatches` | Check a file as `read` does, then decode its events in batches; `EventBatches::empty_batch` gives the columns with no rows |
 | `FcsDataset` | `version`, `header`, `text`, `parameters`, `data`, `analysis`; `event_count`, `find_parameter` |
 | `Text` (`FcsText`), `TextSegment` | TEXT keywords: `get` lookup plus ordered pairs of primary and supplemental segments |
 | `Parameter`, `ParameterDataType`, `ParameterWidth` | Per-parameter metadata including all `$Pn*` keywords |

@@ -54,7 +54,7 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 | `RunRecorder::with_build`, `set_config`, `set_constants`, `set_algorithms` | Build info, effective configuration, fixed algorithm constants, upstream versions |
 | `RunRecord`, `FileRecord`, `BuildInfo`, `Platform`, `SCHEMA_VERSION` (2) | The document |
 | `record_path_for_file`, `record_path_for_dir` | Where a command's record goes |
-| `files_under` | Every file of an output directory, sorted, without records and `.tmp` files or directories |
+| `files_under` | Every file of an output directory, sorted, without records and `.tmp` files or directories (staged outputs and `.old.tmp` backups of `cytiq-publish`) |
 | `hash_file` | Streamed SHA-256 (also used by `cytiq-meta`) |
 | `ProvenanceError` | Error type |
 
@@ -62,6 +62,11 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 
 - Records are written through `cytiq-publish` (a synced temporary file,
   renamed into place), so a failed run never leaves half a record.
+- A run's outputs are complete when its record exists and every output it
+  lists has the recorded size and SHA-256. A failed run publishes none of its
+  outputs, but a crash in the middle of publishing can leave some outputs new
+  and others previous ones next to the previous run's record; only the hashes
+  tell.
 - Paths that are not files (optional inputs and outputs that were not given)
   are skipped.
 - An input that changed during the run and is not also an output fails

@@ -110,7 +110,7 @@ dependencies = [
  "ahash",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.1",
  "chrono",
  "half",
  "hashbrown 0.17.1",
@@ -138,7 +138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b24852db04738907e06c04ea61e42fe7fda962a34513022dc0d0e754fb7976b"
 dependencies = [
  "arrow-buffer",
- "arrow-schema",
+ "arrow-schema 58.4.1",
  "half",
  "num-integer",
  "num-traits",
@@ -153,16 +153,22 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.1",
  "arrow-select",
  "flatbuffers",
 ]
 
 [[package]]
 name = "arrow-schema"
-version = "58.4.0"
+version = "58.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e"
+checksum = "8506ad465ebb9483bb6efa1e2e78a313549122c6dd67dc2f7087297b762eaede"
+
+[[package]]
+name = "arrow-schema"
+version = "60.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de2c8e714b466404cdc1189e89f892426efea614d938e16c15518c340cd43ba3"
 
 [[package]]
 name = "arrow-select"
@@ -174,7 +180,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.1",
  "num-traits",
 ]
 
@@ -577,7 +583,7 @@ name = "cytiq-autospill"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-schema",
+ "arrow-schema 60.1.0",
  "csv",
  "cytiq-density",
  "cytiq-fcs",
@@ -599,7 +605,7 @@ name = "cytiq-classify"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-schema",
+ "arrow-schema 60.1.0",
  "cytiq-fcs",
  "cytiq-mask",
  "cytiq-provenance",
@@ -682,7 +688,7 @@ name = "cytiq-cytonorm"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-schema",
+ "arrow-schema 60.1.0",
  "cytiq-density",
  "cytiq-fcs",
  "cytiq-flowsom",
@@ -784,7 +790,7 @@ name = "cytiq-mask"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
- "arrow-schema",
+ "arrow-schema 60.1.0",
  "cytiq-fcs",
  "cytiq-publish",
  "log",
@@ -1626,7 +1632,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-data",
  "arrow-ipc",
- "arrow-schema",
+ "arrow-schema 58.4.1",
  "arrow-select",
  "base64 0.22.1",
  "bytes",

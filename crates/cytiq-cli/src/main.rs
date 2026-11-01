@@ -24,18 +24,16 @@ use cytiq_clean::{
 use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
 use cytiq_cytoscan::{
     CytoScanConfig, CytoScanConstants, CytoScanRunner, FeatureMethod, FlagMethod,
-    parse_channel_list as parse_cytoscan_channel_list,
 };
 use cytiq_flowsom::{
     FLOWSOM_METACLUSTERS, FLOWSOM_RANDOM_SEED, FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomConfig,
-    FlowSomConstants, FlowSomRunner, parse_channel_list as parse_flowsom_channel_list,
+    FlowSomConstants, FlowSomRunner,
 };
 use cytiq_gating::{GatingConfig, GatingRunner, OutputFormat as GateOutputFormat};
 use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
 use cytiq_meta::{MetaConfig, MetaRunner};
 use cytiq_peacoqc::{
-    PeacoQcConfig, PeacoQcConstants, PeacoQcMethod, PeacoQcRunner,
-    masks_path as peacoqc_masks_path, parse_channel_list as parse_peacoqc_channel_list,
+    PeacoQcConfig, PeacoQcConstants, PeacoQcMethod, PeacoQcRunner, masks_path as peacoqc_masks_path,
 };
 use cytiq_preflight::{CheckStatus, PreflightConfig, PreflightRunner};
 use cytiq_provenance::{
@@ -637,10 +635,7 @@ impl SpillqcArgs {
         let channels = if self.channels.is_none() && self.channel.is_empty() {
             None
         } else {
-            Some(parse_peacoqc_channels(
-                self.channels.as_deref(),
-                &self.channel,
-            )?)
+            Some(parse_channels(self.channels.as_deref(), &self.channel)?)
         };
         Ok(SpillQcConfig {
             inputs: self.input.clone(),
@@ -1227,7 +1222,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 output.display(),
                 method
             );
-            let channels = parse_peacoqc_channels(channels.as_deref(), &channel)
+            let channels = parse_channels(channels.as_deref(), &channel)
                 .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
             let config = PeacoQcConfig {
                 channels,
@@ -1272,7 +1267,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 method,
                 flag_method
             );
-            let channels = parse_cytoscan_channels(channels.as_deref(), &channel)
+            let channels = parse_channels(channels.as_deref(), &channel)
                 .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
             let config = CytoScanConfig {
                 inputs: input,
@@ -1782,7 +1777,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 input.display(),
                 output.display()
             );
-            let channels = parse_flowsom_channels(channels.as_deref(), &channel)
+            let channels = parse_channels(channels.as_deref(), &channel)
                 .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
             let config = FlowSomConfig {
                 channels,
@@ -1876,7 +1871,7 @@ fn run_flowsom_model(
         } => {
             recorder.snapshot_inputs("input", &input)?;
             recorder.snapshot_inputs("mask", &masks)?;
-            let mut config = FlowSomConfig::new(parse_flowsom_channel_list(&channels)?);
+            let mut config = FlowSomConfig::new(cytiq_fcs::parse_channel_list(&channels)?);
             config.xdim = xdim;
             config.ydim = ydim;
             config.metaclusters = metaclusters;
@@ -2164,56 +2159,14 @@ fn format_transform_parameters(parameters: &TransformParameters) -> String {
     String::new()
 }
 
-fn parse_peacoqc_channels(
+/// `--channels` (comma-separated) followed by every `--channel`; at least one
+/// channel is required.
+fn parse_channels(
     channels: Option<&str>,
     repeated_channels: &[String],
 ) -> Result<Vec<String>, String> {
     let mut parsed = channels
-        .map(parse_peacoqc_channel_list)
-        .transpose()?
-        .unwrap_or_default();
-    for channel in repeated_channels {
-        let channel = channel.trim();
-        if channel.is_empty() {
-            return Err("channel must not be empty".to_owned());
-        }
-        parsed.push(channel.to_owned());
-    }
-    if parsed.is_empty() {
-        Err("at least one `--channels` or `--channel` value is required".to_owned())
-    } else {
-        Ok(parsed)
-    }
-}
-
-fn parse_flowsom_channels(
-    channels: Option<&str>,
-    repeated_channels: &[String],
-) -> Result<Vec<String>, String> {
-    let mut parsed = channels
-        .map(parse_flowsom_channel_list)
-        .transpose()?
-        .unwrap_or_default();
-    for channel in repeated_channels {
-        let channel = channel.trim();
-        if channel.is_empty() {
-            return Err("channel must not be empty".to_owned());
-        }
-        parsed.push(channel.to_owned());
-    }
-    if parsed.is_empty() {
-        Err("at least one `--channels` or `--channel` value is required".to_owned())
-    } else {
-        Ok(parsed)
-    }
-}
-
-fn parse_cytoscan_channels(
-    channels: Option<&str>,
-    repeated_channels: &[String],
-) -> Result<Vec<String>, String> {
-    let mut parsed = channels
-        .map(parse_cytoscan_channel_list)
+        .map(cytiq_fcs::parse_channel_list)
         .transpose()?
         .unwrap_or_default();
     for channel in repeated_channels {

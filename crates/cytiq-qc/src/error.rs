@@ -26,4 +26,6 @@ pub enum QcError {
     },
     #[error("qc failed: {failed} check(s) failed; see `{report}`")]
     Failed { failed: usize, report: PathBuf },
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

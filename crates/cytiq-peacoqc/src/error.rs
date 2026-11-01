@@ -90,4 +90,6 @@ pub enum PeacoQcError {
         #[source]
         source: std::io::Error,
     },
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

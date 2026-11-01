@@ -60,7 +60,9 @@ println!("{} events on a raw detector margin", result.margin_event_count);
   are dropped from `CYTIQ_MARGINS`.
 - Data is written as f32, or f64 when an unchanged channel would lose
   precision in f32 (for example `Original_ID` above 2^24).
-- Existing outputs are replaced only with `overwrite`.
+- Existing outputs are replaced only with `overwrite`. The FCS and its mask
+  are published together (`cytiq-publish`): a failed run leaves neither, and
+  the previous pair stays in place.
 
 ## Dependencies
 

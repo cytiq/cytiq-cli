@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 csv = "1.3.1"
 cytiq-fcs = { path = "../cytiq-fcs" }
+cytiq-publish = { path = "../cytiq-publish" }
 log = "0.4.28"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 plotly = "0.14.1"

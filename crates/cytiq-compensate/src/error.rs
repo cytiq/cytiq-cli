@@ -64,4 +64,6 @@ pub enum CompensateError {
     },
     #[error("failed to write event mask: {0}")]
     Mask(#[from] cytiq_mask::MaskError),
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

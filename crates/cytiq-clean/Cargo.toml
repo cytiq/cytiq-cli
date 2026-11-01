@@ -8,6 +8,7 @@ cytiq-density = { path = "../cytiq-density" }
 cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-gating = { path = "../cytiq-gating" }
 cytiq-mask = { path = "../cytiq-mask" }
+cytiq-publish = { path = "../cytiq-publish" }
 log = "0.4.30"
 plotly = "0.14.1"
 rayon = "1.10.0"

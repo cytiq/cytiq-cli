@@ -8,6 +8,7 @@ csv = "1.3.1"
 cytiq-density = { path = "../cytiq-density" }
 cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-mask = { path = "../cytiq-mask" }
+cytiq-publish = { path = "../cytiq-publish" }
 log = "0.4.30"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 rayon = "1.10.0"

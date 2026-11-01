@@ -145,4 +145,6 @@ pub enum AutospillError {
     },
     #[error("failed to build parquet batch for `{path}`: {message}")]
     ParquetBatch { path: PathBuf, message: String },
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

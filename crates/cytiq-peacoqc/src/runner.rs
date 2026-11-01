@@ -17,8 +17,9 @@ use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
 
 use crate::error::PeacoQcError;
-use crate::export::{write_debug_artifacts, write_masks_parquet};
+use crate::export::{stage_masks_parquet, write_debug_artifacts};
 use cytiq_density::{density, smooth_spline_fitted};
+use cytiq_publish::{Existing, Publication};
 
 pub const DEFAULT_MAD_THRESHOLD: f64 = 6.0;
 /// `PeacoQC::MADOutliers` smooths each peak series with `smooth.spline(spar = 0.5)`.
@@ -332,14 +333,20 @@ impl PeacoQcRunner {
         };
         let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
         let acquisition = cytiq_fcs::acquisition_id(input, &dataset.text).map_err(read_error)?;
-        write_cleaned_fcs(input, output, &dataset, &mask, &acquisition)?;
-        write_masks_parquet(
+        // The cleaned FCS and its mask appear together or not at all.
+        let mut publication = Publication::new(Existing::Replace);
+        publication.stage_path(output, |path| {
+            write_cleaned_fcs(input, output, path, &dataset, &mask, &acquisition)
+        })?;
+        stage_masks_parquet(
+            &mut publication,
             &masks_path(output),
             &acquisition,
             &mask,
             source_event_ids.as_deref(),
             config.remove_margins,
         )?;
+        publication.commit()?;
 
         let summary = build_summary(
             input,
@@ -1369,9 +1376,11 @@ pub fn masks_path(output: &Path) -> PathBuf {
     output.with_extension("masks.parquet")
 }
 
+/// Write the retained events to the staged `path` that becomes `output`.
 fn write_cleaned_fcs(
     input: &Path,
     output: &Path,
+    path: &Path,
     dataset: &FcsDataset,
     mask: &[EventMaskRecord],
     acquisition: &str,
@@ -1443,7 +1452,7 @@ fn write_cleaned_fcs(
         );
     // Event identifiers above 2^24, 32-bit integer data and f64 data do not
     // survive f32; the writer uses doubles only when a value would change.
-    cytiq_fcs::write_fcs3_1_exact_with_options(output, &parameters, &columns, &options).map_err(
+    cytiq_fcs::write_fcs3_1_exact_with_options(path, &parameters, &columns, &options).map_err(
         |source| PeacoQcError::FcsWrite {
             path: output.to_path_buf(),
             source,

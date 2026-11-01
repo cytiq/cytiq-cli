@@ -54,7 +54,7 @@ this crate.
   the same matching order, when touching that code.
 - Transformations belong in `cytiq-transform`; this crate clusters values as
   given.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs`.
+- CLI flags belong in `crates/cytiq-cli/src/commands/flowsom.rs`.
 
 ## Testing
 

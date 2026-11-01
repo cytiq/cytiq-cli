@@ -33,7 +33,7 @@ this crate.
 
 - Changes to FCS parsing or to what `FcsDataset` exposes belong in
   `cytiq-fcs`, not here.
-- CLI flags and argument parsing belong in `crates/cytiq-cli/src/main.rs`.
+- CLI flags and argument parsing belong in `crates/cytiq-cli/src/commands/meta.rs`.
   Keep this crate free of `clap`.
 
 ## Testing

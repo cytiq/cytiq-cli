@@ -30,7 +30,7 @@ this crate.
 
 - Event lineage (`Original_ID`) belongs in `cytiq-fcs::lineage`.
 - What a stage puts in its filter columns belongs in that stage's crate.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-cli/src/commands/mask.rs`. Keep this crate free of `clap`.
 
 ## Testing
 

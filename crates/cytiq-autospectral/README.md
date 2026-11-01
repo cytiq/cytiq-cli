@@ -79,6 +79,7 @@ println!("condition number {:.3e}", summary.condition_number);
 | --- | --- |
 | `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `AutoSpectralRunner::run` / `AutoSpectralConfig` | Full pipeline: load, build references, unmix, write outputs |
+| `AutoSpectralRunner::input_files` | The control and sample files a run reads, for provenance |
 | `AutoSpectralSummary` | Returned run summary (also `diagnostics/run.json`) |
 | `read_controls_manifest`, `read_samples_manifest`, `read_detectors_manifest` | CSV readers with validation |
 | `ControlManifestRow`, `SampleManifestRow`, `DetectorSpec` | Manifest rows |

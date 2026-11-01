@@ -206,6 +206,26 @@ struct UnmixedChunk {
 }
 
 impl AutoSpectralRunner {
+    /// The control and sample files `run` reads: each row's file under
+    /// `input_dir`, in manifest order.
+    #[must_use]
+    pub fn input_files(
+        controls: &[crate::manifest::ControlManifestRow],
+        samples: &[crate::manifest::SampleManifestRow],
+        input_dir: &Path,
+    ) -> (Vec<PathBuf>, Vec<PathBuf>) {
+        (
+            controls
+                .iter()
+                .map(|row| input_dir.join(&row.filename))
+                .collect(),
+            samples
+                .iter()
+                .map(|row| input_dir.join(&row.filename))
+                .collect(),
+        )
+    }
+
     /// Run the `AutoSpectral` MVP pipeline and write all configured outputs.
     ///
     /// # Errors

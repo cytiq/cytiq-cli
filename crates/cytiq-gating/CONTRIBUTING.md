@@ -49,7 +49,7 @@ this crate.
 - FCS parsing and `$SPILLOVER` decoding belong in `cytiq-fcs`.
 - Gate estimation from data does not belong here; fitted gates live in
   consumers such as `cytiq-clean`.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-cli/src/commands/gate.rs`. Keep this crate free of `clap`.
 
 ## Testing
 

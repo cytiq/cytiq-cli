@@ -328,17 +328,7 @@ fn with_thread_pool<T: Send>(
 
 /// Parse a comma-separated list of channel names.
 pub fn parse_channel_list(raw: &str) -> Result<Vec<String>, TransformError> {
-    let channels = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|channel| !channel.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    if channels.is_empty() {
-        Err(TransformError::EmptyChannelList)
-    } else {
-        Ok(channels)
-    }
+    cytiq_fcs::parse_channel_list(raw).map_err(|_| TransformError::EmptyChannelList)
 }
 
 fn validate_config(config: &TransformConfig) -> Result<(), TransformError> {

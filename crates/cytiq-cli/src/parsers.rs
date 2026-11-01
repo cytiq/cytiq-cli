@@ -1,0 +1,90 @@
+use cytiq_transform::parse_channel_list as parse_transform_channel_list;
+
+pub(crate) fn parse_threads(raw: &str) -> Result<usize, String> {
+    let threads = raw
+        .parse::<usize>()
+        .map_err(|error| format!("invalid thread count `{raw}`: {error}"))?;
+    if threads == 0 {
+        Err("thread count must be greater than zero".to_owned())
+    } else {
+        Ok(threads)
+    }
+}
+
+pub(crate) fn parse_fraction(raw: &str) -> Result<f64, String> {
+    match raw.parse::<f64>() {
+        Ok(value) if value > 0.0 && value <= 1.0 => Ok(value),
+        _ => Err(format!("expected a number in (0, 1], got `{raw}`")),
+    }
+}
+
+pub(crate) fn parse_positive_usize(raw: &str) -> Result<usize, String> {
+    match raw.parse::<usize>() {
+        Ok(value) if value > 0 => Ok(value),
+        _ => Err(format!("expected a positive integer, got `{raw}`")),
+    }
+}
+
+pub(crate) fn parse_positive_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() && value > 0.0 {
+        Ok(value)
+    } else {
+        Err("value must be finite and greater than zero".to_owned())
+    }
+}
+
+pub(crate) fn parse_finite_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err("value must be finite".to_owned())
+    }
+}
+
+pub(crate) fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
+    let value = raw
+        .parse::<f64>()
+        .map_err(|error| format!("invalid number `{raw}`: {error}"))?;
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err("value must be finite and greater than or equal to zero".to_owned())
+    }
+}
+
+pub(crate) fn parse_optional_transform_channels(raw: Option<&str>) -> Result<Vec<String>, String> {
+    raw.map(parse_transform_channel_list)
+        .transpose()
+        .map_err(|error| error.to_string())
+        .map(Option::unwrap_or_default)
+}
+
+/// `--channels` (comma-separated) followed by every `--channel`; at least one
+/// channel is required.
+pub(crate) fn parse_channels(
+    channels: Option<&str>,
+    repeated_channels: &[String],
+) -> Result<Vec<String>, String> {
+    let mut parsed = channels
+        .map(cytiq_fcs::parse_channel_list)
+        .transpose()?
+        .unwrap_or_default();
+    for channel in repeated_channels {
+        let channel = channel.trim();
+        if channel.is_empty() {
+            return Err("channel must not be empty".to_owned());
+        }
+        parsed.push(channel.to_owned());
+    }
+    if parsed.is_empty() {
+        Err("at least one `--channels` or `--channel` value is required".to_owned())
+    } else {
+        Ok(parsed)
+    }
+}

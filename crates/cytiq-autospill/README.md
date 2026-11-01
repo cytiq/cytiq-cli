@@ -108,6 +108,7 @@ PE,256,262144,4.418539922,0,-100
 | `UPSTREAM` | Upstream implementations and versions the crate is validated against (`parity/versions.txt`), recorded in provenance `algorithms` |
 | `AutospillRunner::run`, `AutospillConfig`, `AutospillResult` | AutoSpill pipeline; result holds spillover, compensation, residual slope/skewness matrices, gate stats and convergence |
 | `AutospreadRunner::run`, `AutospreadConfig`, `AutospreadResult` | AutoSpread pipeline |
+| `AutospillRunner::input_files`, `AutospreadRunner::input_files` | The control files a run reads: each manifest row's file under the input directory |
 | `MatrixKind` | `Compensation` (default) or `Spillover` |
 | `export_matrix`, `export_spread_matrix` | Write a matrix; format chosen by extension (`csv`, `tsv`, `parquet`) |
 | `read_controls_manifest`, `read_detectors_manifest`, `read_transform_manifest` | Read and validate the CSV manifests |

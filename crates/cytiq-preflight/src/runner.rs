@@ -1,9 +1,10 @@
-use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use cytiq_manifest::{
     CompensationSource, ControlEntry, Panel, RunManifest, SampleEntry, SignalState,
 };
+use cytiq_publish::Existing;
 use log::{debug, info};
 use serde::Serialize;
 
@@ -155,7 +156,11 @@ impl PreflightRunner {
             failures: count(CheckStatus::Fail),
             checks,
         };
-        write_report(&config.output, &report)?;
+        write_report(
+            &config.output,
+            &report,
+            Existing::overwrite(config.overwrite),
+        )?;
         Ok(report)
     }
 }
@@ -351,22 +356,22 @@ fn duplicate_files(manifest: &RunManifest) -> Vec<Check> {
         .collect()
 }
 
-fn write_report(path: &Path, report: &PreflightReport) -> Result<(), PreflightError> {
+fn write_report(
+    path: &Path,
+    report: &PreflightReport,
+    existing: Existing,
+) -> Result<(), PreflightError> {
     debug!("writing preflight report to {}", path.display());
     let write_error = |source| PreflightError::Write {
         path: path.to_path_buf(),
         source,
     };
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(write_error)?;
-    }
     let mut bytes = serde_json::to_vec_pretty(report)
         .map_err(|error| write_error(std::io::Error::other(error)))?;
     bytes.push(b'\n');
-    fs::write(path, bytes).map_err(write_error)
+    cytiq_publish::write_file(path, existing, |writer| {
+        writer.write_all(&bytes).map_err(write_error)
+    })
 }
 
 /// Sample then control FCS files of a manifest, resolved.

@@ -94,4 +94,6 @@ pub enum SpillQcError {
         #[source]
         source: rayon::ThreadPoolBuildError,
     },
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

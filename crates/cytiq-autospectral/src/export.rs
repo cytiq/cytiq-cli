@@ -1,6 +1,6 @@
-use std::fs;
 use std::path::Path;
 
+use cytiq_publish::{Existing, Publication, Staging};
 use log::debug;
 
 use crate::error::AutoSpectralError;
@@ -14,6 +14,9 @@ pub fn masks_path(output: &Path) -> std::path::PathBuf {
 
 /// Write references, unmixed FCS files, diagnostics, and optional debug output.
 ///
+/// The outputs are published together, `diagnostics/run.json` last: a run
+/// directory either has all of them or keeps its previous contents.
+///
 /// # Errors
 ///
 /// Returns an error if any output directory or file cannot be created.
@@ -23,14 +26,13 @@ pub fn write_outputs(
     debug_dir: Option<&Path>,
 ) -> Result<(), AutoSpectralError> {
     let references_dir = output_dir.join("references");
-    let unmixed_dir = output_dir.join("unmixed");
-    let diagnostics_dir = output_dir.join("diagnostics");
-    create_dir(&references_dir)?;
-    create_dir(&unmixed_dir)?;
-    create_dir(&diagnostics_dir)?;
-
-    write_reference_csv(&references_dir.join("fluorophore_spectra.csv"), result)?;
-    write_json(
+    let mut publication = Publication::new(Existing::Replace);
+    let spectra = references_dir.join("fluorophore_spectra.csv");
+    publication.stage_file(&spectra, |writer| {
+        write_reference_csv(writer, &spectra, result)
+    })?;
+    stage_json(
+        &mut publication,
         &references_dir.join("autospectral-references.json"),
         &result.references,
     )?;
@@ -38,43 +40,48 @@ pub fn write_outputs(
         debug!("writing unmixed FCS to {}", sample.output_path.display());
         let options =
             cytiq_fcs::FcsWriteOptions::new().with_text_keywords(sample.text_keywords.clone());
-        cytiq_fcs::write_fcs3_1_exact_with_options(
-            &sample.output_path,
-            &sample.parameters,
-            &sample.columns,
-            &options,
-        )
-        .map_err(|source| AutoSpectralError::FcsWrite {
-            path: sample.output_path.clone(),
-            source,
+        publication.stage_path(&sample.output_path, |path| {
+            cytiq_fcs::write_fcs3_1_exact_with_options(
+                path,
+                &sample.parameters,
+                &sample.columns,
+                &options,
+            )
+            .map_err(|source| AutoSpectralError::FcsWrite {
+                path: sample.output_path.clone(),
+                source,
+            })
         })?;
         sample
             .mask
-            .write_parquet(&masks_path(&sample.output_path))?;
+            .stage_parquet(&mut publication, &masks_path(&sample.output_path))?;
     }
-    write_json(&diagnostics_dir.join("run.json"), &result.summary)?;
+    stage_json(
+        &mut publication,
+        &output_dir.join("diagnostics").join("run.json"),
+        &result.summary,
+    )?;
+    publication.commit()?;
 
     if let Some(debug_dir) = debug_dir {
-        create_dir(debug_dir)?;
-        write_json(&debug_dir.join("summary.json"), &result.summary)?;
+        let mut publication = Publication::new(Existing::Replace);
+        stage_json(
+            &mut publication,
+            &debug_dir.join("summary.json"),
+            &result.summary,
+        )?;
+        publication.commit()?;
     }
 
     Ok(())
 }
 
-fn create_dir(path: &Path) -> Result<(), AutoSpectralError> {
-    fs::create_dir_all(path).map_err(|source| AutoSpectralError::OutputDirectoryCreate {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
-fn write_reference_csv(path: &Path, result: &AutoSpectralResult) -> Result<(), AutoSpectralError> {
-    let mut writer =
-        csv::Writer::from_path(path).map_err(|source| AutoSpectralError::CsvWrite {
-            path: path.to_path_buf(),
-            source,
-        })?;
+fn write_reference_csv(
+    file: &mut Staging<'_>,
+    path: &Path,
+    result: &AutoSpectralResult,
+) -> Result<(), AutoSpectralError> {
+    let mut writer = csv::Writer::from_writer(file);
     let mut header = vec!["component".to_owned(), "kind".to_owned()];
     header.extend(result.references.detectors.iter().cloned());
     writer
@@ -114,14 +121,17 @@ fn write_reference_csv(path: &Path, result: &AutoSpectralResult) -> Result<(), A
     Ok(())
 }
 
-fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), AutoSpectralError> {
-    let bytes =
-        serde_json::to_vec_pretty(value).map_err(|source| AutoSpectralError::JsonSerialize {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    fs::write(path, bytes).map_err(|source| AutoSpectralError::JsonWrite {
-        path: path.to_path_buf(),
-        source,
+fn stage_json<T: serde::Serialize>(
+    publication: &mut Publication,
+    path: &Path,
+    value: &T,
+) -> Result<(), AutoSpectralError> {
+    publication.stage_file(path, |writer| {
+        serde_json::to_writer_pretty(writer, value).map_err(|source| {
+            AutoSpectralError::JsonSerialize {
+                path: path.to_path_buf(),
+                source,
+            }
+        })
     })
 }

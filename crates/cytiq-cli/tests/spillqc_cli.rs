@@ -303,6 +303,58 @@ fn refuses_to_overwrite_an_earlier_run() {
 }
 
 #[test]
+fn a_failed_overwrite_keeps_the_earlier_run() {
+    let directory = create_temp_dir("cytiq-cli-spillqc-failed-overwrite");
+    let output = directory.join("qc");
+    let first = tube("tube_1");
+    run(&[
+        "spillqc",
+        "--input",
+        utf8(&first),
+        "--output",
+        utf8(&output),
+    ]);
+    let before = fs::read(output.join("summary.json")).expect("summary");
+    let matrix = fs::read(output.join("tube_1").join("ssi_matrix.csv")).expect("matrix");
+
+    // An input already compensated by cytiq fails the run after the output
+    // directory was checked, where earlier outputs used to be deleted.
+    let compensated = directory.join("compensated.fcs");
+    run(&[
+        "compensate",
+        "--input",
+        utf8(&first),
+        "--output",
+        utf8(&compensated),
+    ]);
+    let failed = cytiq(&[
+        "spillqc",
+        "--input",
+        utf8(&first),
+        "--input",
+        utf8(&compensated),
+        "--output",
+        utf8(&output),
+        "--overwrite",
+    ]);
+    assert_eq!(failed.status.code(), Some(1));
+    assert_eq!(
+        fs::read(output.join("summary.json")).expect("summary"),
+        before
+    );
+    assert_eq!(
+        fs::read(output.join("tube_1").join("ssi_matrix.csv")).expect("matrix"),
+        matrix
+    );
+    let hidden = fs::read_dir(&output)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with('.'))
+        .collect::<Vec<_>>();
+    assert!(hidden.is_empty(), "{hidden:?}");
+}
+
+#[test]
 fn fails_when_input_is_missing() {
     let directory = create_temp_dir("cytiq-cli-spillqc-missing");
     let output = cytiq(&[

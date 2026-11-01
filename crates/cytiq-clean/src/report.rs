@@ -1,7 +1,6 @@
 //! `report.html`: one panel per gate, plotted on the gate's own dimensions.
 
 use std::fmt::Write as _;
-use std::path::Path;
 
 use cytiq_fcs::FcsDataset;
 use cytiq_gating::{Gate, GateKind, GatingResults, GatingStrategy};
@@ -10,7 +9,6 @@ use plotly::layout::{Axis, BarMode};
 use plotly::{Histogram, Layout, Plot, Scatter};
 
 use crate::error::CleanError;
-use crate::export::write_text;
 use crate::filter::{CLEAN_GATE, FilterReport, sample_indices};
 use crate::runner::CleanMetrics;
 
@@ -21,13 +19,12 @@ const PASS_COLOR: &str = "#4E79A7";
 const FAIL_COLOR: &str = "#E15759";
 const GATE_COLOR: &str = "#1F2933";
 
-pub(crate) fn write_report_html(
-    path: &Path,
+pub(crate) fn report_html(
     metrics: &CleanMetrics,
     strategy: &GatingStrategy,
     dataset: &FcsDataset,
     results: &GatingResults,
-) -> Result<(), CleanError> {
+) -> Result<String, CleanError> {
     let sample = sample_indices(&vec![true; dataset.event_count()], PLOT_EVENTS);
     let mut panels = String::new();
     for gate in strategy.gates().iter().filter(|gate| gate.id != CLEAN_GATE) {
@@ -114,7 +111,7 @@ code {{ background: #f0f4f8; padding: 0.1rem 0.25rem; }}
         kept_percent = metrics.kept_fraction * 100.0,
         rule = escape_html(&metrics.keep_rule),
     );
-    write_text(path, &html)
+    Ok(html)
 }
 
 fn filter_row(name: &str, report: &FilterReport) -> String {

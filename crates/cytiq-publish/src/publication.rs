@@ -164,9 +164,9 @@ impl Publication {
     /// Publish every staged output, in staging order, then sync the
     /// directories that hold them.
     ///
-    /// With [`Existing::Refuse`] every target is checked again first, so a
-    /// target that appeared since staging fails the commit before anything is
-    /// published. If publishing one output fails, the outputs before it stay
+    /// Every target is checked first, so a target that appeared since staging
+    /// (with [`Existing::Refuse`]) or a directory where a file goes fails the
+    /// commit before anything is published. If publishing one output fails, the outputs before it stay
     /// published and the rest are discarded; stage a completion record (such
     /// as provenance) last so that its presence means the set is complete.
     ///
@@ -176,9 +176,19 @@ impl Publication {
     pub fn commit(mut self) -> Result<(), PublishError> {
         for entry in &self.entries {
             self.check(&entry.target)?;
-            if let Staged::Directory(directory) = &entry.staged {
-                sync_tree(directory.path())
-                    .map_err(|source| PublishError::io(&entry.target, source))?;
+            match &entry.staged {
+                Staged::Directory(directory) => sync_tree(directory.path())
+                    .map_err(|source| PublishError::io(&entry.target, source))?,
+                Staged::File(_) if is_directory(&entry.target) => {
+                    return Err(PublishError::io(
+                        &entry.target,
+                        io::Error::new(
+                            io::ErrorKind::IsADirectory,
+                            "a file cannot replace a directory",
+                        ),
+                    ));
+                }
+                Staged::File(_) => {}
             }
         }
         let mut parents: Vec<PathBuf> = Vec::new();
@@ -329,6 +339,10 @@ fn parent(target: &Path) -> &Path {
 /// A path is taken when anything is there, including a dangling symlink.
 fn exists(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok()
+}
+
+fn is_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
 }
 
 /// Request the mode that `File::create` (0o666) or `fs::create_dir` (0o777)

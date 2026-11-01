@@ -162,4 +162,6 @@ pub enum AutoSpectralError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("{0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

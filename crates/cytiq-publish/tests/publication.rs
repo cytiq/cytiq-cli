@@ -138,7 +138,7 @@ fn replace_keeps_the_previous_output_until_commit() {
 }
 
 #[test]
-fn a_failing_rename_keeps_earlier_outputs_and_discards_later_ones() {
+fn a_directory_in_the_way_fails_the_commit_before_anything_is_published() {
     let root = tempfile::tempdir().unwrap();
     let blocked = root.path().join("blocked");
     fs::create_dir(&blocked).unwrap();
@@ -151,13 +151,35 @@ fn a_failing_rename_keeps_earlier_outputs_and_discards_later_ones() {
         "a file cannot replace a directory",
     )
     .unwrap();
-    write_text(&mut publication, &root.path().join("last.json"), "{}").unwrap();
     assert!(matches!(publication.commit(), Err(PublishError::Io { .. })));
-    assert_eq!(listing(root.path()), ["blocked", "first.csv"]);
+    assert_eq!(listing(root.path()), ["blocked"]);
     assert_eq!(
         fs::read_to_string(blocked.join("keep.txt")).unwrap(),
         "keep"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_rename_keeps_earlier_outputs_and_discards_later_ones() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let locked = root.path().join("locked");
+    fs::create_dir(&locked).unwrap();
+    let mut publication = Publication::new(Existing::Replace);
+    write_text(&mut publication, &root.path().join("first.csv"), "1").unwrap();
+    write_text(&mut publication, &locked.join("second.csv"), "2").unwrap();
+    write_text(&mut publication, &root.path().join("last.json"), "{}").unwrap();
+    // A rename into a directory without write permission fails at commit.
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+    let result = publication.commit();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(matches!(result, Err(PublishError::Io { .. })), "{result:?}");
+    assert_eq!(listing(root.path()), ["first.csv", "locked"]);
+    // The second output was not published; its temporary may remain, since
+    // the locked directory also prevented its removal.
+    assert!(!locked.join("second.csv").exists());
 }
 
 #[test]

@@ -1,10 +1,11 @@
 use std::collections::HashSet;
-use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::FcsReader;
 use cytiq_manifest::RunManifest;
 use cytiq_mask::{EventMask, MaskError};
+use cytiq_publish::Existing;
 use log::{debug, info};
 use serde::Serialize;
 
@@ -139,7 +140,11 @@ impl QcRunner {
             metrics,
             checks,
         };
-        write_report(&config.output, &report)?;
+        write_report(
+            &config.output,
+            &report,
+            Existing::overwrite(config.overwrite),
+        )?;
         Ok(report)
     }
 }
@@ -271,20 +276,16 @@ fn mask_checks(
     Ok(Some(QcMetrics::of(mask, keep.len(), kept)))
 }
 
-fn write_report(path: &Path, report: &QcReport) -> Result<(), QcError> {
+fn write_report(path: &Path, report: &QcReport, existing: Existing) -> Result<(), QcError> {
     debug!("writing QC report to {}", path.display());
     let write_error = |source| QcError::Write {
         path: path.to_path_buf(),
         source,
     };
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(write_error)?;
-    }
     let mut bytes = serde_json::to_vec_pretty(report)
         .map_err(|error| write_error(std::io::Error::other(error)))?;
     bytes.push(b'\n');
-    fs::write(path, bytes).map_err(write_error)
+    cytiq_publish::write_file(path, existing, |writer| {
+        writer.write_all(&bytes).map_err(write_error)
+    })
 }

@@ -355,7 +355,8 @@ fn is_record_or_temporary(path: &Path) -> bool {
 }
 
 /// Staged outputs (`cytiq-publish`) are `.tmp` files or directories until
-/// they are renamed into place.
+/// they are renamed into place; backups of replaced outputs, which a crash
+/// can leave behind, end in `.old.tmp`.
 fn is_temporary(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("tmp"))
@@ -451,6 +452,7 @@ mod tests {
         let directory = temp_dir("files-under");
         fs::create_dir_all(directory.join("nested")).unwrap();
         fs::create_dir_all(directory.join(".model.a1b2c3.tmp")).unwrap();
+        fs::create_dir_all(directory.join(".model.d4e5f6.old.tmp/previous")).unwrap();
         for name in [
             "data.csv",
             "nested/part.parquet",
@@ -458,6 +460,8 @@ mod tests {
             "out.fcs.provenance.json",
             ".data.csv.x9y8z7.tmp",
             ".model.a1b2c3.tmp/model.json",
+            ".data.csv.g7h8i9.old.tmp",
+            ".model.d4e5f6.old.tmp/previous/a.json",
         ] {
             fs::write(directory.join(name), name).unwrap();
         }

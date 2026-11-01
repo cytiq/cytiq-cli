@@ -134,6 +134,8 @@ logicle or PeacoQC is listed as `skipped` with a reason, and the run goes on.
 Unreadable files, input already compensated or transformed by cytiq (without
 `--preprocessed`) and invalid arguments end the run. An existing non-empty
 output directory needs `--overwrite`, which replaces only what the run writes.
+Every output is staged and published together once the run succeeds,
+`summary.json` last; a failed run leaves the previous outputs untouched.
 `cytiq spillqc --fail-on-flag` exits with 1 after writing every output when a
 pair is flagged.
 

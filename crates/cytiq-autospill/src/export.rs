@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
+use cytiq_publish::{Existing, Publication};
 use log::debug;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
@@ -74,14 +75,29 @@ pub(crate) fn export_named_matrix(
         path.display()
     );
 
-    match extension.as_str() {
-        "csv" => write_delimited_matrix(row_header, row_labels, column_labels, matrix, path, b','),
-        "tsv" => write_delimited_matrix(row_header, row_labels, column_labels, matrix, path, b'\t'),
-        "parquet" => write_parquet_matrix(row_header, row_labels, column_labels, matrix, path),
-        _ => Err(AutospillError::UnsupportedOutputFormat {
-            path: path.to_path_buf(),
-        }),
-    }
+    let delimiter = match extension.as_str() {
+        "csv" => Some(b','),
+        "tsv" => Some(b'\t'),
+        "parquet" => None,
+        _ => {
+            return Err(AutospillError::UnsupportedOutputFormat {
+                path: path.to_path_buf(),
+            });
+        }
+    };
+    let mut publication = Publication::new(Existing::Replace);
+    publication.stage_path(path, |staged| match delimiter {
+        Some(delimiter) => write_delimited_matrix(
+            row_header,
+            row_labels,
+            column_labels,
+            matrix,
+            staged,
+            delimiter,
+        ),
+        None => write_parquet_matrix(row_header, row_labels, column_labels, matrix, staged),
+    })?;
+    Ok(publication.commit()?)
 }
 
 fn matrix_labels(

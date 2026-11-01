@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use cytiq_compensate::{MatrixKind, read_matrix_file};
 use cytiq_fcs::{FcsDataset, FcsReader};
+use cytiq_publish::{Existing, Publication};
 use log::{debug, info, warn};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::Serialize;
@@ -174,7 +175,7 @@ impl SpillQcRunner {
         validate(config)?;
         let inputs = resolve_inputs(&config.inputs)?;
         let names = output_names(&inputs)?;
-        prepare_output(&config.output, &names, config.overwrite)?;
+        prepare_output(&config.output, config.overwrite)?;
         let external = config
             .matrix
             .as_ref()
@@ -211,22 +212,21 @@ fn run_inner(
         files.push(outcome?);
     }
 
+    // Everything this run writes is staged and published together, summary
+    // last; a failed run leaves the previous outputs untouched.
+    let mut publication = Publication::new(Existing::Replace);
     let mut outputs = Vec::new();
     for file in &files {
         if let Some(result) = &file.result {
             let directory = config.output.join(&file.summary.name);
-            fs::create_dir_all(&directory).map_err(|source| SpillQcError::Write {
-                path: directory.clone(),
-                source,
-            })?;
+            let staged = publication.stage_dir(&directory)?;
             for (file_name, write) in [
                 (SSI_MATRIX_FILE, write_ssi_matrix as WriteFn),
                 (SSI_SEGMENTS_FILE, write_ssi_segments),
                 (CUTOFFS_FILE, write_cutoffs),
             ] {
-                let path = directory.join(file_name);
-                write(&path, result)?;
-                outputs.push(path);
+                write(&staged.join(file_name), result)?;
+                outputs.push(directory.join(file_name));
             }
         }
     }
@@ -278,7 +278,7 @@ fn run_inner(
     };
 
     let batch_path = config.output.join(BATCH_FILE);
-    write_batch(&batch_path, &summary.batch)?;
+    publication.stage_path(&batch_path, |path| write_batch(path, &summary.batch))?;
     outputs.push(batch_path);
 
     let report_path = config.output.join(REPORT_FILE);
@@ -303,18 +303,25 @@ fn run_inner(
         summary.counts.flagged_pairs,
         summary.counts.recurrent_pairs
     );
-    write_report(
-        &report_path,
-        &summary_line,
-        &reports,
-        &summary.batch,
-        &skipped,
-    )?;
+    publication.stage_path(&report_path, |path| {
+        write_report(path, &summary_line, &reports, &summary.batch, &skipped)
+    })?;
     outputs.push(report_path);
 
     let summary_path = config.output.join(SUMMARY_FILE);
-    write_json(&summary_path, &summary)?;
+    publication.stage_path(&summary_path, |path| write_json(path, &summary))?;
     outputs.push(summary_path);
+    publication.commit()?;
+    // Results of an earlier run for files this run skipped no longer apply.
+    for (name, _) in &skipped {
+        let stale = config.output.join(name);
+        if stale.is_dir() {
+            fs::remove_dir_all(&stale).map_err(|source| SpillQcError::Write {
+                path: stale.clone(),
+                source,
+            })?;
+        }
+    }
     info!("spillqc: {summary_line}");
     Ok(SpillQcResult { summary, outputs })
 }
@@ -496,42 +503,30 @@ fn output_names(inputs: &[PathBuf]) -> Result<Vec<String>, SpillQcError> {
     Ok(names)
 }
 
-/// Create the output directory. An existing non-empty directory needs
-/// `overwrite`, which removes only what this run writes.
-fn prepare_output(output: &Path, names: &[String], overwrite: bool) -> Result<(), SpillQcError> {
-    let write_error = |source| SpillQcError::Write {
-        path: output.to_path_buf(),
-        source,
-    };
-    if output.exists() {
-        if !output.is_dir() {
-            return Err(SpillQcError::OutputNotDirectory {
-                path: output.to_path_buf(),
-            });
-        }
-        let occupied = fs::read_dir(output).map_err(write_error)?.next().is_some();
-        if occupied && !overwrite {
-            return Err(SpillQcError::OutputExists {
-                path: output.to_path_buf(),
-            });
-        }
-        for name in names {
-            let directory = output.join(name);
-            if directory.is_dir() {
-                fs::remove_dir_all(&directory).map_err(|source| SpillQcError::Write {
-                    path: directory.clone(),
-                    source,
-                })?;
-            }
-        }
-        for file in [SUMMARY_FILE, BATCH_FILE, REPORT_FILE] {
-            let path = output.join(file);
-            if path.is_file() {
-                fs::remove_file(&path).map_err(|source| SpillQcError::Write { path, source })?;
-            }
-        }
+/// Check the output directory. An existing non-empty directory needs
+/// `overwrite`; its previous outputs stay until the new ones are published.
+fn prepare_output(output: &Path, overwrite: bool) -> Result<(), SpillQcError> {
+    if !output.exists() {
+        return Ok(());
     }
-    fs::create_dir_all(output).map_err(write_error)
+    if !output.is_dir() {
+        return Err(SpillQcError::OutputNotDirectory {
+            path: output.to_path_buf(),
+        });
+    }
+    let occupied = fs::read_dir(output)
+        .map_err(|source| SpillQcError::Write {
+            path: output.to_path_buf(),
+            source,
+        })?
+        .next()
+        .is_some();
+    if occupied && !overwrite {
+        return Err(SpillQcError::OutputExists {
+            path: output.to_path_buf(),
+        });
+    }
+    Ok(())
 }
 
 fn resolve_inputs(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, SpillQcError> {

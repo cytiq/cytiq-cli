@@ -5,6 +5,7 @@ use cytiq_fcs::{
     FcsWriteParameter, MARGINS_KEYWORD, SOURCE_SPILLOVER_KEYWORD, SignalState,
 };
 use cytiq_mask::EventMask;
+use cytiq_publish::{Existing, Publication};
 use log::{debug, info};
 
 use crate::error::CompensateError;
@@ -94,13 +95,17 @@ impl CompensateRunner {
             &parameters,
             &acquisition,
         )?;
-        write_fcs(&config.output, &parameters, &columns, &options)?;
-
         let masks = masks_path(&config.output);
         let source_event_ids = cytiq_fcs::source_event_ids(&dataset).map_err(read_error)?;
         let mask = EventMask::new(acquisition, margin_pass.clone(), source_event_ids)
             .with_filter("margin_pass", margin_pass.into_iter().map(Some).collect());
-        mask.write_parquet(&masks)?;
+        // The FCS and its mask appear together or not at all.
+        let mut publication = Publication::new(Existing::overwrite(config.overwrite));
+        publication.stage_path(&config.output, |path| {
+            write_fcs(path, &config.output, &parameters, &columns, &options)
+        })?;
+        mask.stage_parquet(&mut publication, &masks)?;
+        publication.commit()?;
 
         Ok(CompensateResult {
             output: config.output.clone(),
@@ -306,16 +311,18 @@ fn round_to_f32(value: f64) -> f64 {
     f64::from(value as f32)
 }
 
+/// Write the compensated FCS to the staged `path` that becomes `target`.
 fn write_fcs(
     path: &Path,
+    target: &Path,
     parameters: &[FcsWriteParameter],
     columns: &[Vec<f64>],
     options: &FcsWriteOptions,
 ) -> Result<(), CompensateError> {
-    debug!("writing compensated FCS to {}", path.display());
+    debug!("writing compensated FCS to {}", target.display());
     let result = cytiq_fcs::write_fcs3_1_exact_with_options(path, parameters, columns, options);
     result.map_err(|source| CompensateError::FcsWrite {
-        path: path.to_path_buf(),
+        path: target.to_path_buf(),
         source,
     })
 }

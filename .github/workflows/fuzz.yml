@@ -1,0 +1,85 @@
+name: Fuzz
+
+# Fuzzes the FCS reader and the spillover parser: weekly for 10 minutes a
+# target, on demand, and for one minute on pull requests that change
+# cytiq-fcs. The corpus is kept in the Actions cache between runs. A crash
+# uploads its input; turn it into a regression as cytiq-fcs CONTRIBUTING.md
+# describes.
+
+on:
+  pull_request:
+    paths:
+      - crates/cytiq-fcs/**
+      - .github/workflows/fuzz.yml
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds to fuzz each target
+        required: false
+        default: "600"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [read_fcs, spillover_keyword]
+    env:
+      FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '60' || inputs.seconds || '600' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install just and cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-fuzz
+
+      - name: Cache fuzz build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/cytiq-fcs/fuzz -> target
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      # Runs restore the latest corpus. Scheduled and manual runs save theirs
+      # under a new key, even after a crash; pull requests only read it, as
+      # in ci.yml.
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: crates/cytiq-fcs/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz
+        run: just fuzz-fcs ${{ matrix.target }} "$FUZZ_SECONDS"
+
+      - name: Save corpus
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: crates/cytiq-fcs/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      - name: Upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: crates/cytiq-fcs/fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore

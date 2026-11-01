@@ -18,6 +18,26 @@ pub(crate) enum ParameterEncoding {
     Float64,
 }
 
+impl ParameterEncoding {
+    /// Bytes one value takes in DATA.
+    pub const fn stored_bytes(self) -> usize {
+        match self {
+            Self::AsciiFixed { width } => width,
+            Self::Integer { width_bytes } => width_bytes,
+            Self::Float32 => 4,
+            Self::Float64 => 8,
+        }
+    }
+
+    /// Bytes one value takes once decoded: `A` and `I` widen to `u64`.
+    pub const fn decoded_bytes(self) -> usize {
+        match self {
+            Self::Float32 => 4,
+            Self::AsciiFixed { .. } | Self::Integer { .. } | Self::Float64 => 8,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedParameter {
     pub public: Parameter,

@@ -12,7 +12,8 @@ this crate.
   construction, `$BEGIN*`/`$END*` range parsing.
 - `src/layout.rs` — resolves `$MODE`, `$TOT`, `$PAR`, `$DATATYPE`, `$BYTEORD`
   and per-parameter `$Pn*` keywords into a `ResolvedLayout`.
-- `src/data.rs` — DATA decoding into typed columns; raw ANALYSIS bytes.
+- `src/data.rs` — DATA length checks and decoding into typed columns, one
+  1 MiB chunk of rows at a time; raw ANALYSIS bytes.
 - `src/types.rs` — public data types (`FcsDataset`, `FcsText`, `Parameter`,
   `ColumnData`, ...) and `find_parameter_index`.
 - `src/writer.rs` — FCS 3.1 little-endian float32 / float64 writer and the
@@ -22,7 +23,8 @@ this crate.
 - `src/compensation.rs` — `Spillover`, `invert_matrix`, `compensate` and their
   unit tests.
 - `src/limits.rs` — bounds on sizes the file declares (`TEXT_BYTES_MAX`,
-  `PARAMETERS_MAX`), each with the reason for its value.
+  `PARAMETERS_MAX`) and the defaults of `FcsReadLimits` (decoded DATA,
+  ANALYSIS), each with the reason for its value.
 - `src/error.rs` — `FcsError`, exported as `cytiq_fcs::Error`.
 
 ## Invariants
@@ -36,10 +38,11 @@ this crate.
   Segments must be in bounds and must not overlap.
 - No value read from the file sizes an allocation or a loop before it is
   bounded. Check a segment against the file length before reading it, a count
-  against `limits.rs` before allocating for it, and DATA length against the
-  layout before reading DATA. Use checked arithmetic on declared sizes, and
-  keep per-keyword work linear in the TEXT size (`$Pn*` keywords are grouped in
-  one pass).
+  against `limits.rs` before allocating for it, DATA length against the
+  layout before reading DATA, and the decoded DATA and ANALYSIS sizes against
+  `FcsReadLimits` before reading either. Use checked arithmetic on declared
+  sizes, and keep per-keyword work linear in the TEXT size (`$Pn*` keywords
+  are grouped in one pass).
 - `TextSegment::pairs` preserve file order and raw values. `cytiq-meta` exports
   them verbatim, so do not normalize or reorder them.
 - `Parameter::keywords` hold only that parameter's `$Pn*` keywords
@@ -76,7 +79,8 @@ just verify
 - `tests/reader.rs` — fixture reads (`data/fixtures/fcs/*.fcs`), synthetic files
   built with `build_fcs`, error cases and writer round-trips.
 - `tests/limits.rs` — crafted files whose keywords lie about sizes; each must
-  return a specific error, not panic, abort or hang.
+  return a specific error, not panic, abort or hang. Also `FcsReadLimits`:
+  exact bounds, and nothing past `$BEGINDATA` read before a refusal.
 - `tests/characterization.rs` — digests of every fixture read
   (`data/fixtures/characterization/fcs.json`); the ignored
   `writes_real_data_digests` writes the same digests for `$CYTIQ_REAL_DATA`

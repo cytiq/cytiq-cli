@@ -6,7 +6,8 @@
 #   parity/setup_env.sh, or URLs), each checked against its SHA-256.
 #   Set CYTIQ_REAL_DATA=<dir> to also run every `*.fcs` with `$SPILL` in <dir>
 #   (for example internal data that cannot be committed) through the QC and
-#   CompensAID chains.
+#   CompensAID chains. Set CYTIQ_CLASSIFY_BUNDLE and CYTIQ_CLASSIFY_GOLDEN to
+#   run the `classify` datasets.
 # Writes parity/results/metrics_real.json and exits non-zero when a rule in
 # parity/real/tolerances.json is violated.
 set -euo pipefail
@@ -90,6 +91,23 @@ run_autospectral_chain() {
     --input-dir "$D/controls" --output "$D/autospectral"
 }
 
+# --- Classify chain: cytiq classify against the native model it was exported from
+# CYTIQ_CLASSIFY_BUNDLE is a cytiq-ml bundle; CYTIQ_CLASSIFY_GOLDEN holds its
+# native probabilities for the dataset's files (cytiq-ml
+# scripts/export_classify_golden.py). Skipped when either is unset.
+run_classify_chain() {
+  local D="$1"
+  if [[ -z "${CYTIQ_CLASSIFY_BUNDLE:-}" || -z "${CYTIQ_CLASSIFY_GOLDEN:-}" ]]; then
+    echo "skipping classify chain for $(basename "$D"): set CYTIQ_CLASSIFY_BUNDLE and CYTIQ_CLASSIFY_GOLDEN" >&2
+    return
+  fi
+  cp -R "$CYTIQ_CLASSIFY_BUNDLE" "$D/bundle"
+  cp -R "$CYTIQ_CLASSIFY_GOLDEN" "$D/golden"
+  for fcs in "$D"/*.fcs; do
+    "$BIN" classify --input "$fcs" --model "$D/bundle" --output "$D/classify/$(basename "$fcs" .fcs)"
+  done
+}
+
 "$PY" "$PARITY/real/datasets.py" "$OUT" > "$OUT/datasets.tsv"
 while IFS=$'\t' read -r name chain; do
   case "$chain" in
@@ -98,6 +116,7 @@ while IFS=$'\t' read -r name chain; do
     compensaid) run_compensaid_chain "$OUT/$name" ;;
     autospill) run_autospill_chain "$OUT/$name" ;;
     autospectral) run_autospectral_chain "$OUT/$name" ;;
+    classify) run_classify_chain "$OUT/$name" ;;
     *) echo "unknown chain \`$chain\` for $name in datasets.json" >&2; exit 1 ;;
   esac
 done < "$OUT/datasets.tsv"

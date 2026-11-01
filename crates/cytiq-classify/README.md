@@ -75,6 +75,14 @@ names and reagent labels must match the pinned profile. This profile is scoped t
 the published nonmalignant bone marrow cohort; it does not assert that the same
 lineage definitions hold for AML/P1 or unrelated processed FCS files.
 
+Conventional flow profiles need `$CYT` to equal the profile's instrument, with
+one exception: Kaluza re-exports write `$CYT=Kaluza` and keep the acquiring
+cytometer in `$OriginalInstrument`, which must then equal the instrument up to
+case (the FlowCyt exports write `Navios` for the profile's `NAVIOS`). Files
+without instrument keywords, such as the archive's flowCore re-exports, are
+rejected. `tests/flowcyt.rs` runs this on real author files from
+`data/fixtures/flowcyt`.
+
 The `cytiq-cytof-arcsinh-v1` profile reads mass cytometry ion counts as stored.
 CyTOF software writes vendor and version into `$CYT`, so this profile names an
 instrument family (such as `CyTOF`) that `$CYT` must contain, case-insensitively.

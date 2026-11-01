@@ -52,6 +52,10 @@
     {"path": ["real", "*", "autospectral", "unmixing", "*", "fluorophores", "*", "r_af_spectrum", "correlation"], "min": 0.999, "optional": true,
      "why": "with AutoSpectral's AF spectrum, cytiq's fluorophore spectra give AutoSpectral's abundances: the rest of the abundance difference is the AF spectrum"},
     {"path": ["real", "*", "autospectral", "unmixing", "*", "fluorophores", "*", "correlation"], "min": 0.97, "optional": true,
-     "why": "regression floor (lowest today: BV605, 0.976). The AF spectra differ: AutoSpectral takes its AF peak detector from the mean of a different gate (UV7-A against cytiq's V7-A, means within 1%) and fits 1,000 random events, between which its own AF spectrum moves to a cosine of 0.91-0.94"}
+     "why": "regression floor (lowest today: BV605, 0.976). The AF spectra differ: AutoSpectral takes its AF peak detector from the mean of a different gate (UV7-A against cytiq's V7-A, means within 1%) and fits 1,000 random events, between which its own AF spectrum moves to a cosine of 0.91-0.94"},
+    {"path": ["real", "*", "classify", "*", "max_abs_probability_delta"], "max": 1e-5, "optional": true,
+     "why": "cytiq's ONNX Runtime reproduces the native model within cytiq-ml's export parity tolerance on real files (FlowCyt case 27 today: 2e-6, float32 inference)"},
+    {"path": ["real", "*", "classify", "*", "label_disagreements_beyond_ties"], "equals": 0, "optional": true,
+     "why": "a label may differ from the native argmax only where the native top two probabilities are within 1e-5 of each other"}
   ]
 }

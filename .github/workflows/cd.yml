@@ -1,0 +1,98 @@
+name: Continuous Delivery
+
+# An RC tag (X.Y.Z-rcN) opens the changelog PR and publishes
+# ghcr.io/cytiq/cytiq-cli:X.Y.Z-rcN; merging that PR tags X.Y.Z, creates the
+# GitHub Release and publishes :X.Y.Z and :latest. Images carry SBOM and
+# provenance attestations; deployments pin the digest the build job reports.
+
+on:
+  push:
+    tags:
+      - "*.*.*-rc*"
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  changelog:
+    if: github.event_name == 'push'
+    uses: cytiq/cytiq-ci/.github/workflows/release.yml@0.0.1
+    with:
+      tag: ${{ github.ref_name }}
+      update_changelog: true
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  release:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'chore/update-changelog-')
+    uses: cytiq/cytiq-ci/.github/workflows/release.yml@0.0.1
+    with:
+      tag: ${{ github.event.pull_request.head.ref }}
+      tag_prefix: chore/update-changelog-
+      update_changelog: false
+      cleanup_rc_tags: true
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  # The version to tag the image with and the exact commit to build: the RC
+  # tag's commit, or the merge commit of the changelog PR (never the
+  # pull_request event's refs/pull/N/merge ref).
+  resolve-version:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'chore/update-changelog-'))
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      latest: ${{ steps.resolve.outputs.latest }}
+      commit: ${{ steps.resolve.outputs.commit }}
+    steps:
+      - id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          {
+            if [ "$EVENT_NAME" = "push" ]; then
+              echo "version=$REF_NAME"
+              echo "latest=false"
+              echo "commit=$SHA"
+            else
+              echo "version=${PR_HEAD_REF#chore/update-changelog-}"
+              echo "latest=true"
+              echo "commit=$MERGE_SHA"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    needs: resolve-version
+    uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@0.0.1
+    with:
+      image: cytiq-cli
+      dockerfile: docker/Dockerfile
+      version: ${{ needs.resolve-version.outputs.version }}
+      latest: ${{ needs.resolve-version.outputs.latest == 'true' }}
+      ref: ${{ needs.resolve-version.outputs.commit }}
+      build_args: |
+        CYTIQ_BUILD_COMMIT=${{ needs.resolve-version.outputs.commit }}
+    permissions:
+      contents: read
+      packages: write

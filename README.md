@@ -138,7 +138,8 @@ Results and known differences are in [`parity/REPORT.md`](parity/REPORT.md);
 Violations of [`parity/tolerances.json`](parity/tolerances.json) or
 [`parity/real/tolerances.json`](parity/real/tolerances.json) fail the run.
 
-CI runs the Rust quality checks, tests and Docker checks. It validates the
+CI runs the Rust quality checks and tests on every pull request, and the Docker
+checks when packaging can change. It validates the
 [end-to-end pipeline](data/fixtures/pipeline/README.md) and
 [upstream parity smoke fixtures](data/fixtures/parity/README.md) without R;
 the full parity suites run locally. Regenerate reference fixtures only for

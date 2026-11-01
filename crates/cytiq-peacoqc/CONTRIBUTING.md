@@ -47,7 +47,7 @@ this crate.
 - KDE / `stats::density` and `smooth.spline` live in `cytiq-density` (shared
   with `cytiq-clean` and `cytiq-spillqc`).
 - FCS reading and the `write_fcs3_1_f32` writer belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-cli/src/commands/peacoqc.rs`. Keep this crate free of `clap`.
 
 ## Testing
 

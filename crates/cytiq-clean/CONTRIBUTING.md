@@ -48,7 +48,7 @@ this crate.
 - KDE, valley detection, median/MAD and the FSC/SSC population gate live in
   `cytiq-density`; share improvements there rather than forking them here.
 - Gate semantics and Gating-ML I/O belong in `cytiq-gating`.
-- CLI flags belong in `crates/cytiq-cli/src/main.rs` (`CleanArgs`). Keep this
+- CLI flags belong in `crates/cytiq-cli/src/commands/clean.rs` (`CleanArgs`). Keep this
   crate free of `clap`.
 
 ## Testing

@@ -536,24 +536,8 @@ fn compute_mask(
     })
 }
 
-/// Parse a comma-separated list of channel names.
-///
-/// # Errors
-///
-/// Returns an error when the list is empty after trimming.
-pub fn parse_channel_list(raw: &str) -> Result<Vec<String>, String> {
-    let channels = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|channel| !channel.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    if channels.is_empty() {
-        Err("channel list must contain at least one channel".to_owned())
-    } else {
-        Ok(channels)
-    }
-}
+/// Shared with every command: see `cytiq_fcs::parse_channel_list`.
+pub use cytiq_fcs::parse_channel_list;
 
 fn validate_output_path(output: &Path) -> Result<(), PeacoQcError> {
     let is_fcs = output

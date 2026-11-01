@@ -239,6 +239,19 @@ struct RegressionMatrices {
 }
 
 impl AutospillRunner {
+    /// The control files `run` reads for `manifest`: each row's file under
+    /// `input_dir`, in manifest order.
+    #[must_use]
+    pub fn input_files(
+        manifest: &[crate::manifest::ControlsManifestRow],
+        input_dir: &Path,
+    ) -> Vec<PathBuf> {
+        manifest
+            .iter()
+            .map(|row| input_dir.join(&row.filename))
+            .collect()
+    }
+
     /// Run the `AutoSpill` pipeline for the provided controls.
     ///
     /// # Errors
@@ -339,6 +352,15 @@ impl AutospillRunner {
 }
 
 impl AutospreadRunner {
+    /// The control files `run` reads, as for [`AutospillRunner::input_files`].
+    #[must_use]
+    pub fn input_files(
+        manifest: &[crate::manifest::ControlsManifestRow],
+        input_dir: &Path,
+    ) -> Vec<PathBuf> {
+        AutospillRunner::input_files(manifest, input_dir)
+    }
+
     /// Run the `AutoSpread` pipeline for the provided controls.
     ///
     /// # Errors

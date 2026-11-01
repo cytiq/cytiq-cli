@@ -1,0 +1,32 @@
+# Fuzz targets for the FCS reader. Excluded from the workspace: they need
+# cargo-fuzz and a nightly toolchain (`just fuzz-fcs`).
+[package]
+name = "cytiq-fcs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+cytiq-fcs = { path = ".." }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "read_fcs"
+path = "fuzz_targets/read_fcs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "spillover_keyword"
+path = "fuzz_targets/spillover_keyword.rs"
+test = false
+doc = false
+bench = false
+
+# Not part of the parent workspace.
+[workspace]
+members = ["."]

@@ -9,12 +9,14 @@ mod lineage;
 mod linear;
 mod margins;
 mod signal;
+mod stream;
 mod text;
 mod types;
 mod writer;
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::num::NonZeroUsize;
 use std::path::Path;
 
 use log::debug;
@@ -22,7 +24,7 @@ use log::debug;
 use crate::data::{decode_data, decoded_data_length, ensure_data_length, read_raw_segment};
 use crate::error::FcsError;
 use crate::header::read_header;
-use crate::layout::resolve_layout;
+use crate::layout::{ResolvedLayout, resolve_layout};
 use crate::limits::TEXT_BYTES_MAX;
 use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
@@ -46,6 +48,7 @@ pub use crate::signal::{
     UNMIXING_KEYWORD, UnmixingState, compensation_state, normalization_state, transform_state,
     unmixing_state,
 };
+pub use crate::stream::{EventBatches, FcsMetadata, FcsStream};
 pub use crate::types::{
     ColumnData, EventColumns, FcsDataset, FcsText as Text, FcsVersion, Parameter,
     ParameterDataType, ParameterWidth, TextSegment,
@@ -100,50 +103,13 @@ impl<R: Read + Seek> FcsReader<R> {
     ///
     /// As [`FcsReader::read`]; [`FcsError::LimitExceeded`] names the limit.
     pub fn read_with_limits(mut self, limits: FcsReadLimits) -> Result<FcsDataset, FcsError> {
-        let file_len = file_length(&mut self.reader)?;
-        self.reader.seek(SeekFrom::Start(0)).map_err(FcsError::Io)?;
-
-        let header = read_header(&mut self.reader)?;
-        ensure_in_file("TEXT", header.text, file_len)?;
-        ensure_within_limit("TEXT bytes", header.text.len(), TEXT_BYTES_MAX)?;
-        let primary_segment = read_text_segment(&mut self.reader, header.text, "TEXT")?;
-        let mut text = build_text(primary_segment, None)?;
-        let supplemental_range = parse_segment_range(
-            text.primary(),
-            "$BEGINSTEXT",
-            "$ENDSTEXT",
-            "supplemental TEXT",
-            false,
-        )?;
-        if let Some(range) = supplemental_range {
-            ensure_in_file("supplemental TEXT", range, file_len)?;
-            ensure_within_limit(
-                "TEXT bytes",
-                header.text.len().saturating_add(range.len()),
-                TEXT_BYTES_MAX,
-            )?;
-            let segment = read_text_segment(&mut self.reader, range, "supplemental TEXT")?;
-            text.add_supplemental(segment)?;
-        }
-
-        let data_range = resolve_required_range(&header, &text, "$BEGINDATA", "$ENDDATA", "DATA")?;
-        let analysis_range =
-            resolve_optional_range(&header, &text, "$BEGINANALYSIS", "$ENDANALYSIS", "ANALYSIS")?;
-        validate_segments(
-            file_len,
-            header.text,
-            supplemental_range,
+        let Prelude {
+            header,
+            text,
             data_range,
             analysis_range,
-        )?;
-
-        let resolved_layout = resolve_layout(header.version, &text)?;
-        ensure_data_length(data_range, &resolved_layout)?;
-        ensure_within_limit(
-            "decoded DATA bytes",
-            decoded_data_length(&resolved_layout),
-            limits.decoded_bytes_max,
-        )?;
+            layout: resolved_layout,
+        } = read_prelude(&mut self.reader, limits)?;
         if let Some(range) = analysis_range {
             ensure_within_limit("ANALYSIS bytes", range.len(), limits.analysis_bytes_max)?;
         }
@@ -171,6 +137,106 @@ impl<R: Read + Seek> FcsReader<R> {
             analysis,
         })
     }
+
+    /// Check the file as [`FcsReader::read_with_limits`] does, then return its
+    /// metadata and an iterator that decodes DATA `batch_size` events at a
+    /// time. Memory holds one batch, not the file. ANALYSIS is never read, so
+    /// `limits.analysis_bytes_max` does not apply.
+    ///
+    /// # Errors
+    ///
+    /// As [`FcsReader::read_with_limits`], for everything up to DATA; a batch
+    /// that fails to decode is an `Err` item, after which the iterator ends.
+    pub fn stream(
+        mut self,
+        batch_size: NonZeroUsize,
+        limits: FcsReadLimits,
+    ) -> Result<FcsStream<R>, FcsError> {
+        let Prelude {
+            header,
+            text,
+            data_range,
+            layout,
+            ..
+        } = read_prelude(&mut self.reader, limits)?;
+        let metadata = FcsMetadata {
+            version: header.version,
+            header,
+            text,
+            parameters: layout.public_parameters(),
+            event_count: layout.row_count(),
+        };
+        let batches = EventBatches::new(self.reader, data_range, layout, batch_size)?;
+        Ok(FcsStream { metadata, batches })
+    }
+}
+
+/// What a file declares, checked, before anything past TEXT is read.
+struct Prelude {
+    header: Header,
+    text: FcsText,
+    data_range: ByteRange,
+    analysis_range: Option<ByteRange>,
+    layout: ResolvedLayout,
+}
+
+/// Read and check HEADER and TEXT, resolve the segments and the layout, and
+/// check DATA against the layout and the decoded-size limit.
+fn read_prelude<R: Read + Seek>(
+    reader: &mut R,
+    limits: FcsReadLimits,
+) -> Result<Prelude, FcsError> {
+    let file_len = file_length(reader)?;
+    reader.seek(SeekFrom::Start(0)).map_err(FcsError::Io)?;
+
+    let header = read_header(reader)?;
+    ensure_in_file("TEXT", header.text, file_len)?;
+    ensure_within_limit("TEXT bytes", header.text.len(), TEXT_BYTES_MAX)?;
+    let primary_segment = read_text_segment(reader, header.text, "TEXT")?;
+    let mut text = build_text(primary_segment, None)?;
+    let supplemental_range = parse_segment_range(
+        text.primary(),
+        "$BEGINSTEXT",
+        "$ENDSTEXT",
+        "supplemental TEXT",
+        false,
+    )?;
+    if let Some(range) = supplemental_range {
+        ensure_in_file("supplemental TEXT", range, file_len)?;
+        ensure_within_limit(
+            "TEXT bytes",
+            header.text.len().saturating_add(range.len()),
+            TEXT_BYTES_MAX,
+        )?;
+        let segment = read_text_segment(reader, range, "supplemental TEXT")?;
+        text.add_supplemental(segment)?;
+    }
+
+    let data_range = resolve_required_range(&header, &text, "$BEGINDATA", "$ENDDATA", "DATA")?;
+    let analysis_range =
+        resolve_optional_range(&header, &text, "$BEGINANALYSIS", "$ENDANALYSIS", "ANALYSIS")?;
+    validate_segments(
+        file_len,
+        header.text,
+        supplemental_range,
+        data_range,
+        analysis_range,
+    )?;
+
+    let resolved_layout = resolve_layout(header.version, &text)?;
+    ensure_data_length(data_range, &resolved_layout)?;
+    ensure_within_limit(
+        "decoded DATA bytes",
+        decoded_data_length(&resolved_layout),
+        limits.decoded_bytes_max,
+    )?;
+    Ok(Prelude {
+        header,
+        text,
+        data_range,
+        analysis_range,
+        layout: resolved_layout,
+    })
 }
 
 fn file_length<R: Read + Seek>(reader: &mut R) -> Result<u64, FcsError> {

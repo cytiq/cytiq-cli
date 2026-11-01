@@ -71,7 +71,7 @@ pub(crate) fn decode_data<R: Read + Seek>(
 }
 
 /// Read and decode the next `rows` rows, appending them to `columns`.
-fn read_rows<R: Read>(
+pub(crate) fn read_rows<R: Read>(
     reader: &mut R,
     layout: &ResolvedLayout,
     rows: usize,
@@ -166,8 +166,8 @@ fn expected_data_length(layout: &ResolvedLayout) -> Result<u64, FcsError> {
         .ok_or(FcsError::UnsupportedLayout("DATA length overflowed u64"))
 }
 
-/// A column with room for every row; its decoded size is already bounded.
-fn new_column(parameter: &ResolvedParameter, rows: usize) -> ColumnData {
+/// A column with room for `rows` values; their decoded size is already bounded.
+pub(crate) fn new_column(parameter: &ResolvedParameter, rows: usize) -> ColumnData {
     match parameter.encoding {
         ParameterEncoding::AsciiFixed { .. } | ParameterEncoding::Integer { .. } => {
             ColumnData::UInt(Vec::with_capacity(rows))

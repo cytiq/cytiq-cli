@@ -12,6 +12,8 @@ this crate.
   construction, `$BEGIN*`/`$END*` range parsing.
 - `src/layout.rs` — resolves `$MODE`, `$TOT`, `$PAR`, `$DATATYPE`, `$BYTEORD`
   and per-parameter `$Pn*` keywords into a `ResolvedLayout`.
+- `src/stream.rs` — `FcsMetadata`, `FcsStream` and `EventBatches`, which
+  decode DATA one batch at a time through `data::read_rows`.
 - `src/data.rs` — DATA length checks and decoding into typed columns, one
   1 MiB chunk of rows at a time; raw ANALYSIS bytes.
 - `src/types.rs` — public data types (`FcsDataset`, `FcsText`, `Parameter`,
@@ -36,6 +38,9 @@ this crate.
   segments together.
 - DATA offsets come from TEXT; when the HEADER also has them, they must match.
   Segments must be in bounds and must not overlap.
+- `read_with_limits` and `stream` share `read_prelude`: one sequence of
+  checks, in one order, before anything past TEXT is read. A stream decodes
+  through the same `read_rows`, so a batch equals the rows `read` returns.
 - No value read from the file sizes an allocation or a loop before it is
   bounded. Check a segment against the file length before reading it, a count
   against `limits.rs` before allocating for it, DATA length against the
@@ -78,6 +83,11 @@ just verify
 
 - `tests/reader.rs` — fixture reads (`data/fixtures/fcs/*.fcs`), synthetic files
   built with `build_fcs`, error cases and writer round-trips.
+- `tests/stream.rs` — `stream` against `read` on every fixture in batches of
+  1, 7 and 65,536, batch lengths, stopping after the first error, never
+  reading ANALYSIS, and refusing oversized DATA before reading it.
+  `tests/properties.rs` checks the same for mutated files in any batch size,
+  and `fuzz/checks.rs` for every fuzzed input.
 - `tests/limits.rs` — crafted files whose keywords lie about sizes; each must
   return a specific error, not panic, abort or hang. Also `FcsReadLimits`:
   exact bounds, and nothing past `$BEGINDATA` read before a refusal.

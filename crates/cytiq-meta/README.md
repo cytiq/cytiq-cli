@@ -77,8 +77,9 @@ let result = MetaRunner::run(&MetaConfig {
 
 - `output: None` writes to stdout; logs go to stderr, so piping is safe.
 - An existing output file is an error unless `overwrite` is set.
-- Files are written through a `<output>.tmp` sibling and renamed, so a failed
-  run never leaves a truncated document.
+- Files are written through `cytiq-publish` (a synced temporary file beside
+  the output, renamed into place), so a failed run never leaves a truncated
+  document.
 
 ## Dependencies
 

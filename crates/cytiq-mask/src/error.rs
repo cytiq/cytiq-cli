@@ -44,4 +44,6 @@ pub enum MaskError {
     },
     #[error("failed to read event lineage of the FCS input: {0}")]
     Lineage(#[source] cytiq_fcs::Error),
+    #[error("failed to write event mask: {0}")]
+    Publish(#[from] cytiq_publish::PublishError),
 }

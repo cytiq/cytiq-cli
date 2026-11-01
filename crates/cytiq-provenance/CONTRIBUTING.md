@@ -14,7 +14,9 @@ this crate.
 - The record is a public contract versioned by `SCHEMA_VERSION`. Changing a
   field name, type or meaning bumps it and updates this crate's [README](README.md).
 - `arguments` is the command line verbatim. Do not normalise or reorder it.
-- Records are written atomically (`.tmp` + rename).
+- Records are written through `cytiq-publish`: a synced temporary file in the
+  same directory, renamed into place. `files_under` skips temporary files and
+  directories (`*.tmp`) and provenance records.
 - Inputs are hashed by `snapshot_inputs` before the command runs, never at
   `finish`.
 - The CLI decides which files are inputs and outputs of each command

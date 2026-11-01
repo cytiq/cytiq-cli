@@ -11,6 +11,7 @@ cytiq-fcs = { path = "../cytiq-fcs" }
 cytiq-flowsom = { path = "../cytiq-flowsom" }
 cytiq-mask = { path = "../cytiq-mask" }
 cytiq-provenance = { path = "../cytiq-provenance" }
+cytiq-publish = { path = "../cytiq-publish" }
 log = "0.4.30"
 parquet = { version = "58.3.0", default-features = false, features = ["arrow"] }
 plotly = "0.14.1"

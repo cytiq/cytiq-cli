@@ -2,6 +2,7 @@
 use std::fs::File;
 
 use cytiq_fcs::{SignalState, TransformContract};
+use cytiq_publish::{Existing, Publication};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -367,18 +368,9 @@ impl FlowSomModel {
         if path.exists() && !overwrite {
             return Err(invalid("model exists; pass --overwrite"));
         }
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        let mut file = tempfile::NamedTempFile::new_in(parent)?;
-        serde_json::to_writer_pretty(&mut file, self)?;
-        if overwrite {
-            file.persist(path).map_err(|e| e.error)?;
-        } else {
-            file.persist_noclobber(path).map_err(|e| e.error)?;
-        }
-        Ok(())
+        cytiq_publish::write_file(path, Existing::overwrite(overwrite), |writer| {
+            serde_json::to_writer_pretty(writer, self).map_err(FlowSomError::from)
+        })
     }
 
     /// Assign an FCS and write the existing assignment CSV schema.
@@ -458,17 +450,9 @@ impl FlowSomModel {
                     flowsom_metacluster: cluster,
                 })
                 .collect::<Vec<_>>();
-            let parent = output
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new("."));
-            let file = tempfile::NamedTempFile::new_in(parent)?;
-            write_assignments_csv(file.path(), &assignments)?;
-            if overwrite {
-                file.persist(output).map_err(|e| e.error)?;
-            } else {
-                file.persist_noclobber(output).map_err(|e| e.error)?;
-            }
+            let mut publication = Publication::new(Existing::overwrite(overwrite));
+            publication.stage_path(output, |path| write_assignments_csv(path, &assignments))?;
+            publication.commit()?;
             Ok(assignments.len())
         })
     }

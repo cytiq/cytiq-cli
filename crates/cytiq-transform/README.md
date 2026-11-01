@@ -94,8 +94,9 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
   `allow_uncompensated` (`--allow-uncompensated`) is set. An input with
   `CYTIQ_TRANSFORM` is `AlreadyTransformed` unless `allow_retransform`.
 - Existing outputs and the `metadata_json` sidecar are errors unless
-  `overwrite` is set; writing over the input itself goes through a temporary
-  sibling and a rename.
+  `overwrite` is set. Every output, including one that replaces its own input,
+  is staged as a synced temporary file beside it and renamed into place
+  (`cytiq-publish`).
 - Non-finite input values in a selected channel, or non-finite outputs, fail
   the run.
 - `dry_run` resolves inputs, channels and outputs without writing anything.

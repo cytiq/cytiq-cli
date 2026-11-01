@@ -2,8 +2,9 @@
 //! too, so `cargo test` replays every saved input against the same checks.
 
 use std::io::Cursor;
+use std::num::NonZeroUsize;
 
-use cytiq_fcs::{ColumnData, Error, FcsDataset, FcsReadLimits, FcsReader, Spillover};
+use cytiq_fcs::{ColumnData, Error, FcsDataset, FcsReadLimits, FcsReader, FcsStream, Spillover};
 
 /// Limits small enough that fuzzed files reach them.
 const TIGHT_LIMITS: FcsReadLimits = FcsReadLimits {
@@ -14,7 +15,7 @@ const TIGHT_LIMITS: FcsReadLimits = FcsReadLimits {
 /// Any bytes: the reader returns `Ok` or `Err`, never panics, aborts or hangs,
 /// and what it accepts is consistent. Read limits only ever refuse a file:
 /// a read within tight limits returns what an unlimited read returns, or
-/// `LimitExceeded`.
+/// `LimitExceeded`. Streaming decodes the same events, or fails the same way.
 pub fn read_fcs(bytes: &[u8]) {
     let read = FcsReader::new(Cursor::new(bytes)).read();
     if let Ok(dataset) = &read {
@@ -38,6 +39,45 @@ pub fn read_fcs(bytes: &[u8]) {
         (Err(Error::LimitExceeded { .. }), _) => {}
         (Err(limited), Ok(_)) => panic!("only the unlimited read accepted the file: {limited}"),
         (Err(limited), Err(error)) => assert_eq!(limited.to_string(), error.to_string()),
+    }
+    stream_matches_read(bytes, &read);
+}
+
+fn stream_matches_read(bytes: &[u8], read: &Result<FcsDataset, Error>) {
+    let size = NonZeroUsize::new(1 + bytes.len() % 7).expect("positive");
+    let streamed = FcsReader::new(Cursor::new(bytes))
+        .stream(size, FcsReadLimits::default())
+        .and_then(|FcsStream { metadata, batches }| {
+            let mut columns = batches
+                .empty_batch()
+                .columns
+                .iter()
+                .map(column_bits)
+                .collect::<Vec<_>>();
+            for batch in batches {
+                for (whole, part) in columns.iter_mut().zip(&batch?.columns) {
+                    whole.1.extend(column_bits(part).1);
+                }
+            }
+            Ok((metadata, columns))
+        });
+    match (streamed, read) {
+        (Ok((metadata, columns)), Ok(dataset)) => {
+            assert_eq!(metadata.text, dataset.text);
+            assert_eq!(metadata.parameters, dataset.parameters);
+            assert_eq!(metadata.event_count, dataset.event_count());
+            let read = dataset
+                .data
+                .columns
+                .iter()
+                .map(column_bits)
+                .collect::<Vec<_>>();
+            assert_eq!(columns, read);
+        }
+        (Err(streamed), Err(error)) => assert_eq!(streamed.to_string(), error.to_string()),
+        // A stream never reads ANALYSIS, so only a read can fail on it.
+        (Ok(_), Err(error)) => assert!(error.to_string().contains("ANALYSIS"), "{error}"),
+        (Err(streamed), Ok(_)) => panic!("only the stream failed: {streamed}"),
     }
 }
 

@@ -1,7 +1,11 @@
 # cytiq-classify
 
 Keep the CLI thin. Validate the bundle and complete preprocessing before writing
-outputs. Reuse FCS signal state and mask lineage. Never apply compensation twice.
+outputs. The input is streamed: compute everything per batch on the shared
+window dataset, keep TEXT-only checks before the session is built (the empty
+batch), and keep features a per-event function of the file so that
+`tests/streaming.rs` and the characterization batch sizes stay equal. Reuse
+FCS signal state and mask lineage. Never apply compensation twice.
 `features.rs` implements the Python recipe; keep golden parity tests in sync.
 The instrument rule (exact `$CYT`, CyTOF families, Kaluza's
 `$OriginalInstrument`) mirrors cytiq-ml's `instrument_matches`; change both.

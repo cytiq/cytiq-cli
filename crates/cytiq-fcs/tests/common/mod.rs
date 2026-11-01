@@ -177,3 +177,92 @@ pub fn overwrite_header_range(
     bytes[start_offset..start_offset + 8].copy_from_slice(begin.as_bytes());
     bytes[end_offset..end_offset + 8].copy_from_slice(finish.as_bytes());
 }
+
+/// Stream `bytes` in batches of `batch_size`, joining the batches into whole
+/// columns; also returns each batch's length.
+pub fn stream_joined(
+    bytes: &[u8],
+    batch_size: usize,
+) -> Result<
+    (
+        cytiq_fcs::FcsMetadata,
+        Vec<cytiq_fcs::ColumnData>,
+        Vec<usize>,
+    ),
+    cytiq_fcs::Error,
+> {
+    let size = std::num::NonZeroUsize::new(batch_size).expect("batch size is positive");
+    let stream = cytiq_fcs::FcsReader::new(std::io::Cursor::new(bytes))
+        .stream(size, cytiq_fcs::FcsReadLimits::default())?;
+    let mut joined = stream.batches.empty_batch().columns;
+    let mut lengths = Vec::new();
+    for batch in stream.batches {
+        let batch = batch?;
+        lengths.push(batch.columns.first().map_or(0, cytiq_fcs::ColumnData::len));
+        for (whole, part) in joined.iter_mut().zip(batch.columns) {
+            append(whole, part);
+        }
+    }
+    Ok((stream.metadata, joined, lengths))
+}
+
+fn append(whole: &mut cytiq_fcs::ColumnData, part: cytiq_fcs::ColumnData) {
+    use cytiq_fcs::ColumnData::{F32, F64, UInt};
+    match (whole, part) {
+        (UInt(whole), UInt(part)) => whole.extend(part),
+        (F32(whole), F32(part)) => whole.extend(part),
+        (F64(whole), F64(part)) => whole.extend(part),
+        (whole, part) => panic!("batch column {part:?} does not match {whole:?}"),
+    }
+}
+
+/// A column's values bit for bit, so NaN compares equal to itself.
+pub fn column_bits(column: &cytiq_fcs::ColumnData) -> (&'static str, Vec<u64>) {
+    use cytiq_fcs::ColumnData::{F32, F64, UInt};
+    match column {
+        UInt(values) => ("u64", values.clone()),
+        F32(values) => (
+            "f32",
+            values.iter().map(|v| u64::from(v.to_bits())).collect(),
+        ),
+        F64(values) => ("f64", values.iter().map(|v| v.to_bits()).collect()),
+    }
+}
+
+/// Whether streaming `bytes` gives what `read` gives: the same metadata and
+/// events, or the same error.
+pub fn assert_stream_matches_read(bytes: &[u8], batch_size: usize) {
+    let read = cytiq_fcs::FcsReader::new(std::io::Cursor::new(bytes)).read();
+    match (stream_joined(bytes, batch_size), read) {
+        (Ok((metadata, columns, lengths)), Ok(dataset)) => {
+            assert_eq!(metadata.version, dataset.version);
+            assert_eq!(metadata.header, dataset.header);
+            assert_eq!(metadata.text, dataset.text);
+            assert_eq!(metadata.parameters, dataset.parameters);
+            assert_eq!(metadata.event_count, dataset.event_count());
+            assert!(
+                lengths
+                    .iter()
+                    .all(|length| *length <= batch_size && *length > 0)
+            );
+            assert_eq!(lengths.iter().sum::<usize>(), dataset.event_count());
+            let streamed = columns.iter().map(column_bits).collect::<Vec<_>>();
+            let read = dataset
+                .data
+                .columns
+                .iter()
+                .map(column_bits)
+                .collect::<Vec<_>>();
+            assert_eq!(streamed, read);
+        }
+        (Err(streamed), Err(read)) => assert_eq!(streamed.to_string(), read.to_string()),
+        (Ok(_), Err(read)) => {
+            // Only ANALYSIS, which a stream never reads, may fail a read alone.
+            assert!(
+                read.to_string().contains("ANALYSIS"),
+                "only read failed: {read}"
+            );
+        }
+        (Err(streamed), Ok(_)) => panic!("only the stream failed: {streamed}"),
+    }
+}

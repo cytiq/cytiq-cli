@@ -7,7 +7,8 @@ this crate.
 ## Layout
 
 - `src/lib.rs` — crate docs (the schema) and re-exports only.
-- `src/mask.rs` — `EventMask`: Parquet I/O, `combine`, `keep_for`; unit tests.
+- `src/mask.rs` — `EventMask`: Parquet I/O, `combine`, `keep_for`,
+  `keep_by_source` and `SourceKeep`; unit tests.
 - `src/runner.rs` — `MaskCombineRunner`, the `cytiq mask combine` command.
 - `src/error.rs` — `MaskError` (`thiserror`).
 

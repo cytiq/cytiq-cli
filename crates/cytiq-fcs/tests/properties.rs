@@ -1,6 +1,7 @@
 //! Properties over generated inputs. The reader must never panic on any bytes,
-//! and whatever it accepts must be internally consistent; the writer must
-//! round-trip every finite dataset it accepts.
+//! and whatever it accepts must be internally consistent; streaming it in any
+//! batch size must decode the same; the writer must round-trip every finite
+//! dataset it accepts.
 
 use std::io::Cursor;
 
@@ -89,6 +90,15 @@ proptest! {
         if let Ok(dataset) = FcsReader::new(Cursor::new(bytes)).read() {
             assert_consistent(&dataset, file_len);
         }
+    }
+
+    #[test]
+    fn streamed_batches_equal_read_for_any_batch_size(
+        fixture in 0..4_usize,
+        edits in prop::collection::vec((any::<usize>(), any::<u8>()), 0..8),
+        batch_size in 1..64_usize,
+    ) {
+        common::assert_stream_matches_read(&mutated(&fixtures()[fixture], &edits), batch_size);
     }
 
     #[test]

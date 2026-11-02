@@ -1,8 +1,14 @@
 # Changelog
+## [0.1.2](https://github.com/cytiq/cytiq-cli/compare/0.1.1..0.1.2) - 2026-11-02
+
+### ⛰️  Features
+
+- *(clean)* Add --debris-mode off ([#154](https://github.com/cytiq/cytiq-cli/issues/154)) - ([219244f](https://github.com/cytiq/cytiq-cli/commit/219244f8b727ac69e8e367e430af0374e5d101fb))
 ## [0.1.1](https://github.com/cytiq/cytiq-cli/compare/0.1.0..0.1.1) - 2026-11-02
 
 ### ⚙️ Miscellaneous Tasks
 
+- *(release)* Update changelog for 0.1.1 ([#152](https://github.com/cytiq/cytiq-cli/issues/152)) - ([aeb82e0](https://github.com/cytiq/cytiq-cli/commit/aeb82e09383ba1d442ca68b802def327a63dec42))
 - Publish the cytiq image for linux/amd64 and linux/arm64 ([#150](https://github.com/cytiq/cytiq-cli/issues/150)) - ([3531252](https://github.com/cytiq/cytiq-cli/commit/35312528fda1b16ea9983aef298ba3e9ead72849))
 ## [0.1.0] - 2026-11-02
 

@@ -60,7 +60,7 @@ jobs:
       # under a new key, even after a crash; pull requests only read it, as
       # in ci.yml.
       - name: Restore corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: crates/cytiq-fcs/fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -71,14 +71,14 @@ jobs:
 
       - name: Save corpus
         if: always() && github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: crates/cytiq-fcs/fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
       - name: Upload crash inputs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: crates/cytiq-fcs/fuzz/artifacts/${{ matrix.target }}

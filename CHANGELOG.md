@@ -1,4 +1,9 @@
 # Changelog
+## [0.1.1](https://github.com/cytiq/cytiq-cli/compare/0.1.0..0.1.1) - 2026-11-02
+
+### ⚙️ Miscellaneous Tasks
+
+- Publish the cytiq image for linux/amd64 and linux/arm64 ([#150](https://github.com/cytiq/cytiq-cli/issues/150)) - ([3531252](https://github.com/cytiq/cytiq-cli/commit/35312528fda1b16ea9983aef298ba3e9ead72849))
 ## [0.1.0] - 2026-11-02
 
 ### ⛰️  Features
@@ -66,6 +71,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - *(mergify)* Upgrade configuration to current format ([#4](https://github.com/cytiq/cytiq-cli/issues/4)) - ([7437189](https://github.com/cytiq/cytiq-cli/commit/74371899b5c25f9ed2cb528f077a0f8183e7a5ae))
+- *(release)* Update changelog for 0.1.0 ([#148](https://github.com/cytiq/cytiq-cli/issues/148)) - ([b822f61](https://github.com/cytiq/cytiq-cli/commit/b822f61c09a0bbf9de22a0876eea5f77c8151364))
 - *(repo)* Initialize rust workspace tooling ([#2](https://github.com/cytiq/cytiq-cli/issues/2)) - ([b3e45ad](https://github.com/cytiq/cytiq-cli/commit/b3e45ad45c31cf5c7fe94907f32894b6b3ed3ee0))
 - Publish the cytiq image to GHCR on release ([#144](https://github.com/cytiq/cytiq-cli/issues/144)) - ([ebbda0f](https://github.com/cytiq/cytiq-cli/commit/ebbda0f119b42c7919c2d6309c16dea70f05e899))
 - Fuzz the FCS reader on a schedule and replay saved crashes in tests ([#136](https://github.com/cytiq/cytiq-cli/issues/136)) - ([6701b24](https://github.com/cytiq/cytiq-cli/commit/6701b2405c833a26b75a6aceccf15cb14d58ce09))

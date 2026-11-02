@@ -57,7 +57,9 @@ jobs:
       (github.event_name == 'pull_request' &&
        github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'chore/update-changelog-'))
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_LIGHT_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions: {}
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       latest: ${{ steps.resolve.outputs.latest }}
@@ -85,7 +87,7 @@ jobs:
 
   build-and-push:
     needs: resolve-version
-    uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@0.1.0
+    uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@b262e763d3136c9cc7f42a237a94c8dd0871821c # 0.2.0 rollout candidate
     with:
       image: cytiq-cli
       dockerfile: docker/Dockerfile
@@ -95,6 +97,7 @@ jobs:
       build_args: |
         CYTIQ_BUILD_COMMIT=${{ needs.resolve-version.outputs.commit }}
       platforms: linux/amd64,linux/arm64
+      enable_cache: true
     permissions:
       contents: read
       packages: write

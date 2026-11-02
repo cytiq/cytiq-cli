@@ -1,0 +1,68 @@
+name: Rust CI benchmark
+
+# Manual experiment only. Targets live on ephemeral runners: no benchmark cache
+# is uploaded, so the experiment cannot evict main's production Actions caches.
+on:
+  workflow_dispatch:
+    inputs:
+      toolchain:
+        description: "Use the same exact Rust version for every comparison"
+        type: string
+        default: stable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-ci-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: benchmark (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [combined, quality, test]
+    env:
+      MODE: ${{ matrix.mode }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Measure cold and warm Cargo invocations
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/rust-benchmark
+        run: |
+          rustc -vV
+          for phase in cold warm; do
+            start=$(date +%s)
+            if [ "$MODE" != test ]; then
+              cargo fmt --all -- --check
+              cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+            fi
+            if [ "$MODE" != quality ]; then
+              cargo test --workspace --locked
+            fi
+            seconds=$(( $(date +%s) - start ))
+            printf '{"mode":"%s","phase":"%s","seconds":%s}\n' \
+              "$MODE" "$phase" "$seconds" >> "$RUNNER_TEMP/benchmark.jsonl"
+            printf '%s / %s: %s seconds\n' "$MODE" "$phase" "$seconds" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Preserve measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-benchmark-${{ matrix.mode }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark.jsonl
+          retention-days: 7
+          if-no-files-found: ignore

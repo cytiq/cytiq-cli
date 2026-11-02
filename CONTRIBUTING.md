@@ -36,6 +36,21 @@ Releases go through `.github/workflows/cd.yml`, which calls the reusable workflo
 
 Images record that commit in `CYTIQ_BUILD_COMMIT` and carry SBOM and provenance attestations. The release jobs need the `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`, `GPG_FINGERPRINT` and `GH_TOKEN` secrets.
 
+Docker publication opts into the platform-specific registry layer cache in `cytiq-ci` 0.2.0. Cache export failures
+do not hide build failures or block a successful publication. Registry layers do not persist Cargo cache mounts.
+Keep the reusable workflow pinned to a released tag after rollout validation.
+
+Rust checks keep their `quality` and `test` names and parallel runners. Optional `ci-cache-*` artifacts record
+exact Cargo cache hits for the organization usage report; telemetry failures do not affect correctness checks.
+The manual **Rust CI benchmark** workflow measures combined/separate checks on cold and warm ephemeral targets.
+It never uploads build caches, since extra target caches previously evicted main's cache. Its warm measurements
+describe repeated Cargo invocations, not Actions cache-transfer savings. Compare runner setup and summed job
+durations too; the experiment does not alter required checks.
+
+`CI_LIGHT_RUNNER` defaults to `ubuntu-24.04` and controls only release-version resolution. Trial `ubuntu-slim`
+there after compatibility testing; retain it only when cost falls without increasing required-check P95 by
+more than 10%. It never controls Docker or Rust runners.
+
 `.github/workflows/fuzz.yml` fuzzes the FCS reader and the spillover parser for one minute a target on pull requests that change `cytiq-fcs`, for ten minutes weekly, and on demand. It is not a required check. A crash uploads its input as an artifact; turn it into a regression test as `crates/cytiq-fcs/CONTRIBUTING.md` describes. `cargo test` replays the saved regressions on every run.
 
 The parity suites against the upstream R/Python tools run locally, not in CI: installing the R environment takes too long for hosted runners. Run `just parity-setup` once, then `just parity` and `just parity-real` before merging a change that can move results; a violated tolerance exits non-zero. CI still runs a scientific smoke test (`crates/cytiq-cli/tests/parity_smoke.rs`) against R outputs committed in `data/fixtures/parity`; regenerate them with `just parity-smoke-fixture` when the generator, a dataset size or an upstream pin changes, never to make a cytiq change pass. Keep `parity/tolerances.json` and `parity/real/tolerances.json` honest: every rule states why its bound holds.

@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -38,12 +40,42 @@ jobs:
       # Pull requests restore main's cache but never save their own: per-PR
       # caches overflowed the 10 GB repository limit and evicted main's.
       - name: Cache Cargo artifacts
+        id: cargo-cache
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - &cache-telemetry
+        name: Record Cargo cache restore
+        if: always()
+        continue-on-error: true
+        env:
+          CACHE_HIT: ${{ steps.cargo-cache.outputs.cache-hit }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-cache"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          hit = {"true": True, "false": False}.get(os.environ["CACHE_HIT"])
+          record = {"schema_version": 1, "run_id": int(os.environ["GITHUB_RUN_ID"]),
+                    "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                    "job": os.environ["GITHUB_JOB"], "caches": [{"name": "cargo", "hit": hit}]}
+          (Path(os.environ["RUNNER_TEMP"]) / "ci-cache/cache.json").write_text(json.dumps(record))
+          PY
+
+      - &upload-cache-telemetry
+        name: Upload cache telemetry
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-cache-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-cache/cache.json
+          if-no-files-found: ignore
+          retention-days: 35
 
   test:
     name: test
@@ -52,14 +84,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo artifacts
+        id: cargo-cache
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests
         run: cargo test --workspace --locked
+
+      - *cache-telemetry
+      - *upload-cache-telemetry

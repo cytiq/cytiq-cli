@@ -220,6 +220,16 @@ fn validate(config: &CleanConfig) -> Result<(), CleanError> {
     {
         return invalid("--debris-fsc-min/--debris-ssc-min require --debris-mode fixed");
     }
+    if config.debris.mode == DebrisMode::Off && config.required.contains(&FilterKind::Debris) {
+        return invalid("--require debris and --debris-mode off are mutually exclusive");
+    }
+    // `--gates` replays the file's `non_debris` gate whatever the mode, so `off`
+    // would be silently ignored.
+    if config.debris.mode == DebrisMode::Off && config.gates.is_some() {
+        return invalid(
+            "--debris-mode off and --gates are mutually exclusive; remove the `non_debris` gate from the file instead",
+        );
+    }
     if !(config.singlet_mad.is_finite() && config.singlet_mad > 0.0) {
         return invalid("--singlet-mad must be positive");
     }

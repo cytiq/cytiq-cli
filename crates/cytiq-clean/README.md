@@ -8,7 +8,7 @@ could not:
 
 | Filter | Gate id | Method | Needs |
 | --- | --- | --- | --- |
-| debris | `non_debris` | FSC-A threshold at the density valley above the low-FSC debris peak; or the AutoSpill FSC/SSC population gate; or fixed thresholds | `FSC-A` |
+| debris | `non_debris` | FSC-A threshold at the density valley above the low-FSC debris peak; or the AutoSpill FSC/SSC population gate; or fixed thresholds; or off | `FSC-A` |
 | singlets | `singlets` | `FSC-A / FSC-H` within `median ± k·MAD` (a wedge polygon), or `FSC-W <= median + k·MAD` | `FSC-H` or `FSC-W` |
 | viability | `live` | threshold on the compensated, `fasinh`-scaled dye: density valley, a control-file quantile, or an explicit value | a viability channel |
 
@@ -52,6 +52,11 @@ println!("kept {} of {}", result.metrics.kept, result.metrics.event_count);
   `--debris-mode fixed --debris-fsc-min/--debris-ssc-min` supplies thresholds.
 - `--debris-mode population` suits beads and cell lines; its gate around the
   dominant population drops minor populations in mixed samples.
+- `--debris-mode off` makes the debris filter `disabled`, so it removes
+  nothing. Use it on files another tool already gated: with no debris left, the
+  lowest-FSC population is cells (lymphocytes in bone marrow), which the
+  adaptive valley can take for debris. It conflicts with `--require debris` and
+  with `--gates` (remove `non_debris` from the file instead).
 - `--gates` re-applies the ids `non_debris`, `singlets`, `live` and `clean`
   without refitting. A missing gate makes its filter `not_assessed`.
 

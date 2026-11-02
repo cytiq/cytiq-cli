@@ -134,6 +134,8 @@ pub(crate) enum CliDebrisMode {
     Population,
     /// Thresholds from --debris-fsc-min / --debris-ssc-min.
     Fixed,
+    /// No debris filter (`disabled`), for files another tool already gated.
+    Off,
 }
 
 impl From<CliDebrisMode> for DebrisMode {
@@ -142,6 +144,7 @@ impl From<CliDebrisMode> for DebrisMode {
             CliDebrisMode::Adaptive => Self::Adaptive,
             CliDebrisMode::Population => Self::Population,
             CliDebrisMode::Fixed => Self::Fixed,
+            CliDebrisMode::Off => Self::Off,
         }
     }
 }

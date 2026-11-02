@@ -303,6 +303,61 @@ fn reports_viability_disabled_on_request() {
 }
 
 #[test]
+fn reports_debris_disabled_with_debris_mode_off() {
+    let output = create_temp_dir("cytiq-cli-clean-debris-off");
+
+    run_clean("sample.fcs", &output, &["--debris-mode", "off"]);
+
+    let masks = Masks::read(&output);
+    assert!(masks.column("non_debris").iter().all(Option::is_none));
+    assert!(masks.column("singlets").iter().all(Option::is_some));
+    let metrics = metrics(&output);
+    let debris = &metrics["filters"]["debris"];
+    assert_eq!(debris["status"], "disabled");
+    assert_eq!(debris["reason"], "disabled with --debris-mode off");
+    assert!(debris["removed"].is_null());
+    assert_eq!(metrics["filters"]["singlets"]["status"], "applied");
+    let gates = fs::read_to_string(output.join("gates.gatingml.xml")).unwrap();
+    assert!(!gates.contains("gating:id=\"non_debris\""));
+}
+
+#[test]
+fn rejects_debris_mode_off_with_required_debris_or_gates() {
+    let directory = create_temp_dir("cytiq-cli-clean-debris-off-conflicts");
+    let input = fixture("sample.fcs");
+    let gates = directory.join("gates.gatingml.xml");
+    fs::write(&gates, "").unwrap();
+
+    for (extra, expected) in [
+        (
+            ["--require", "debris"],
+            "--require debris and --debris-mode off",
+        ),
+        (["--gates", utf8(&gates)], "--debris-mode off and --gates"),
+    ] {
+        let output = directory.join(extra[0].trim_start_matches('-'));
+        let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+            .args([
+                "clean",
+                "--input",
+                utf8(&input),
+                "--output",
+                utf8(&output),
+                "--debris-mode",
+                "off",
+            ])
+            .args(extra)
+            .output()
+            .expect("command should run");
+
+        assert!(!result.status.success(), "{extra:?} should be rejected");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains(expected), "stderr: {stderr}");
+        assert!(!output.join("masks.parquet").exists());
+    }
+}
+
+#[test]
 fn exported_gates_reproduce_masks() {
     let output = create_temp_dir("cytiq-cli-clean-gates");
     run_clean("sample.fcs", &output, &[]);

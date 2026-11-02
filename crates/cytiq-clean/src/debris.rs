@@ -30,6 +30,10 @@ pub enum DebrisMode {
     Population,
     /// User-supplied FSC/SSC minimums.
     Fixed,
+    /// No debris filter: it is `disabled` and removes nothing. For files
+    /// another tool already gated, where no debris is left and the lowest-FSC
+    /// population is cells.
+    Off,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,6 +53,11 @@ pub(crate) fn fit(
         DebrisMode::Adaptive => fit_adaptive(dataset, roles, fit_indices),
         DebrisMode::Population => fit_population(dataset, roles, fit_indices),
         DebrisMode::Fixed => Ok(fit_fixed(roles, config)),
+        DebrisMode::Off => Ok(FilterFit::skipped(
+            NON_DEBRIS_GATE,
+            FilterStatus::Disabled,
+            "disabled with --debris-mode off".to_owned(),
+        )),
     }
 }
 

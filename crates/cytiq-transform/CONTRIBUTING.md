@@ -8,7 +8,8 @@ this crate.
 
 - `src/lib.rs` — public config/result types, `TransformRunner`, input
   resolution (files, directories, globs), output planning, channel selection,
-  the per-value transform operator, metrics and FCS/JSON output.
+  the per-value transform operator (public as `ValueTransform`, rebuilt from a
+  `CYTIQ_TRANSFORM` contract), metrics and FCS/JSON output.
 - `src/scales.rs` — reference scales `Logicle`, `Hyperlog`, `FlowJoBiexp` with
   `scale`/`inverse` and parameter validation; public as `cytiq_transform::scales`.
 - `src/export.rs` — `--debug-dir` artifacts: `summary.json`, `metrics.csv`,
@@ -59,7 +60,9 @@ cargo test -p cytiq-cli --test transform_cli
 
 Unit tests are in `src/lib.rs` (arcsinh formula, finite outputs of the
 log-like methods, glob matching) and `src/scales.rs` (flowCore /
-flowWorkspace parity). R reference values are included from
+flowWorkspace parity). `tests/value_transform.rs` checks that
+`ValueTransform::from_contract` reproduces the stored values of every method,
+so `cytiq-plot` axes stay in step with the command. R reference values are included from
 `data/fixtures/transform/flowcore_reference.rs`. End-to-end CLI tests in
 `crates/cytiq-cli/tests/transform_cli.rs` cover metadata, multiple inputs,
 globs, channel selection, all methods, `--dry-run`, `--overwrite` and

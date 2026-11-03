@@ -14,7 +14,7 @@ this crate.
 - `src/singlets.rs` — singlet filter (FSC-A/FSC-H wedge or FSC-W bound).
 - `src/viability.rs` — viability filter (`fasinh` axis, valley / control / threshold).
 - `src/filter.rs` — shared types: gate ids, `FilterStatus`, `FilterReport`,
-  `FilterFit`, deterministic `sample_indices`.
+  `FilterFit`. Fitting subsets come from `cytiq_density::sample_indices`.
 - `src/export.rs` — writes `masks.parquet` (through `cytiq-mask`),
   `metrics.json`, `gates.gatingml.xml`.
 - `src/report.rs` — `report.html` (Plotly, at most 10,000 plotted events).
@@ -34,7 +34,7 @@ this crate.
   `--gates`; renaming them breaks re-application of edited files.
 - `clean` is a Boolean `and`; with a single applied filter the gate is ANDed
   with itself, because Gating-ML `and` needs two operands.
-- Fitting is deterministic: subsets come from `sample_indices` (evenly spaced),
+- Fitting is deterministic: subsets come from `cytiq_density::sample_indices` (evenly spaced),
   never from a random sample. Fit order is debris → singlets (on non-debris) →
   viability (on non-debris singlets).
 - `event_id` is the 0-based input row; events are never reordered or copied.
@@ -58,8 +58,7 @@ cargo test -p cytiq-clean
 cargo test -p cytiq-cli --test clean_cli
 ```
 
-Unit tests sit next to the code in `channels.rs`, `filter.rs` and
-`viability.rs`. `clean_cli.rs` checks recovery of known debris, doublets and
+Unit tests sit next to the code in `channels.rs` and `viability.rs`. `clean_cli.rs` checks recovery of known debris, doublets and
 dead cells (>98% accuracy per filter) against `data/fixtures/clean/truth.json`,
 `not_assessed`/`disabled` handling, `--gates` re-application and the control
 threshold. If you change the synthetic data, regenerate the fixtures with

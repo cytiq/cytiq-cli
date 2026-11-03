@@ -28,7 +28,21 @@ cytiq gate       --input sample.t.fcs --gating-ml gates.xml --output counts.csv 
   --mask sample.analysis.parquet --membership membership.parquet
 cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD8 \
   --mask sample.analysis.parquet
+cytiq plot       --input sample.fcs --x FSC-A --y SSC-A --output fsc_ssc.raw.svg
+cytiq plot       --input sample.fcs --mask sample.analysis.parquet \
+  --x FSC-A --y SSC-A --output fsc_ssc.qc.svg            # kept events, removed ones beneath
+cytiq plot       --input sample.t.fcs --mask sample.analysis.parquet --gating-ml gates.xml \
+  --population T --gate CD4T --gate CD8T --type contour --output t_cd4_cd8.svg
+cytiq plot       --input sample.t.fcs --color-by flowsom.csv --type scatter \
+  --x CD3 --y CD19 --output clusters.svg
 ```
+
+`plot` needs only an FCS file and, optionally, masks, Gating-ML and class
+labels. It never fails because a QC check failed: a mask that removes every
+event renders an annotated plot. Workflows should therefore run it after
+`mask combine` whatever `qc`'s exit status, because a failed sample is the one
+most worth inspecting. `--config plots.yaml` renders a panel's plots of one
+sample in one run (see [cytiq-plot](../cytiq-plot/README.md#batch-file)).
 
 ## Signal state
 
@@ -71,6 +85,7 @@ Each stage reads the `CYTIQ_COMPENSATION`, `CYTIQ_UNMIXING` and
 | `cytonorm train/apply` | compatible panel and complete transformed, compensated/unmixed state | error on mismatch, repeated normalization or unknown batch |
 | `classify` v3 | explicitly declared normalization ID or `none`, plus the existing feature contract | error before inference on mismatch |
 | `gate` | what the Gating-ML dimensions say | error when a dimension would compensate or transform a channel again |
+| `plot` | any; transformed channels are drawn on a linear axis labelled in raw decades | error when `--x-scale`/`--y-scale` asks for `logicle` or `arcsinh` on a transformed channel, or a gate dimension would compensate or transform a channel again |
 
 Gating-ML strategies applied to `sample.t.fcs` must use `uncompensated`
 dimensions without `transformation-ref` on the compensated and transformed

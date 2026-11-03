@@ -13,6 +13,7 @@ pub(crate) mod gate;
 pub(crate) mod mask;
 pub(crate) mod meta;
 pub(crate) mod peacoqc;
+pub(crate) mod plot;
 pub(crate) mod preflight;
 pub(crate) mod qc;
 pub(crate) mod spillqc;

@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use cytiq_density::sample_indices;
 use cytiq_fcs::{FcsDataset, FcsReader};
 use cytiq_gating::{
     BooleanOp, Gate, GateKind, GateRef, GatingResults, GatingStrategy, Transform, parse_gatingml,
@@ -18,7 +19,6 @@ use crate::error::CleanError;
 use crate::export::write_outputs;
 use crate::filter::{
     CLEAN_GATE, FilterFit, FilterReport, FilterStatus, LIVE_GATE, NON_DEBRIS_GATE, SINGLETS_GATE,
-    sample_indices,
 };
 use crate::singlets;
 use crate::viability::{self, ViabilityConfig};

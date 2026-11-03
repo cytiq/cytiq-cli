@@ -88,3 +88,54 @@ pub(crate) fn parse_channels(
         Ok(parsed)
     }
 }
+
+/// `LO,HI`: two finite numbers with `LO < HI`.
+pub(crate) fn parse_range(raw: &str) -> Result<(f64, f64), String> {
+    let invalid = || format!("expected `LO,HI` with finite LO < HI, got `{raw}`");
+    let (lo, hi) = raw.split_once(',').ok_or_else(invalid)?;
+    let lo = lo.trim().parse::<f64>().map_err(|_| invalid())?;
+    let hi = hi.trim().parse::<f64>().map_err(|_| invalid())?;
+    if lo.is_finite() && hi.is_finite() && lo < hi {
+        Ok((lo, hi))
+    } else {
+        Err(invalid())
+    }
+}
+
+fn parse_bounded_usize(raw: &str, min: usize, max: usize) -> Result<usize, String> {
+    match raw.parse::<usize>() {
+        Ok(value) if (min..=max).contains(&value) => Ok(value),
+        _ => Err(format!(
+            "expected an integer from {min} to {max}, got `{raw}`"
+        )),
+    }
+}
+
+pub(crate) fn parse_bins(raw: &str) -> Result<usize, String> {
+    parse_bounded_usize(raw, cytiq_plot::MIN_BINS, cytiq_plot::MAX_BINS)
+}
+
+pub(crate) fn parse_max_points(raw: &str) -> Result<usize, String> {
+    parse_bounded_usize(raw, 1, cytiq_plot::MAX_POINTS_LIMIT)
+}
+
+pub(crate) fn parse_plot_size(raw: &str) -> Result<u32, String> {
+    match raw.parse::<u32>() {
+        Ok(value) if (cytiq_plot::MIN_SIZE..=cytiq_plot::MAX_SIZE).contains(&value) => Ok(value),
+        _ => Err(format!(
+            "expected a size from {} to {} pixels, got `{raw}`",
+            cytiq_plot::MIN_SIZE,
+            cytiq_plot::MAX_SIZE
+        )),
+    }
+}
+
+pub(crate) fn parse_contour_step(raw: &str) -> Result<f64, String> {
+    match raw.parse::<f64>() {
+        Ok(value) if value > 0.0 && value <= cytiq_plot::MAX_CONTOUR_STEP => Ok(value),
+        _ => Err(format!(
+            "expected a number in (0, {}], got `{raw}`",
+            cytiq_plot::MAX_CONTOUR_STEP
+        )),
+    }
+}

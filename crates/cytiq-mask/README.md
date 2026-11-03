@@ -26,7 +26,7 @@ Parquet key-value metadata ties the mask to its acquisition:
 
 Written by `cytiq compensate`, `cytiq peacoqc`, `cytiq clean`,
 `cytiq autospectral` and `cytiq gate --membership`; read by `--mask` on
-`classify`, `gate`, `flowsom` and `clean`.
+`classify`, `gate`, `flowsom`, `clean` and `plot`.
 
 Every stage that writes FCS records the raw acquisition hash in
 `CYTIQ_ACQUISITION`. A file without that keyword is raw, and its own SHA-256

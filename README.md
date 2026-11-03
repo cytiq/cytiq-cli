@@ -1,7 +1,8 @@
 # cytiq
 
 Rust workspace for flow-cytometry tooling: FCS I/O, compensation and spectral
-unmixing, event filtering, quality control, batch normalization, gating, clustering and classification.
+unmixing, event filtering, quality control, batch normalization, gating, clustering,
+classification and vector diagnostic plots.
 
 ## Pipeline
 
@@ -54,6 +55,8 @@ flowchart TB
     preflight ~~~ meta ~~~ cytoscan
     gate ~~~ flowsom ~~~ classify
 
+    plot["plot (vector SVG, any stage)<br/>cytiq-plot"]
+
     controls --> autospill
     autospill -->|"compensation.csv"| compensate
     raw -->|"conventional"| compensate
@@ -77,6 +80,10 @@ flowchart TB
     transform -->|"t.fcs"| analysis
     peacoqc -->|"QC-filtered transformed FCS"| cytonorm
     cytonorm -->|"norm.fcs + pinned model ID"| analysis
+    raw -->|"before QC"| plot
+    transform -->|"t.fcs"| plot
+    combine -.->|"analysis mask, whatever qc says"| plot
+    analysis -.->|"gates, clusters, classes"| plot
 ```
 
 See the [pipeline guide](crates/cytiq-cli/PIPELINE.md) for a complete command

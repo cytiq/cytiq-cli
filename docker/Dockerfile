@@ -1,28 +1,55 @@
 # syntax=docker/dockerfile:1
 
-# ---- Build -------------------------------------------------------------------
-FROM rust:1.99-slim-trixie AS builder
+# ---- Toolchain ---------------------------------------------------------------
+FROM rust:1.99-slim-trixie AS chef
 
 # Static ONNX Runtime linking needs the C++ standard library development files.
 RUN apt-get update && apt-get install -y --no-install-recommends g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# cargo-chef splits the build so that compiled dependencies get a layer of their
+# own, which the registry cache in cytiq-ci's docker-publish.yml can export.
+ARG CARGO_CHEF_VERSION=0.1.78
+RUN cargo install cargo-chef --locked --version "$CARGO_CHEF_VERSION" \
+    && rm -rf /usr/local/cargo/registry
+
 WORKDIR /app
 
+# ---- Dependency recipe -------------------------------------------------------
+FROM chef AS planner
+
 # The whole workspace is needed: every member listed in Cargo.toml must exist
-# for `cargo build --locked` to resolve, even when only cytiq-cli is built.
+# for `--locked` to resolve, even when only cytiq-cli is built.
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+
+# recipe.json lists only manifests and the lockfile, with the workspace's own
+# version masked: source edits and release version bumps leave it unchanged.
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ---- Build -------------------------------------------------------------------
+FROM chef AS builder
+
+# Compile the dependencies (and download ONNX Runtime) into this layer. There
+# are no cache mounts: what this step writes must stay in the layer, so the
+# step is reused for as long as recipe.json is unchanged. Any Cargo.lock
+# dependency change rebuilds it.
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook -p cytiq-cli --release --locked --recipe-path recipe.json
+
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 
 # The build context has no `.git`; provenance records take the commit from
-# here (`just docker-build` passes `git rev-parse HEAD`).
+# here (`just docker-build` passes `git rev-parse HEAD`). Declared after the
+# cook step, so that a new commit does not invalidate the dependency layer.
 ARG CYTIQ_BUILD_COMMIT=unknown
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build -p cytiq-cli --release --locked \
-    && install -D -m 0755 target/release/cytiq /out/cytiq
+# This layer is never reused, since every source change invalidates it.
+# Removing target/ keeps it small in the mode=max registry cache.
+RUN cargo build -p cytiq-cli --release --locked \
+    && install -D -m 0755 target/release/cytiq /out/cytiq \
+    && rm -rf target
 
 # ---- Runtime -----------------------------------------------------------------
 FROM debian:trixie-slim AS runtime

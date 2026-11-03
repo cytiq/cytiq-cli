@@ -53,8 +53,11 @@ println!("{} events on a raw detector margin", result.margin_event_count);
   unmixed input (`CYTIQ_UNMIXING`) and input whose matrix channels were
   transformed are rejected.
 - `<output>.masks.parquet` holds `margin_pass` per event: whether the raw
-  values of the matrix channels stay below the detector limit `$PnR - 1`
-  (`cytiq_fcs::raw_margin_pass`, `MarginBounds::detector_limit`). Unlike
+  values of the matrix channels and of every scatter channel stay below the
+  detector limit `$PnR - 1` (`cytiq_fcs::margin_channels`,
+  `cytiq_fcs::raw_margin_pass`, `MarginBounds::detector_limit`). Scatter is
+  not compensated, but a saturated FSC or SSC detector is as much an artefact
+  as a saturated fluorescence one. Unlike
   `PeacoQC::RemoveMargins`, observed minima and maxima and values below
   flowCore's −111 floor are not removed. Compensated and linearised channels
   are dropped from `CYTIQ_MARGINS`.

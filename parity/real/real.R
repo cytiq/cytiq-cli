@@ -12,6 +12,17 @@ suppressPackageStartupMessages({
 
 out_dir <- commandArgs(trailingOnly = TRUE)[[1]]
 
+# cytiq_fcs::is_scatter_channel, independently: FSC…/SSC…, a first word FS or SS
+# (a Navios's `FS INT`), or an FSC/SSC word anywhere.
+is_scatter <- function(names) {
+  upper <- toupper(trimws(names))
+  words <- lapply(strsplit(upper, "[ ._-]"), function(w) w[nzchar(w)])
+  startsWith(upper, "FSC") | startsWith(upper, "SSC") |
+    vapply(words, function(w) {
+      length(w) > 0 && (w[[1]] %in% c("FS", "SS") || any(w[-1] %in% c("FSC", "SSC")))
+    }, logical(1))
+}
+
 read_raw <- function(dir) {
   read.FCS(file.path(dir, "sample.fcs"), transformation = FALSE, truncate_max_range = FALSE,
            emptyValue = FALSE)
@@ -50,7 +61,9 @@ for (dir in list.dirs(out_dir, recursive = FALSE)) {
   if (!file.exists(file.path(dir, "channels.txt"))) next
   channels <- strsplit(readLines(file.path(dir, "channels.txt")), ",")[[1]]
   raw <- read_raw(dir)
-  margins <- RemoveMargins(raw, channels = channels, output = "full")
+  # cytiq judges every scatter detector's margins with the matrix channels.
+  scatter <- setdiff(colnames(raw)[is_scatter(colnames(raw))], channels)
+  margins <- RemoveMargins(raw, channels = c(channels, scatter), output = "full")
   removed <- rep(0L, nrow(raw))
   removed[margins$indices_margins] <- 1L
   write.csv(data.frame(removed = removed), file.path(dir, "r_margins.csv"), row.names = FALSE)

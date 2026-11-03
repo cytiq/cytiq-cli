@@ -60,7 +60,7 @@ variables or companion `lib/` directory. See the
   `mask combine` and `plot`; other commands follow the output rules of their library
   crate.
 - `--mask FILE` (repeatable) restricts `classify`, `gate`, `flowsom` and `clean` to events
-  every mask keeps; `plot` shows those events and draws the removed ones underneath; see [cytiq-mask](../cytiq-mask/README.md).
+  every mask keeps; `plot` shows those events and draws the removed ones over them; see [cytiq-mask](../cytiq-mask/README.md).
 
 ## Provenance
 

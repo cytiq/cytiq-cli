@@ -107,6 +107,9 @@ pub(crate) struct AxisInput<'a> {
     pub display: Display,
     /// Every event's value in data space (non-finite values are ignored).
     pub values: &'a [f64],
+    /// The values of the population a plot shows (empty without one): the
+    /// automatic range widens to cover them.
+    pub population: &'a [f64],
     /// Explicit range in data units.
     pub range: Option<(f64, f64)>,
     /// A raw linear scatter channel: its axis starts at 0 when no value is
@@ -116,7 +119,9 @@ pub(crate) struct AxisInput<'a> {
 
 impl Axis {
     /// Build an axis. The automatic range covers all events given, so plots
-    /// of one file share axes whatever mask or population they show.
+    /// of one file share axes whatever mask they show. A population beyond
+    /// that range widens it: a rare bright population (`FlowCyt`'s mast cells,
+    /// past the file's 99.95% quantile) would otherwise pile on an edge.
     ///
     /// Returns `None` when an explicit range maps to an empty or non-finite
     /// span on this scale.
@@ -126,6 +131,7 @@ impl Axis {
             data,
             display,
             values,
+            population,
             range,
             starts_at_zero,
         } = input;
@@ -145,23 +151,19 @@ impl Axis {
             axis.hi = hi;
             return Some(axis);
         }
-        let mut mapped = values
-            .iter()
-            .map(|&value| axis.display.apply(value))
-            .filter(|value| value.is_finite())
-            .collect::<Vec<_>>();
         let zero = axis.position_of_raw(0.0);
-        if mapped.is_empty() {
+        let Some([low, high]) = quantiles(values, &axis.display) else {
             let center = zero.filter(|value| value.is_finite()).unwrap_or(0.0);
             axis.lo = center - 0.5;
             axis.hi = center + 0.5;
             return Some(axis);
-        }
-        mapped.sort_unstable_by(f64::total_cmp);
-        let low = cytiq_density::quantile_type7(&mapped, RANGE_QUANTILES.0);
-        let high = cytiq_density::quantile_type7(&mapped, RANGE_QUANTILES.1);
+        };
         let padding = RANGE_PADDING * (high - low);
         let (mut lo, mut hi) = (low - padding, high + padding);
+        if let Some([population_low, population_high]) = quantiles(population, &axis.display) {
+            lo = lo.min(population_low - padding);
+            hi = hi.max(population_high + padding);
+        }
         if axis.is_log_like()
             && let Some(zero) = zero.filter(|value| value.is_finite())
         {
@@ -324,6 +326,24 @@ impl Axis {
 }
 
 /// The 1-2-5 step at or above `raw`.
+/// The [`RANGE_QUANTILES`] of `values` on `display`, ignoring non-finite
+/// values; `None` when none is finite.
+fn quantiles(values: &[f64], display: &Display) -> Option<[f64; 2]> {
+    let mut mapped = values
+        .iter()
+        .map(|&value| display.apply(value))
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    if mapped.is_empty() {
+        return None;
+    }
+    mapped.sort_unstable_by(f64::total_cmp);
+    Some([
+        cytiq_density::quantile_type7(&mapped, RANGE_QUANTILES.0),
+        cytiq_density::quantile_type7(&mapped, RANGE_QUANTILES.1),
+    ])
+}
+
 fn nice_step(raw: f64) -> f64 {
     if !(raw.is_finite() && raw > 0.0) {
         return 1.0;
@@ -417,6 +437,7 @@ mod tests {
             data,
             display,
             values,
+            population: &[],
             range: None,
             starts_at_zero: false,
         })
@@ -437,6 +458,7 @@ mod tests {
             data: None,
             display: Display::Linear,
             values: &[0.0, 262_144.0],
+            population: &[],
             range: Some((0.0, 262_144.0)),
             starts_at_zero: true,
         })
@@ -464,6 +486,7 @@ mod tests {
             data: None,
             display: Display::Logicle(Box::new(logicle)),
             values: &[],
+            population: &[],
             range: Some((-5_000.0, 262_144.0)),
             starts_at_zero: false,
         })
@@ -521,6 +544,50 @@ mod tests {
     }
 
     #[test]
+    fn a_population_beyond_the_file_range_widens_it() {
+        // Four bright events among 10,000: past the file's 99.95% quantile,
+        // they would pile on the edge of the plot that shows only them.
+        let mut values = (0..10_000)
+            .map(|event| f64::from(event % 1000))
+            .collect::<Vec<_>>();
+        let bright = [5_000.0, 5_500.0, 6_000.0, 7_000.0];
+        values[..4].copy_from_slice(&bright);
+        let file = axis(Display::Linear, None, &values);
+        assert!(file.unit(7_000.0) > 1.0, "off-scale without the population");
+        let widened = Axis::new(AxisInput {
+            title: "x".into(),
+            data: None,
+            display: Display::Linear,
+            values: &values,
+            population: &bright,
+            range: None,
+            starts_at_zero: false,
+        })
+        .unwrap();
+        assert!(
+            bright
+                .iter()
+                .all(|value| (0.0..1.0).contains(&widened.unit(*value)))
+        );
+        assert!(
+            (widened.unit(0.0) - file.unit(0.0)).abs() < 0.2,
+            "the low end stays"
+        );
+        // A population inside the file range changes nothing.
+        let inside = Axis::new(AxisInput {
+            title: "x".into(),
+            data: None,
+            display: Display::Linear,
+            values: &values,
+            population: &values[100..200],
+            range: None,
+            starts_at_zero: false,
+        })
+        .unwrap();
+        assert_eq!((inside.lo, inside.hi), (file.lo, file.hi));
+    }
+
+    #[test]
     fn scatter_axes_start_at_zero() {
         let values = (100..=1000).map(f64::from).collect::<Vec<_>>();
         let axis = Axis::new(AxisInput {
@@ -528,6 +595,7 @@ mod tests {
             data: None,
             display: Display::Linear,
             values: &values,
+            population: &[],
             range: None,
             starts_at_zero: true,
         })
@@ -558,6 +626,7 @@ mod tests {
             data: Some(DataTransform::Gating(gating)),
             display: Display::Linear,
             values: &[],
+            population: &[],
             range: Some((1.0, 0.5)),
             starts_at_zero: false,
         });

@@ -472,6 +472,8 @@ def compare_gating(data: Path, rust: Path) -> dict:
 
 # --------------------------------------------------------------------------- pipeline
 PIPELINE_FLUOR = ["FL1-A", "FL2-A", "FL3-A", "FL4-A", "FL5-A", "FL6-A"]
+# Scatter detectors saturate too; the margin mask judges them with the matrix channels.
+PIPELINE_SCATTER = ["FSC-A", "FSC-H", "FSC-W", "SSC-A"]
 PIPELINE_FLAGS = ["debris", "doublet", "dead", "unstable", "margin"]
 PIPELINE_GATES = {"CD4T": "cd4_t", "CD8T": "cd8_t", "DNT": "dn_t", "B": "b", "NK": "nk", "Rare": "rare"}
 
@@ -532,7 +534,7 @@ def compare_pipeline_dataset(data: Path, rust: Path, upstream: Path, dataset: st
             strict.append(False)
     out["outputs_strictly_readable"] = all(strict)
 
-    raw = _fcs_columns(d / "sample.fcs", PIPELINE_FLUOR)
+    raw = _fcs_columns(d / "sample.fcs", PIPELINE_FLUOR + PIPELINE_SCATTER)
     comp_mask = _parquet_by_row(r / "s.comp.masks.parquet", rows)
     margin_removed = ~comp_mask["margin_pass"].astype(bool).to_numpy()
     # The detector limit recomputed independently: `$PnR - 1` only, no low bound.

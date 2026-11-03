@@ -74,8 +74,9 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
 - One input writes to `output`; several inputs, or an existing directory as
   `output`, write `<stem><suffix>.fcs` (default suffix `.transformed`) into it.
 - Without `channels`, every channel except obvious acquisition channels
-  (`Time`, event/cell length, `FSC-A/H/W`, `SSC-A/H/W`) and `Original_ID` is
-  transformed. Naming `Original_ID` in `channels` is an error
+  (`Time`, event/cell length and light scatter: `FSC…`/`SSC…`, a Navios's
+  `FS INT`/`SS PEAK`/`SS INT`/`SS TOF`, see `cytiq_fcs::is_scatter_channel`)
+  and `Original_ID` is transformed. Naming `Original_ID` in `channels` is an error
   (`ReservedChannel`): it is event lineage, not a measurement.
   Channels match `$PnN`, then `$PnS`, then `$PnN [$PnS]`.
 - Only `TransformFormat::Fcs` is implemented; `Csv` and `Parquet` are rejected.

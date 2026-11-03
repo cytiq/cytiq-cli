@@ -126,7 +126,7 @@ The optional detectors CSV uses the [AutoSpill detector format](../cytiq-autospi
   references/fluorophore_spectra.csv        component,kind,<detectors...>
   references/autospectral-references.json   detectors, spectra, condition number
   unmixed/<sample-stem>.unmixed.fcs         non-detector columns + one column per component
-  unmixed/<sample-stem>.unmixed.masks.parquet  raw detector `margin_pass` per event
+  unmixed/<sample-stem>.unmixed.masks.parquet  raw `margin_pass` per event (detectors and scatter)
   diagnostics/run.json                      AutoSpectralSummary
 <debug-dir>/summary.json                    same summary, only with --debug-dir
 ```

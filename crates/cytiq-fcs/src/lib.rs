@@ -31,7 +31,7 @@ use crate::text::{build_text, parse_segment_range, read_text_segment};
 use crate::types::{ByteRange, FcsText, Header};
 
 pub use crate::acquisition::{ACQUISITION_KEYWORD, acquisition_id, is_sha256, set_acquisition};
-pub use crate::channels::parse_channel_list;
+pub use crate::channels::{is_scatter_channel, parse_channel_list};
 pub use crate::compensation::{
     Spillover, compensate, condition_number_1, find_parameter_index, invert_matrix,
     is_spillover_keyword,
@@ -41,8 +41,8 @@ pub use crate::limits::FcsReadLimits;
 pub use crate::lineage::{ORIGINAL_ID_PARAMETER, source_event_ids};
 pub use crate::linear::{ensure_linear_scale, linear_values, log_amplified_parameters};
 pub use crate::margins::{
-    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds, raw_margin_pass,
-    recorded_margin_bounds,
+    MARGINS_KEYWORD, MarginBounds, dataset_margin_bounds, encode_margin_bounds, margin_channels,
+    raw_margin_pass, recorded_margin_bounds,
 };
 pub use crate::signal::{
     COMPENSATION_KEYWORD, CompensationState, NORMALIZATION_KEYWORD, NormalizationState,

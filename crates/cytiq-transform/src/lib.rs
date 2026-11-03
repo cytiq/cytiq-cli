@@ -1306,6 +1306,9 @@ fn write_parameters(dataset: &FcsDataset, channels: &[ResolvedChannel]) -> Vec<F
         .collect()
 }
 
+/// Time, event or cell length, or light scatter whatever the instrument calls
+/// it: a Navios's `FS INT` and `SS INT` were transformed like fluorescence
+/// when only `FSC-A/H/W` and `SSC-A/H/W` counted as scatter.
 fn is_acquisition_channel(parameter: &Parameter) -> bool {
     let name = normalize_channel_name(&parameter.name);
     matches!(
@@ -1317,13 +1320,7 @@ fn is_acquisition_channel(parameter: &Parameter) -> bool {
             | "CELL_LENGTH"
             | "CELL-LENGTH"
             | "CELLLENGTH"
-            | "FSC-A"
-            | "FSC-H"
-            | "FSC-W"
-            | "SSC-A"
-            | "SSC-H"
-            | "SSC-W"
-    )
+    ) || cytiq_fcs::is_scatter_channel(&parameter.name)
 }
 
 fn normalize_channel_name(value: &str) -> String {

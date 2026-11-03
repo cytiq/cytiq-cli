@@ -131,6 +131,44 @@ pub(crate) fn outline(
     }
 }
 
+/// Where a gate's label goes: the top-left corner of the gate's region on the
+/// plot, clamped onto it. A range gate's lines do not say which side its
+/// events are on (`T` ≥ 3 and `NonT` < 3 draw the same line), so its corner
+/// comes from its bounds: the lower bound on its axis, else the plot edge.
+/// Other gates use the top-left corner of their outline. `None` when nothing
+/// is drawn.
+pub(crate) fn label_anchor(
+    gate: &Gate,
+    axes: &AxisDimensions<'_>,
+    x: &Axis,
+    y: &Axis,
+    paths: &[Polyline],
+) -> Option<[f64; 2]> {
+    if paths.is_empty() {
+        return None;
+    }
+    let [left, top] = match &gate.kind {
+        GateKind::Rectangle { dimensions } if dimensions.len() == 1 => {
+            let dimension = &dimensions[0];
+            let side = side(dimension, axes).ok()?;
+            let unit = |axis: &Axis, bound: Option<f64>| {
+                bound
+                    .map(|bound| axis.unit(bound))
+                    .filter(|unit| unit.is_finite())
+            };
+            match side {
+                Side::X => [unit(x, dimension.min).unwrap_or(0.0), 1.0],
+                Side::Y => [0.0, unit(y, dimension.max).unwrap_or(1.0)],
+            }
+        }
+        _ => paths.iter().flat_map(|path| path.points.iter()).fold(
+            [f64::INFINITY, f64::NEG_INFINITY],
+            |[left, top], &[px, py]| [left.min(px), top.max(py)],
+        ),
+    };
+    Some([left.clamp(0.0, 1.0), top.clamp(0.0, 1.0)])
+}
+
 fn polygon(
     dimensions: &[Dimension; 2],
     vertices: &[[f64; 2]],
@@ -284,6 +322,7 @@ mod tests {
             data: None,
             display: Display::Linear,
             values: &[],
+            population: &[],
             range: Some((0.0, 100.0)),
             starts_at_zero: false,
         })
@@ -296,6 +335,7 @@ mod tests {
             data: None,
             display: Display::arcsinh(),
             values: &[],
+            population: &[],
             range: Some((0.0, 100.0)),
             starts_at_zero: false,
         })
@@ -390,6 +430,37 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].points, [[-BEYOND, 0.1], [1.0 + BEYOND, 0.1]]);
         assert!(!lines[0].closed);
+    }
+
+    #[test]
+    fn complementary_range_gates_label_their_own_side() {
+        // `T` ≥ 30 and `NonT` < 30 draw the same line; each label goes on
+        // its own gate's side of it, never at one shared corner.
+        let (cd3, ssc) = (dimension("CD3"), dimension("SSC-A"));
+        let range = |min: Option<f64>, max: Option<f64>| {
+            let mut bound = dimension("CD3");
+            (bound.min, bound.max) = (min, max);
+            gate(GateKind::Rectangle {
+                dimensions: vec![bound],
+            })
+        };
+        let anchor = |gate: &Gate, axes: &AxisDimensions<'_>| {
+            let paths = outline(gate, axes, &linear_axis(), &linear_axis()).unwrap();
+            label_anchor(gate, axes, &linear_axis(), &linear_axis(), &paths).unwrap()
+        };
+        let on_x = AxisDimensions {
+            x: Some(&cd3),
+            y: Some(&ssc),
+        };
+        let (positive, negative) = (range(Some(30.0), None), range(None, Some(30.0)));
+        assert_eq!(anchor(&positive, &on_x), [0.3, 1.0]);
+        assert_eq!(anchor(&negative, &on_x), [0.0, 1.0]);
+        let on_y = AxisDimensions {
+            x: Some(&ssc),
+            y: Some(&cd3),
+        };
+        assert_eq!(anchor(&positive, &on_y), [0.0, 1.0]);
+        assert_eq!(anchor(&negative, &on_y), [0.0, 0.3]);
     }
 
     #[test]

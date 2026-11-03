@@ -172,6 +172,25 @@ pub fn dataset_margin_bounds(
         .collect())
 }
 
+/// The channels an acquisition's raw margins are judged on: `detectors` (the
+/// channels compensation or unmixing mixes) followed by every other scatter
+/// channel ([`crate::is_scatter_channel`]). Scatter is never mixed, but its
+/// detectors saturate like any other: a `FlowCyt` bone-marrow case had 29% of
+/// its events at `$PnR - 1` on `FS INT`, and every one of them stayed in the
+/// analysis while only the fluorescence detectors were judged.
+#[must_use]
+pub fn margin_channels(dataset: &FcsDataset, detectors: &[usize]) -> Vec<usize> {
+    let scatter = dataset
+        .parameters
+        .iter()
+        .enumerate()
+        .filter(|(index, parameter)| {
+            !detectors.contains(index) && crate::is_scatter_channel(&parameter.name)
+        })
+        .map(|(index, _)| index);
+    detectors.iter().copied().chain(scatter).collect()
+}
+
 /// Per-event pass flags for the detector margins of `indices`: an event
 /// fails when it sits at or above the detector limit (`$PnR - 1`) of any
 /// listed channel. Only that limit counts ([`MarginBounds::detector_limit`]);

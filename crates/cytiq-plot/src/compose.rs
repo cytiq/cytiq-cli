@@ -374,14 +374,8 @@ impl Drawing<'_> {
                     },
                 },
             )?;
-            // Label at the outline's top-left corner.
-            let corner = paths.iter().flat_map(|path| path.points.iter()).fold(
-                None,
-                |corner: Option<[f64; 2]>, &[px, py]| {
-                    Some(corner.map_or([px, py], |[cx, cy]| [cx.min(px), cy.max(py)]))
-                },
-            );
-            if let Some(position) = corner {
+            let anchor = geometry::label_anchor(gate, &dimensions, &x.axis, &y.axis, &paths);
+            if let Some(position) = anchor {
                 let events = self.selection.units.len();
                 self.labels.push(Label {
                     position,

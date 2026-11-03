@@ -18,6 +18,13 @@ const MAJOR_TICK: f64 = 6.0;
 const MINOR_TICK: f64 = 3.0;
 /// Longest legend text before it is cut with an ellipsis.
 const LEGEND_TEXT_CHARS: usize = 24;
+/// Least distance from the frame top to a gate label's anchor: the label's
+/// baseline sits 4 px above it, so 11 px glyphs stay clear of the frame line.
+const LABEL_TOP_CLEARANCE: f64 = 16.0;
+/// Width allowed per character of a bold 11 px gate label, for collisions.
+const LABEL_CHAR_WIDTH: f64 = 7.0;
+/// Vertical step between gate labels that would overlap.
+const LABEL_LINE_HEIGHT: f64 = 14.0;
 
 /// SVG elements a plot may contain.
 const ALLOWED_ELEMENTS: [&str; 10] = [
@@ -238,19 +245,41 @@ fn axes(out: &mut String, spec: &PlotSpec) {
     );
 }
 
+/// Gate labels just above their anchor, in order. A label at the top edge
+/// keeps its glyphs below the frame line, and one that would overlap a label
+/// already placed moves down a line, so no label hides another.
 fn gate_labels(out: &mut String, frame: Frame, labels: &[Label]) {
+    let lowest = frame.top + frame.height - 4.0;
+    let mut placed: Vec<[f64; 3]> = Vec::with_capacity(labels.len());
     for label in labels {
         let x = frame
             .x(label.position[0].clamp(0.0, 1.0))
-            .clamp(frame.left + 2.0, frame.left + frame.width - 2.0);
-        let y = frame
+            .clamp(frame.left + 2.0, frame.left + frame.width - 2.0)
+            + 3.0;
+        let mut baseline = frame
             .y(label.position[1].clamp(0.0, 1.0))
-            .clamp(frame.top + 12.0, frame.top + frame.height - 4.0);
+            .clamp(frame.top + LABEL_TOP_CLEARANCE, lowest)
+            - 4.0;
+        #[allow(clippy::cast_precision_loss, reason = "labels are short")]
+        let width = label.text.chars().count() as f64 * LABEL_CHAR_WIDTH;
+        let overlaps = |baseline: f64| {
+            placed
+                .iter()
+                .any(|&[other_x, other_baseline, other_width]| {
+                    x < other_x + other_width
+                        && other_x < x + width
+                        && (baseline - other_baseline).abs() < LABEL_LINE_HEIGHT
+                })
+        };
+        while overlaps(baseline) && baseline + LABEL_LINE_HEIGHT <= lowest - 4.0 {
+            baseline += LABEL_LINE_HEIGHT;
+        }
+        placed.push([x, baseline, width]);
         let _ = write!(
             out,
             r##"<text x="{}" y="{}" font-weight="600" fill="{GATE_COLOR}" stroke="#FFFFFF" stroke-width="3" paint-order="stroke">{}</text>"##,
-            number(x + 3.0),
-            number(y - 4.0),
+            number(x),
+            number(baseline),
             escape(&label.text)
         );
     }

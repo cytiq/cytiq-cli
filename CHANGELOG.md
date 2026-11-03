@@ -1,9 +1,26 @@
 # Changelog
+## [0.2.0](https://github.com/cytiq/cytiq-cli/compare/0.1.2..0.2.0) - 2026-11-03
+
+### ⛰️  Features
+
+- *(plot)* Add cytiq plot for vector SVG density, scatter and contour plots ([#160](https://github.com/cytiq/cytiq-cli/issues/160)) - ([8d4790f](https://github.com/cytiq/cytiq-cli/commit/8d4790f7d5f07e9ce611983a400b72b474b5866b))
+
+### ⚙️ Miscellaneous Tasks
+
+- Cache Docker publication and measure Rust CI - ([8ae1640](https://github.com/cytiq/cytiq-cli/commit/8ae1640c5a2ff2c2763f4320387df02692428925))
+
+### Build
+
+- *(docker)* Compile Rust dependencies in a cargo-chef layer ([#162](https://github.com/cytiq/cytiq-cli/issues/162)) - ([f8b3718](https://github.com/cytiq/cytiq-cli/commit/f8b3718c935e760131af2588c5a46823e89f71ab))
 ## [0.1.2](https://github.com/cytiq/cytiq-cli/compare/0.1.1..0.1.2) - 2026-11-02
 
 ### ⛰️  Features
 
 - *(clean)* Add --debris-mode off ([#154](https://github.com/cytiq/cytiq-cli/issues/154)) - ([219244f](https://github.com/cytiq/cytiq-cli/commit/219244f8b727ac69e8e367e430af0374e5d101fb))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Update changelog for 0.1.2 ([#156](https://github.com/cytiq/cytiq-cli/issues/156)) - ([e1954db](https://github.com/cytiq/cytiq-cli/commit/e1954db47234e44a3c4dc84337fdd15464c5fef2))
 ## [0.1.1](https://github.com/cytiq/cytiq-cli/compare/0.1.0..0.1.1) - 2026-11-02
 
 ### ⚙️ Miscellaneous Tasks

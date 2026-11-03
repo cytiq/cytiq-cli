@@ -8,13 +8,14 @@ viewers.
 | --- | --- |
 | `density` | Pseudocolor: events binned on a `bins × bins` grid (default 256), coloured by log count |
 | `scatter` | Dots, sampled evenly to `--max-points` (default 10,000) per layer |
-| `contour` | Equal-probability contours (each band holds `--contour-step` of the events, default 10%) with outlier dots |
+| `contour` | Equal-probability contours (each band holds `--contour-step` of the events, default 10%; the events outside the outer contour are drawn as dots) |
 
 On any type:
 
 - `--mask` (repeatable, combined with AND) plots the kept events and draws the
-  removed ones in red underneath, counted in the legend (`--removed hide` drops
-  them).
+  removed ones over them in red, counted in the legend (`--removed hide` drops
+  them). Drawn underneath, removed events that share a density cell with kept
+  ones would not show at all.
 - `--gate` draws Gating-ML gates (polygon, rectangle, range, 2-D ellipsoid)
   with `id xx.x%` labels, the percentage of parent with the mask applied,
   which is `cytiq gate`'s `percent_of_parent` for the same masks.
@@ -83,7 +84,8 @@ unique ignoring case.
   `$TIMESTEP` applied). A gate dimension axis plots the values the gate is
   evaluated on (`GatingStrategy::dimension_values`: compensation and
   transformation per Gating-ML), so outlines and events share one space.
-- **Scale.** `auto` is linear for `FSC*`, `SSC*`, `Time*` and for channels
+- **Scale.** `auto` is linear for scatter (`FSC*`, `SSC*`, a Navios's `FS INT`
+  and `SS INT`: the channels `cytiq transform` leaves alone), `Time*` and for channels
   already transformed (`CYTIQ_TRANSFORM` or a Gating-ML transformation). Other
   raw channels use logicle with `T = $PnR`, `W = 0.5`, `M = 4.5`, `A = 0`.
   `logicle` and `arcsinh` (cofactor 150) are refused on transformed data.
@@ -91,10 +93,12 @@ unique ignoring case.
   placed through the recorded transform, as FlowJo does. Linear axes use 1-2-5
   steps (`50K`).
 - **Range.** The automatic range covers the 0.05–99.95% quantiles of all
-  events of the file, padded by 5%. It ignores masks and populations, so plots
-  of one file share axes. It includes zero on log-like axes and starts at 0 on
-  non-negative scatter channels. Events beyond it are drawn on the edge and
-  counted in a note.
+  events of the file, padded by 5%. It ignores masks, so plots of one file
+  share axes. A `--population` past it widens it to the population's own
+  quantiles, so a rare bright population (mast cells, 0.002% of a bone-marrow
+  sample) is drawn where it is instead of on the edge. It includes zero on
+  log-like axes and starts at 0 on non-negative scatter channels. Events beyond
+  it are drawn on the edge and counted in a note.
 
 ## Output
 

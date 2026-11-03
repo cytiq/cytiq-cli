@@ -712,11 +712,16 @@ fn write_beads(path: &Path) {
         .into_iter()
         .zip(["", "", "", "", "CD3", "CD4", ""])
         .map(|(name, label)| {
-            if label.is_empty() {
+            let mut parameter = if label.is_empty() {
                 cytiq_fcs::FcsWriteParameter::new(name)
             } else {
                 cytiq_fcs::FcsWriteParameter::with_label(name, label)
-            }
+            };
+            // An 18-bit instrument's range: without it `$PnR` is each column's
+            // maximum, and the constant FSC-W would put every bead at the
+            // detector limit `$PnR - 1`, a saturated scatter margin.
+            parameter.range = Some(262_144.0);
+            parameter
         })
         .collect::<Vec<_>>();
     let columns = vec![

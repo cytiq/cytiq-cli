@@ -4,6 +4,7 @@
 # FlowSOM metaclusters on the true good events.
 
 pipeline_fluor <- c("FL1-A", "FL2-A", "FL3-A", "FL4-A", "FL5-A", "FL6-A")
+pipeline_scatter <- c("FSC-A", "FSC-H", "FSC-W", "SSC-A")
 pipeline_qc_channels <- pipeline_fluor[1:5]
 
 run_pipeline <- function() {
@@ -20,8 +21,9 @@ run_pipeline <- function() {
     raw <- read.FCS(file.path(dataset_dir, "sample.fcs"), transformation = FALSE,
                     truncate_max_range = FALSE, emptyValue = FALSE)
 
-    # RemoveMargins on raw values, as PeacoQC recommends before compensation.
-    margins <- RemoveMargins(raw, channels = pipeline_fluor, output = "full")
+    # RemoveMargins on raw values, as PeacoQC recommends before compensation;
+    # cytiq judges scatter detectors too (`cytiq_fcs::margin_channels`).
+    margins <- RemoveMargins(raw, channels = c(pipeline_fluor, pipeline_scatter), output = "full")
     removed <- rep(0L, nrow(raw))
     removed[margins$indices_margins] <- 1L
     write.csv(data.frame(removed = removed), file.path(target, "r_margins.csv"), row.names = FALSE)

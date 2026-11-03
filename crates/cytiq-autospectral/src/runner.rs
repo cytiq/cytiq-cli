@@ -854,13 +854,15 @@ fn unmix_sample(
         path: sample.path.clone(),
         source,
     };
-    // Unmixing mixes the detectors: judge raw detector margins now.
+    // Unmixing mixes the detectors: judge raw detector margins now, and
+    // saturated scatter with them.
     let detector_indices = detectors
         .iter()
         .filter_map(|detector| sample.dataset.find_parameter(detector))
         .collect::<Vec<_>>();
+    let margin_indices = cytiq_fcs::margin_channels(&sample.dataset, &detector_indices);
     let margin_pass =
-        cytiq_fcs::raw_margin_pass(&sample.dataset, &detector_indices).map_err(read_error)?;
+        cytiq_fcs::raw_margin_pass(&sample.dataset, &margin_indices).map_err(read_error)?;
     let acquisition =
         cytiq_fcs::acquisition_id(&sample.path, &sample.dataset.text).map_err(read_error)?;
     let mask = EventMask::new(

@@ -83,9 +83,10 @@ impl CompensateRunner {
         );
 
         // Compensation mixes channels: this is the last point where raw
-        // detector margins can be identified.
+        // detector margins can be identified. Saturated scatter counts too.
+        let margin_indices = cytiq_fcs::margin_channels(&dataset, &matrix_indices);
         let margin_pass =
-            cytiq_fcs::raw_margin_pass(&dataset, &matrix_indices).map_err(read_error)?;
+            cytiq_fcs::raw_margin_pass(&dataset, &margin_indices).map_err(read_error)?;
         let (parameters, columns) = compensated_columns(&dataset, &matrix_indices, &matrix);
         let options = output_keywords(
             input,

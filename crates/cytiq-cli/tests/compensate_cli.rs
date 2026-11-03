@@ -352,6 +352,64 @@ fn gating_compensated_output_matches_gating_raw_with_fcs_compensation() {
     );
 }
 
+/// Scatter is never compensated, but its detectors saturate like any other:
+/// events at `$PnR - 1` on FSC or SSC fail `margin_pass` as they would on a
+/// matrix channel (a `FlowCyt` bone-marrow case had 29% of its events there).
+#[test]
+fn flags_saturated_scatter_as_a_margin() {
+    let directory = create_temp_dir("cytiq-cli-compensate-scatter-margin");
+    let source = fixture("gating", "sample.fcs");
+    let input = directory.join("saturated.fcs");
+    let dataset = read(&source);
+    let mut columns = dataset
+        .data
+        .columns
+        .iter()
+        .map(ColumnData::to_f64_vec)
+        .collect::<Vec<_>>();
+    let saturated = [("FSC-A", 0..5), ("SSC-A", 5..8)];
+    for (name, rows) in saturated {
+        let index = dataset.find_parameter(name).expect("scatter channel");
+        let limit = cytiq_fcs::MarginBounds::from_raw_parameter(&dataset.parameters[index])
+            .detector_limit();
+        assert!(limit.is_finite(), "{name} has a $PnR");
+        for row in rows {
+            columns[index][row] = limit;
+        }
+    }
+    let parameters = dataset
+        .parameters
+        .iter()
+        .map(cytiq_fcs::FcsWriteParameter::from_source)
+        .collect::<Vec<_>>();
+    cytiq_fcs::write_fcs3_1_f64_with_options(
+        &input,
+        &parameters,
+        &columns,
+        &cytiq_fcs::FcsWriteOptions::new()
+            .with_text_keywords(cytiq_fcs::carried_keywords(&dataset.text)),
+    )
+    .expect("saturated copy should write");
+
+    compensate(&input, &directory.join("saturated.comp.fcs"), &[]);
+    compensate(&source, &directory.join("plain.comp.fcs"), &[]);
+
+    let mask = |name: &str| {
+        EventMask::read_parquet(&directory.join(name)).expect("margin mask should be written")
+    };
+    let (saturated, plain) = (
+        mask("saturated.comp.masks.parquet"),
+        mask("plain.comp.masks.parquet"),
+    );
+    for (row, (kept, plain_kept)) in saturated.keep.iter().zip(&plain.keep).enumerate() {
+        if row < 8 {
+            assert!(!kept, "event {row} saturates a scatter detector");
+        } else {
+            assert_eq!(kept, plain_kept, "event {row} is as in the original file");
+        }
+    }
+}
+
 #[test]
 fn preserves_large_original_ids_exactly() {
     let directory = create_temp_dir("cytiq-cli-compensate-original-id");

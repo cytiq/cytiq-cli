@@ -100,8 +100,12 @@ pub(crate) fn compose(
     };
     let (x_source, y_source) = resolve_sources(request, &sample.dataset, &gates)?;
     let strategy = gating.as_ref().map(|gating| gating.strategy);
-    let x = build_axis(x_source, &request.x, "x", request, sample, strategy)?;
-    let y = build_axis(y_source, &request.y, "y", request, sample, strategy)?;
+    let x = build_axis(
+        x_source, &request.x, "x", request, sample, strategy, population,
+    )?;
+    let y = build_axis(
+        y_source, &request.y, "y", request, sample, strategy, population,
+    )?;
 
     let keep = sample.keep.as_deref();
     let selection = Selection::new(&x, &y, population, keep);
@@ -114,14 +118,12 @@ pub(crate) fn compose(
         max_points: request.max_points,
         selection: &selection,
     };
-    // Removed events go under the plotted ones: kept events stay readable
-    // and removed ones show wherever they do not overlap them.
-    let overlay = keep.is_some() && request.removed == RemovedLayer::Overlay;
-    if overlay {
-        drawing.points("removed by mask", REMOVED_COLOR, &selection.removed);
-    }
     drawing.base(request, sample)?;
-    if overlay {
+    // Removed events go over the plotted ones. Under a density cell they
+    // would vanish: on real data most removed events share cells with kept
+    // ones, and the legend would count dots nobody can see.
+    if keep.is_some() && request.removed == RemovedLayer::Overlay {
+        drawing.points("removed by mask", REMOVED_COLOR, &selection.removed);
         drawing.legend.push(LegendEntry {
             color: REMOVED_COLOR.to_owned(),
             text: format!("removed by mask ({})", count(selection.stats.removed)),
@@ -320,7 +322,8 @@ impl Drawing<'_> {
         let positions = selection.positions(&selection.shown);
         let histogram = Histogram::new(request.bins, positions.iter().copied());
         let surface = contour::smooth(&histogram, contour::bandwidth(&positions, request.bins));
-        let thresholds = contour::probability_thresholds(&surface, request.contour_step);
+        let thresholds =
+            contour::probability_thresholds(&surface, &histogram, request.contour_step);
         if let Some(&outer) = thresholds.first() {
             let outliers = selection
                 .shown
@@ -376,14 +379,8 @@ impl Drawing<'_> {
                     },
                 },
             )?;
-            // Label at the outline's top-left corner.
-            let corner = paths.iter().flat_map(|path| path.points.iter()).fold(
-                None,
-                |corner: Option<[f64; 2]>, &[px, py]| {
-                    Some(corner.map_or([px, py], |[cx, cy]| [cx.min(px), cy.max(py)]))
-                },
-            );
-            if let Some(position) = corner {
+            let anchor = geometry::label_anchor(gate, &dimensions, &x.axis, &y.axis, &paths);
+            if let Some(position) = anchor {
                 let events = self.selection.units.len();
                 self.labels.push(Label {
                     position,
@@ -657,6 +654,7 @@ fn build_axis<'a>(
     request: &PlotRequest,
     sample: &Sample,
     strategy: Option<&GatingStrategy>,
+    population: Option<&[bool]>,
 ) -> Result<ResolvedAxis<'a>, PlotError> {
     let dataset = &sample.dataset;
     let (values, channel, short, title, data, dimension) = match source {
@@ -719,11 +717,20 @@ fn build_axis<'a>(
         (ScaleChoice::Arcsinh, None) => Display::arcsinh(),
     };
     let starts_at_zero = display.is_linear() && data.is_none() && scatter;
+    let members = population.map_or_else(Vec::new, |members| {
+        values
+            .iter()
+            .zip(members)
+            .filter(|(_, member)| **member)
+            .map(|(value, _)| *value)
+            .collect()
+    });
     let built = Axis::new(AxisInput {
         title,
         data,
         display,
         values: &values,
+        population: &members,
         range: options.range,
         starts_at_zero,
     })
@@ -784,9 +791,10 @@ fn logicle_for(dataset: &FcsDataset, channel: Option<usize>, values: &[f64]) -> 
         .unwrap_or_else(|_| unreachable!("the default logicle parameters are valid"))
 }
 
+/// Scatter as `cytiq transform` recognises it (so a Navios's `FS INT` is
+/// linear here too), or time.
 fn is_scatter_or_time(name: &str) -> bool {
-    let upper = name.trim().to_ascii_uppercase();
-    upper.starts_with("FSC") || upper.starts_with("SSC") || upper.starts_with("TIME")
+    cytiq_fcs::is_scatter_channel(name) || name.trim().to_ascii_uppercase().starts_with("TIME")
 }
 
 /// The marker (`$PnS`) of a channel, else its `$PnN`.
@@ -971,6 +979,9 @@ mod tests {
         assert!(is_scatter_or_time("FSC-A"));
         assert!(is_scatter_or_time("ssc-h"));
         assert!(is_scatter_or_time("Time"));
+        assert!(is_scatter_or_time("FS INT"));
+        assert!(is_scatter_or_time("SS TOF"));
         assert!(!is_scatter_or_time("FL1-A"));
+        assert!(!is_scatter_or_time("FL1 INT"));
     }
 }

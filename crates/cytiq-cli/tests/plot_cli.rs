@@ -296,6 +296,109 @@ fn gate_labels_match_cytiq_gate_percent_of_parent() {
 }
 
 #[test]
+fn removed_events_are_drawn_over_the_density() {
+    // Under the density cells, removed events that share a cell with kept
+    // ones would not show at all (most of them, on real samples).
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let input = fixture("clean", "sample.fcs");
+    let mask = directory.path().join("analysis.parquet");
+    write_mask(&input, &mask, |event| event % 3 != 0);
+    let output = directory.path().join("density.svg");
+    run(&[
+        "plot",
+        "--input",
+        utf8(&input),
+        "--mask",
+        utf8(&mask),
+        "--x",
+        "FSC-A",
+        "--y",
+        "SSC-A",
+        "--output",
+        utf8(&output),
+    ]);
+    let svg = read_svg(&output);
+    let density = svg
+        .find(r#"shape-rendering="crispEdges""#)
+        .expect("density cells");
+    let removed = svg
+        .find(r##"<path fill="#E15759""##)
+        .expect("removed events");
+    assert!(
+        removed > density,
+        "removed events come after the density cells"
+    );
+}
+
+/// `(x, y, text)` of every gate label, in document order.
+fn gate_labels(svg: &str) -> Vec<(f64, f64, String)> {
+    let attribute = |element: &str, name: &str| -> f64 {
+        let start = element.find(&format!("{name}=\"")).expect("attribute") + name.len() + 2;
+        let end = start + element[start..].find('"').expect("closing quote");
+        element[start..end].parse().expect("number")
+    };
+    svg.split("<text ")
+        .filter(|element| element.contains(r##"font-weight="600" fill="#1F2933" stroke"##))
+        .map(|element| {
+            let start = element.find('>').expect("text start") + 1;
+            let end = element.find("</text>").expect("text end");
+            (
+                attribute(element, "x"),
+                attribute(element, "y"),
+                element[start..end].to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn complementary_range_gates_are_labelled_on_their_own_side() {
+    // `T` (CD3 ≥ 3) and `NonT` (CD3 < 3) draw one line; their labels used to
+    // share one spot right of it, `NonT` covering `T` on the CD3⁺ side.
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let transformed = transformed_pipeline_sample(directory.path());
+    let output = directory.path().join("cd3.svg");
+    run(&[
+        "plot",
+        "--input",
+        utf8(&transformed),
+        "--gating-ml",
+        utf8(&fixture("pipeline", "gates.xml")),
+        "--x",
+        "FL1-A",
+        "--y",
+        "SSC-A",
+        "--population",
+        "Lymphocytes",
+        "--gate",
+        "T",
+        "--gate",
+        "NonT",
+        "--output",
+        utf8(&output),
+    ]);
+    let labels = gate_labels(&read_svg(&output));
+    let find = |gate: &str| {
+        labels
+            .iter()
+            .find(|(_, _, text)| text.starts_with(&format!("{gate} ")))
+            .map_or_else(
+                || panic!("{gate} label in {labels:?}"),
+                |(x, y, _)| (*x, *y),
+            )
+    };
+    let (t_x, t_y) = find("T");
+    let (non_t_x, non_t_y) = find("NonT");
+    assert!(
+        non_t_x < t_x,
+        "NonT on the CD3⁻ side, left of T: {labels:?}"
+    );
+    // Default frame top is 62 px: 11 px glyphs on a baseline at least 12 px
+    // below it stay clear of the frame line.
+    assert!(t_y >= 74.0 && non_t_y >= 74.0, "{labels:?}");
+}
+
+#[test]
 fn rejects_gates_that_cannot_be_drawn_on_the_plot() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let input = fixture("gating", "sample.fcs");

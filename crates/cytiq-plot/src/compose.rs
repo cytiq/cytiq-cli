@@ -791,9 +791,10 @@ fn logicle_for(dataset: &FcsDataset, channel: Option<usize>, values: &[f64]) -> 
         .unwrap_or_else(|_| unreachable!("the default logicle parameters are valid"))
 }
 
+/// Scatter as `cytiq transform` recognises it (so a Navios's `FS INT` is
+/// linear here too), or time.
 fn is_scatter_or_time(name: &str) -> bool {
-    let upper = name.trim().to_ascii_uppercase();
-    upper.starts_with("FSC") || upper.starts_with("SSC") || upper.starts_with("TIME")
+    cytiq_fcs::is_scatter_channel(name) || name.trim().to_ascii_uppercase().starts_with("TIME")
 }
 
 /// The marker (`$PnS`) of a channel, else its `$PnN`.
@@ -978,6 +979,9 @@ mod tests {
         assert!(is_scatter_or_time("FSC-A"));
         assert!(is_scatter_or_time("ssc-h"));
         assert!(is_scatter_or_time("Time"));
+        assert!(is_scatter_or_time("FS INT"));
+        assert!(is_scatter_or_time("SS TOF"));
         assert!(!is_scatter_or_time("FL1-A"));
+        assert!(!is_scatter_or_time("FL1 INT"));
     }
 }

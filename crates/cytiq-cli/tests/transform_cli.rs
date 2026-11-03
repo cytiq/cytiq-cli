@@ -649,6 +649,65 @@ fn assert_f32_column_close(column: Option<&ColumnData>, expected: &[f64]) {
     }
 }
 
+/// A Navios names its scatter `FS INT`, `SS PEAK`, `SS INT` and `SS TOF`; they
+/// were transformed like fluorescence when only `FSC-A/H/W` and `SSC-A/H/W`
+/// counted as scatter, so gates and plots saw asinh scatter.
+#[test]
+fn transform_leaves_instrument_scatter_channels_linear() {
+    let directory = create_temp_dir("cytiq-cli-transform-navios");
+    let raw =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/flowcyt/Case12_P.fcs");
+    let compensated = directory.join("case12.comp.fcs");
+    let transformed = directory.join("case12.t.fcs");
+    let compensate = Command::new(env!("CARGO_BIN_EXE_cytiq"))
+        .args([
+            "compensate",
+            "--input",
+            utf8(&raw),
+            "--output",
+            utf8(&compensated),
+        ])
+        .output()
+        .expect("command should run");
+    assert!(
+        compensate.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&compensate.stderr)
+    );
+    let output = run_transform(&[utf8(&compensated), "--output", utf8(&transformed)]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let read = |path: &Path| {
+        FcsReader::open(path)
+            .and_then(FcsReader::read)
+            .expect("FCS should be readable")
+    };
+    let (before, after) = (read(&compensated), read(&transformed));
+    let record: serde_json::Value =
+        serde_json::from_str(after.text.get("CYTIQ_TRANSFORM").expect("transform record"))
+            .expect("transform record is JSON");
+    let channels = record["files"][0]["channels"]
+        .as_array()
+        .expect("transformed channels")
+        .iter()
+        .map(|channel| channel.as_str().expect("channel name"))
+        .collect::<Vec<_>>();
+    let fluorescence = (1..=10).map(|n| format!("FL{n} INT")).collect::<Vec<_>>();
+    assert_eq!(channels, fluorescence, "only fluorescence is transformed");
+    for scatter in ["FS INT", "SS PEAK", "SS INT", "SS TOF"] {
+        let index = after.find_parameter(scatter).expect("scatter channel");
+        assert_eq!(
+            after.data.column(index).map(ColumnData::to_f64_vec),
+            before.data.column(index).map(ColumnData::to_f64_vec),
+            "{scatter} keeps its values"
+        );
+    }
+}
+
 fn create_temp_dir(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)

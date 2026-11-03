@@ -84,7 +84,8 @@ unique ignoring case.
   `$TIMESTEP` applied). A gate dimension axis plots the values the gate is
   evaluated on (`GatingStrategy::dimension_values`: compensation and
   transformation per Gating-ML), so outlines and events share one space.
-- **Scale.** `auto` is linear for `FSC*`, `SSC*`, `Time*` and for channels
+- **Scale.** `auto` is linear for scatter (`FSC*`, `SSC*`, a Navios's `FS INT`
+  and `SS INT`: the channels `cytiq transform` leaves alone), `Time*` and for channels
   already transformed (`CYTIQ_TRANSFORM` or a Gating-ML transformation). Other
   raw channels use logicle with `T = $PnR`, `W = 0.5`, `M = 4.5`, `A = 0`.
   `logicle` and `arcsinh` (cofactor 150) are refused on transformed data.

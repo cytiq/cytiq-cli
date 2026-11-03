@@ -114,14 +114,12 @@ pub(crate) fn compose(
         max_points: request.max_points,
         selection: &selection,
     };
-    // Removed events go under the plotted ones: kept events stay readable
-    // and removed ones show wherever they do not overlap them.
-    let overlay = keep.is_some() && request.removed == RemovedLayer::Overlay;
-    if overlay {
-        drawing.points("removed by mask", REMOVED_COLOR, &selection.removed);
-    }
     drawing.base(request, sample)?;
-    if overlay {
+    // Removed events go over the plotted ones. Under a density cell they
+    // would vanish: on real data most removed events share cells with kept
+    // ones, and the legend would count dots nobody can see.
+    if keep.is_some() && request.removed == RemovedLayer::Overlay {
+        drawing.points("removed by mask", REMOVED_COLOR, &selection.removed);
         drawing.legend.push(LegendEntry {
             color: REMOVED_COLOR.to_owned(),
             text: format!("removed by mask ({})", count(selection.stats.removed)),

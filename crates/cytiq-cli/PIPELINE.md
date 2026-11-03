@@ -30,7 +30,7 @@ cytiq flowsom    --input sample.t.fcs --output flowsom.csv --channels CD3,CD4,CD
   --mask sample.analysis.parquet
 cytiq plot       --input sample.fcs --x FSC-A --y SSC-A --output fsc_ssc.raw.svg
 cytiq plot       --input sample.fcs --mask sample.analysis.parquet \
-  --x FSC-A --y SSC-A --output fsc_ssc.qc.svg            # kept events, removed ones beneath
+  --x FSC-A --y SSC-A --output fsc_ssc.qc.svg            # kept events, removed ones over them
 cytiq plot       --input sample.t.fcs --mask sample.analysis.parquet --gating-ml gates.xml \
   --population T --gate CD4T --gate CD8T --type contour --output t_cd4_cd8.svg
 cytiq plot       --input sample.t.fcs --color-by flowsom.csv --type scatter \

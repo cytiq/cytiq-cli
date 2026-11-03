@@ -13,8 +13,9 @@ viewers.
 On any type:
 
 - `--mask` (repeatable, combined with AND) plots the kept events and draws the
-  removed ones in red underneath, counted in the legend (`--removed hide` drops
-  them).
+  removed ones over them in red, counted in the legend (`--removed hide` drops
+  them). Drawn underneath, removed events that share a density cell with kept
+  ones would not show at all.
 - `--gate` draws Gating-ML gates (polygon, rectangle, range, 2-D ellipsoid)
   with `id xx.x%` labels, the percentage of parent with the mask applied,
   which is `cytiq gate`'s `percent_of_parent` for the same masks.

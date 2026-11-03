@@ -296,6 +296,41 @@ fn gate_labels_match_cytiq_gate_percent_of_parent() {
 }
 
 #[test]
+fn removed_events_are_drawn_over_the_density() {
+    // Under the density cells, removed events that share a cell with kept
+    // ones would not show at all (most of them, on real samples).
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let input = fixture("clean", "sample.fcs");
+    let mask = directory.path().join("analysis.parquet");
+    write_mask(&input, &mask, |event| event % 3 != 0);
+    let output = directory.path().join("density.svg");
+    run(&[
+        "plot",
+        "--input",
+        utf8(&input),
+        "--mask",
+        utf8(&mask),
+        "--x",
+        "FSC-A",
+        "--y",
+        "SSC-A",
+        "--output",
+        utf8(&output),
+    ]);
+    let svg = read_svg(&output);
+    let density = svg
+        .find(r#"shape-rendering="crispEdges""#)
+        .expect("density cells");
+    let removed = svg
+        .find(r##"<path fill="#E15759""##)
+        .expect("removed events");
+    assert!(
+        removed > density,
+        "removed events come after the density cells"
+    );
+}
+
+#[test]
 fn rejects_gates_that_cannot_be_drawn_on_the_plot() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let input = fixture("gating", "sample.fcs");

@@ -37,8 +37,11 @@ Releases go through `.github/workflows/cd.yml`, which calls the reusable workflo
 Images record that commit in `CYTIQ_BUILD_COMMIT` and carry SBOM and provenance attestations. The release jobs need the `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`, `GPG_FINGERPRINT` and `GH_TOKEN` secrets.
 
 Docker publication opts into the platform-specific registry layer cache in `cytiq-ci` 0.2.0. Cache export failures
-do not hide build failures or block a successful publication. Registry layers do not persist Cargo cache mounts.
-Keep the reusable workflow pinned to a released tag after rollout validation.
+do not hide build failures or block a successful publication. `docker/Dockerfile` compiles the dependencies with
+cargo-chef in a layer of their own, keyed by a recipe of the manifests and lockfile with the workspace version masked.
+Source changes and release version bumps reuse that layer; any dependency change in `Cargo.lock` rebuilds it. The
+workspace crates and the fat-LTO link of `cytiq` always rebuild. The `package.yml` job reads the amd64 release cache
+and never writes it. Keep the reusable workflow pinned to a released tag after rollout validation.
 
 Rust checks keep their `quality` and `test` names and parallel runners. Optional `ci-cache-*` artifacts record
 exact Cargo cache hits for the organization usage report; telemetry failures do not affect correctness checks.

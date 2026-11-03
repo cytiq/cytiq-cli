@@ -2,6 +2,7 @@
 
 use std::fmt::Write as _;
 
+use cytiq_density::sample_indices;
 use cytiq_fcs::FcsDataset;
 use cytiq_gating::{Gate, GateKind, GatingResults, GatingStrategy};
 use plotly::common::{Line, Marker, Mode, Title};
@@ -9,7 +10,7 @@ use plotly::layout::{Axis, BarMode};
 use plotly::{Histogram, Layout, Plot, Scatter};
 
 use crate::error::CleanError;
-use crate::filter::{CLEAN_GATE, FilterReport, sample_indices};
+use crate::filter::{CLEAN_GATE, FilterReport};
 use crate::runner::CleanMetrics;
 
 /// Events drawn per scatter plot; enough to show the shape, small enough to

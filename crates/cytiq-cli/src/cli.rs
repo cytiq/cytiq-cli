@@ -5,6 +5,7 @@ use cytiq_compensate::MatrixKind as CompensateMatrixKind;
 use cytiq_cytoscan::{FeatureMethod, FlagMethod};
 use cytiq_gating::OutputFormat as GateOutputFormat;
 use cytiq_peacoqc::PeacoQcMethod;
+use cytiq_plot::{OutputFormat, Palette, PlotKind, RemovedLayer, ScaleChoice};
 use cytiq_transform::{TransformFormat, TransformMethod};
 use serde::Serialize;
 
@@ -21,6 +22,7 @@ use crate::commands::gate::GateArgs;
 use crate::commands::mask::MaskCommand;
 use crate::commands::meta::MetaArgs;
 use crate::commands::peacoqc::PeacoqcArgs;
+use crate::commands::plot::PlotArgs;
 use crate::commands::preflight::PreflightArgs;
 use crate::commands::qc::QcArgs;
 use crate::commands::spillqc::SpillqcArgs;
@@ -61,6 +63,9 @@ pub(crate) enum Commands {
     /// Work with per-event masks (`masks.parquet`) written by cytiq stages.
     #[command(subcommand)]
     Mask(MaskCommand),
+    /// Render 2D density, scatter or contour plots of an FCS file as vector
+    /// SVG (or Plotly JSON), with removed events, gates and classes overlaid.
+    Plot(PlotArgs),
     /// Check a run manifest and its FCS files before any computation; exits
     /// with 1 when a check fails.
     Preflight(PreflightArgs),
@@ -161,6 +166,100 @@ impl From<CliGateOutputFormat> for GateOutputFormat {
         match value {
             CliGateOutputFormat::Csv => Self::Csv,
             CliGateOutputFormat::Json => Self::Json,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CliPlotKind {
+    /// Pseudocolor: events binned and coloured by log density.
+    Density,
+    /// Dots, sampled evenly to `--max-points`.
+    Scatter,
+    /// Equal-probability contours with outlier dots.
+    Contour,
+}
+
+impl From<CliPlotKind> for PlotKind {
+    fn from(value: CliPlotKind) -> Self {
+        match value {
+            CliPlotKind::Density => Self::Density,
+            CliPlotKind::Scatter => Self::Scatter,
+            CliPlotKind::Contour => Self::Contour,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CliPlotScale {
+    /// Linear for scatter, time and transformed channels; logicle otherwise.
+    Auto,
+    Linear,
+    Logicle,
+    /// `asinh(x / 150)`.
+    Arcsinh,
+}
+
+impl From<CliPlotScale> for ScaleChoice {
+    fn from(value: CliPlotScale) -> Self {
+        match value {
+            CliPlotScale::Auto => Self::Auto,
+            CliPlotScale::Linear => Self::Linear,
+            CliPlotScale::Logicle => Self::Logicle,
+            CliPlotScale::Arcsinh => Self::Arcsinh,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CliPalette {
+    /// FlowJo-style blue to red.
+    Pseudocolor,
+    Viridis,
+}
+
+impl From<CliPalette> for Palette {
+    fn from(value: CliPalette) -> Self {
+        match value {
+            CliPalette::Pseudocolor => Self::Pseudocolor,
+            CliPalette::Viridis => Self::Viridis,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CliRemovedLayer {
+    Overlay,
+    Hide,
+}
+
+impl From<CliRemovedLayer> for RemovedLayer {
+    fn from(value: CliRemovedLayer) -> Self {
+        match value {
+            CliRemovedLayer::Overlay => Self::Overlay,
+            CliRemovedLayer::Hide => Self::Hide,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CliPlotFormat {
+    /// Vector SVG.
+    Svg,
+    /// Plotly figure JSON.
+    Plotly,
+}
+
+impl From<CliPlotFormat> for OutputFormat {
+    fn from(value: CliPlotFormat) -> Self {
+        match value {
+            CliPlotFormat::Svg => Self::Svg,
+            CliPlotFormat::Plotly => Self::Plotly,
         }
     }
 }
@@ -293,6 +392,7 @@ pub(crate) const fn command_name(command: &Commands) -> &'static str {
         Commands::Gate(_) => "gate",
         Commands::Mask(MaskCommand::Combine { .. }) => "mask combine",
         Commands::Meta(_) => "meta",
+        Commands::Plot(_) => "plot",
         Commands::Preflight(_) => "preflight",
         Commands::Qc(_) => "qc",
         Commands::Compensate(_) => "compensate",

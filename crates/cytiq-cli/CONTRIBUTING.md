@@ -55,7 +55,7 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
   `io::ErrorKind::InvalidInput`. Do not `panic!` or call `process::exit` in a
   command arm.
 - `--overwrite` is passed through to the library, which enforces it
-  (`transform`, `meta`, `compensate`, `mask combine`). `meta` maps
+  (`transform`, `meta`, `compensate`, `mask combine`, `plot`). `meta` maps
   `--output -` to stdout before building `MetaConfig`.
 
 ## Adding a subcommand
@@ -106,7 +106,9 @@ Test files: `autospill_cli.rs`, `autospectral_cli.rs`, `clean_cli.rs`,
 `mask_cli.rs`, `meta_cli.rs`, `parity_smoke.rs` (autospill, AutoSpectral,
 PeacoQC, CytoScan and CompensAID against the R outputs in
 `data/fixtures/parity`), `peacoqc_cli.rs`, `pipeline_cli.rs` (the whole chain
-on `data/fixtures/pipeline` against per-event truth), `preflight_cli.rs`,
+on `data/fixtures/pipeline` against per-event truth), `plot_cli.rs` (every
+plot type, masks, gates checked against `cytiq gate`, classes, batch output,
+determinism), `preflight_cli.rs`,
 `qc_cli.rs`, `spillqc_cli.rs`, `transform_cli.rs`. `tests/common/mod.rs` holds `assert_provenance`,
 `assert_provenance_chain` and `adjusted_rand_index`.
 `channels_cli.rs` pins the channel flag errors of every command.

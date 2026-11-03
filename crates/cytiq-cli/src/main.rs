@@ -50,6 +50,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Gate(args) => commands::gate::run(args, recorder),
         Commands::Compensate(args) => commands::compensate::run(args, recorder),
         Commands::Mask(command) => commands::mask::run(command, recorder),
+        Commands::Plot(args) => commands::plot::run(args, recorder),
         Commands::Preflight(args) => commands::preflight::run(args, recorder),
         Commands::Qc(args) => commands::qc::run(args, recorder),
         Commands::Meta(args) => commands::meta::run(args, recorder),

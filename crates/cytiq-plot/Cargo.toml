@@ -1,0 +1,29 @@
+[package]
+name = "cytiq-plot"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arrow-array = "60.1.0"
+csv = "1.3.1"
+cytiq-density = { path = "../cytiq-density" }
+cytiq-fcs = { path = "../cytiq-fcs" }
+cytiq-gating = { path = "../cytiq-gating" }
+cytiq-mask = { path = "../cytiq-mask" }
+cytiq-publish = { path = "../cytiq-publish" }
+cytiq-transform = { path = "../cytiq-transform" }
+log = "0.4.30"
+parquet = { version = "60.1.0", default-features = false, features = ["arrow", "zstd"] }
+plotly = "0.14.1"
+roxmltree = "0.21.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde-saphyr = "2.0.0"
+serde_json = "1.0.150"
+thiserror = "2.0.17"
+
+[dev-dependencies]
+arrow-schema = "60.1.0"
+tempfile = "3"
+
+[lints]
+workspace = true

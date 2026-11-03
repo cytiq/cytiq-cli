@@ -652,6 +652,7 @@ dependencies = [
  "cytiq-mask",
  "cytiq-meta",
  "cytiq-peacoqc",
+ "cytiq-plot",
  "cytiq-preflight",
  "cytiq-provenance",
  "cytiq-qc",
@@ -825,6 +826,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-plot"
+version = "0.1.2"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "csv",
+ "cytiq-density",
+ "cytiq-fcs",
+ "cytiq-gating",
+ "cytiq-mask",
+ "cytiq-publish",
+ "cytiq-transform",
+ "log",
+ "parquet",
+ "plotly",
+ "roxmltree",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cytiq-preflight"
 version = "0.1.2"
 dependencies = [
@@ -905,6 +930,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 

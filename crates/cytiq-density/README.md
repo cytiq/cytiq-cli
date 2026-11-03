@@ -9,7 +9,8 @@ workflow crates. It has no dependencies and no CLI command of its own.
 | [`cytiq-peacoqc`](../cytiq-peacoqc) | `density` for per-channel peak detection, `smooth_spline_fitted` for MAD outliers |
 | [`cytiq-spillqc`](../cytiq-spillqc) | `degate_upper_cuts` for CompensAID's channel cut-offs, `median` |
 | [`cytiq-transform`](../cytiq-transform) | `quantile_type7` for `estimateLogicle` |
-| [`cytiq-clean`](../cytiq-clean) | `density`, `find_valleys`, `gate_events`, `quantile_type7`, `median`, `robust_spread` |
+| [`cytiq-clean`](../cytiq-clean) | `density`, `find_valleys`, `gate_events`, `quantile_type7`, `median`, `robust_spread`, `sample_indices` |
+| [`cytiq-plot`](../cytiq-plot) | `quantile_type7` for axis ranges, `sample_indices` for drawn events |
 
 ## What it provides
 
@@ -45,6 +46,9 @@ workflow crates. It has no dependencies and no CLI command of its own.
   convex hull around the dense core. Returns the gated event indices, the hull
   vertices and peak-search diagnostics in `GateComputation`.
 - **`convex_hull`**, **`point_in_polygon`** — the geometry used by the gate.
+- **`sample_indices`** — evenly spaced, deterministic subset of the events a
+  mask selects, at most `limit` (`0` means no limit). Used for fitting subsets
+  and for the events a plot draws.
 - **`find_valleys`** — density minima between well-separated populations of a
   1-D KDE (for example live/dead or debris/cells). Peaks below
   `DEFAULT_MIN_PEAK_FRACTION` (5%) of the tallest are dropped, and neighbouring
@@ -78,6 +82,7 @@ println!("{} events in gate", gate.gated_indices.len());
 | `convex_hull`, `point_in_polygon` | 2-D hull and inclusion test (points on the boundary count as inside) |
 | `find_valleys`, `Valley`, `DEFAULT_MIN_PEAK_FRACTION`, `DEFAULT_MAX_VALLEY_RATIO` | Valleys between populations of a 1-D density |
 | `smooth_spline_fitted`, `smooth_spline_fitted_xy` | R `smooth.spline(spar)` fitted values |
+| `sample_indices` | Deterministic evenly spaced subsample of masked events |
 | `degate_upper_cuts`, `DeGate`, `DEFAULT_TINYPEAK_REMOVAL` | flowDensity `deGate(all.cuts = TRUE, upper = TRUE)` |
 
 ## Numeric parity

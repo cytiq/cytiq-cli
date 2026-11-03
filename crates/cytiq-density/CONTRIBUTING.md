@@ -12,6 +12,7 @@ this crate.
 - `src/scatter_gate.rs` — AutoSpill FSC/SSC `gate_events`, the 2-D KDE grid and
   peak search, `convex_hull`, `point_in_polygon`, `median`, `mad`.
 - `src/valley.rs` — `find_valleys` and its default thresholds.
+- `src/sampling.rs` — `sample_indices`, the deterministic event subsample.
 - `src/smooth_spline.rs` — `smooth_spline_fitted` / `smooth_spline_fitted_xy`,
   port of R `stats::smooth.spline(spar = ...)` (`sbart.c`, `sgram.f`,
   `stxwx.f`, `sslvrg.f`, `.nknots.smspl`, the `0.3330` constant).
@@ -41,8 +42,9 @@ this crate.
   by `splinefun` at the same points, which agrees except across an exact-zero
   gap, where R follows round-off (see the module docs). Keep the first-zero
   rule rather than imitating the round-off.
-- Shared by five crates (`cytiq-autospill`, `cytiq-peacoqc`, `cytiq-clean`,
-  `cytiq-transform`, `cytiq-spillqc`). A behaviour change here changes all of
+- Shared by the workflow crates (`cytiq-autospill`, `cytiq-autospectral`,
+  `cytiq-peacoqc`, `cytiq-clean`, `cytiq-cytonorm`, `cytiq-transform`,
+  `cytiq-spillqc`, `cytiq-plot`). A behaviour change here changes all of
   their outputs; run the whole workspace test suite, not only this crate's.
 - Keep the crate dependency-free.
 

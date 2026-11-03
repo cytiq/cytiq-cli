@@ -1106,6 +1106,101 @@ impl TransformOperator {
     }
 }
 
+/// The per-value forward transform a `cytiq transform` output was written
+/// with, rebuilt from its `CYTIQ_TRANSFORM` keyword.
+///
+/// `apply` maps a linear value to the value `cytiq transform` stores for it,
+/// with the same semantics as the command (logicle on `[0, M]`, hyperlog on
+/// `[0, 1]`, biexponential on `[0, length]`). Consumers use it to place raw
+/// decades on axes of transformed data without re-implementing the scales.
+#[derive(Clone, Debug)]
+pub struct ValueTransform {
+    method: TransformMethod,
+    operator: TransformOperator,
+}
+
+impl ValueTransform {
+    /// Rebuild the transform from a validated [`cytiq_fcs::TransformContract`].
+    ///
+    /// # Errors
+    ///
+    /// Rejects an unknown method, a missing or non-finite parameter, a
+    /// non-positive arcsinh cofactor, and scale parameters the reference
+    /// implementations refuse.
+    pub fn from_contract(contract: &cytiq_fcs::TransformContract) -> Result<Self, TransformError> {
+        let method = contract.method.as_str();
+        let invalid = |field: &'static str| TransformError::InvalidTransformContract {
+            method: contract.method.clone(),
+            field,
+        };
+        let field = |section: &serde_json::Value, name: &'static str| {
+            section
+                .get(name)
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite())
+                .ok_or_else(|| invalid(name))
+        };
+        let parameters = &contract.parameters;
+        let mut config = TransformConfig::new(Vec::new(), PathBuf::new());
+        config.method = match method {
+            "arcsinh" => {
+                config.cofactor = field(parameters, "cofactor")?;
+                if config.cofactor <= 0.0 {
+                    return Err(invalid("cofactor"));
+                }
+                TransformMethod::Arcsinh
+            }
+            "logicle" | "hyperlog" => {
+                let section = &parameters[method];
+                config.logicle = LogicleParameters {
+                    t: field(section, "t")?,
+                    m: field(section, "m")?,
+                    w: field(section, "w")?,
+                    a: field(section, "a")?,
+                };
+                if method == "logicle" {
+                    TransformMethod::Logicle
+                } else {
+                    TransformMethod::Hyperlog
+                }
+            }
+            "biexponential" => {
+                let section = &parameters[method];
+                config.biexponential = BiexponentialParameters {
+                    length: field(section, "length")?,
+                    max_range: field(section, "max_range")?,
+                    pos: field(section, "pos")?,
+                    neg: field(section, "neg")?,
+                    width: field(section, "width")?,
+                };
+                if config.biexponential.length <= 0.0 {
+                    return Err(invalid("length"));
+                }
+                TransformMethod::Biexponential
+            }
+            other => {
+                return Err(TransformError::UnsupportedTransformContract {
+                    method: other.to_owned(),
+                });
+            }
+        };
+        Ok(Self {
+            method: config.method,
+            operator: TransformOperator::from_config(&config)?,
+        })
+    }
+
+    /// The method this transform implements.
+    pub const fn method(&self) -> TransformMethod {
+        self.method
+    }
+
+    /// Transform one linear value.
+    pub fn apply(&self, value: f64) -> f64 {
+        self.operator.apply(value)
+    }
+}
+
 /// Stage the output beside its target and rename it into place, so neither a
 /// failed write nor a same-file transform ever leaves a partial FCS behind.
 fn write_fcs_output(

@@ -42,6 +42,10 @@ pub enum TransformError {
     InvalidNonNegativeParameter { parameter: &'static str },
     #[error("{parameter} must be finite")]
     InvalidFiniteParameter { parameter: &'static str },
+    #[error("`CYTIQ_TRANSFORM` method `{method}` has a missing or invalid `{field}` parameter")]
+    InvalidTransformContract { method: String, field: &'static str },
+    #[error("`CYTIQ_TRANSFORM` method `{method}` is not a supported transform")]
+    UnsupportedTransformContract { method: String },
     #[error("invalid {method} parameters: {message}")]
     InvalidScaleParameters {
         method: &'static str,

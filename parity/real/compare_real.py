@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +32,21 @@ CLASSIFY_PARITY_TOLERANCE = 1e-5
 
 def _r(value: float, digits: int = 6) -> float:
     return float(f"{value:.{digits}g}")
+
+
+def is_scatter(name: str) -> bool:
+    """`cytiq_fcs::is_scatter_channel`, independently: FSC…/SSC…, a first word FS or SS, or an FSC/SSC word."""
+    upper = name.strip().upper()
+    words = [word for word in re.split(r"[ ._-]", upper) if word]
+    return upper.startswith(("FSC", "SSC")) or (bool(words) and words[0] in ("FS", "SS")) or any(
+        word in ("FSC", "SSC") for word in words[1:]
+    )
+
+
+def scatter_channels(path: Path) -> list[str]:
+    flow = flowio.FlowData(str(path), ignore_offset_discrepancy=True)
+    names = [flow.text[f"p{i + 1}n"] for i in range(flow.channel_count)]
+    return [name for name in names if is_scatter(name)]
 
 
 def read_columns(path: Path, channels: list[str]) -> tuple[np.ndarray, dict]:
@@ -105,8 +121,10 @@ def compare_flowsom_68983(directory: Path) -> dict:
 
 def compare_qc_chain(directory: Path) -> dict:
     channels = (directory / "channels.txt").read_text().strip().split(",")
-    raw, ranges = read_columns(directory / "sample.fcs", channels)
-    upper = np.array([ranges[channel] - 1 for channel in channels])
+    # The margin mask judges the matrix channels and every scatter channel.
+    margin_channels = channels + [c for c in scatter_channels(directory / "sample.fcs") if c not in channels]
+    raw, ranges = read_columns(directory / "sample.fcs", margin_channels)
+    upper = np.array([ranges[channel] - 1 for channel in margin_channels])
     # The detector limit recomputed independently: `$PnR - 1` only, no low bound.
     at_limit = (raw >= upper).any(axis=1)
     comp = pq.read_table(directory / "sample.comp.masks.parquet").to_pandas().sort_values("source_event_id")

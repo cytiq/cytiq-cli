@@ -92,10 +92,12 @@ unique ignoring case.
   placed through the recorded transform, as FlowJo does. Linear axes use 1-2-5
   steps (`50K`).
 - **Range.** The automatic range covers the 0.05–99.95% quantiles of all
-  events of the file, padded by 5%. It ignores masks and populations, so plots
-  of one file share axes. It includes zero on log-like axes and starts at 0 on
-  non-negative scatter channels. Events beyond it are drawn on the edge and
-  counted in a note.
+  events of the file, padded by 5%. It ignores masks, so plots of one file
+  share axes. A `--population` past it widens it to the population's own
+  quantiles, so a rare bright population (mast cells, 0.002% of a bone-marrow
+  sample) is drawn where it is instead of on the edge. It includes zero on
+  log-like axes and starts at 0 on non-negative scatter channels. Events beyond
+  it are drawn on the edge and counted in a note.
 
 ## Output
 

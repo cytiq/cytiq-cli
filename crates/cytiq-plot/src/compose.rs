@@ -100,8 +100,12 @@ pub(crate) fn compose(
     };
     let (x_source, y_source) = resolve_sources(request, &sample.dataset, &gates)?;
     let strategy = gating.as_ref().map(|gating| gating.strategy);
-    let x = build_axis(x_source, &request.x, "x", request, sample, strategy)?;
-    let y = build_axis(y_source, &request.y, "y", request, sample, strategy)?;
+    let x = build_axis(
+        x_source, &request.x, "x", request, sample, strategy, population,
+    )?;
+    let y = build_axis(
+        y_source, &request.y, "y", request, sample, strategy, population,
+    )?;
 
     let keep = sample.keep.as_deref();
     let selection = Selection::new(&x, &y, population, keep);
@@ -650,6 +654,7 @@ fn build_axis<'a>(
     request: &PlotRequest,
     sample: &Sample,
     strategy: Option<&GatingStrategy>,
+    population: Option<&[bool]>,
 ) -> Result<ResolvedAxis<'a>, PlotError> {
     let dataset = &sample.dataset;
     let (values, channel, short, title, data, dimension) = match source {
@@ -712,11 +717,20 @@ fn build_axis<'a>(
         (ScaleChoice::Arcsinh, None) => Display::arcsinh(),
     };
     let starts_at_zero = display.is_linear() && data.is_none() && scatter;
+    let members = population.map_or_else(Vec::new, |members| {
+        values
+            .iter()
+            .zip(members)
+            .filter(|(_, member)| **member)
+            .map(|(value, _)| *value)
+            .collect()
+    });
     let built = Axis::new(AxisInput {
         title,
         data,
         display,
         values: &values,
+        population: &members,
         range: options.range,
         starts_at_zero,
     })

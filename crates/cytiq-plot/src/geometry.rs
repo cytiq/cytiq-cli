@@ -322,6 +322,7 @@ mod tests {
             data: None,
             display: Display::Linear,
             values: &[],
+            population: &[],
             range: Some((0.0, 100.0)),
             starts_at_zero: false,
         })
@@ -334,6 +335,7 @@ mod tests {
             data: None,
             display: Display::arcsinh(),
             values: &[],
+            population: &[],
             range: Some((0.0, 100.0)),
             starts_at_zero: false,
         })

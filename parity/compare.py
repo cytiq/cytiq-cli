@@ -183,12 +183,18 @@ def spillqc_agreement(upstream: Path, rust: Path) -> dict:
         na_mismatches += int((rows[f"{column}_r"].isna() != rows[f"{column}_x"].isna()).sum())
     counts = ["event_count", "event_count_merge"]
     count_mismatches = sum(int((rows[f"{c}_r"].fillna(-1) != rows[f"{c}_x"].fillna(-1)).sum()) for c in counts)
-    r_matrix = pd.read_csv(upstream / "ssi_matrix.csv", index_col=0)
-    x_matrix = pd.read_csv(rust / "ssi_matrix.csv", index_col=0).loc[r_matrix.index, r_matrix.columns]
+    r_full = pd.read_csv(upstream / "ssi_matrix.csv", index_col=0)
+    x_full = pd.read_csv(rust / "ssi_matrix.csv", index_col=0)
+    # A channel only one side rates is a disagreement to report, not a KeyError.
+    channel_mismatches = sorted(set(r_full.index) ^ set(x_full.index))
+    common = [channel for channel in r_full.index if channel in x_full.index]
+    r_matrix, x_matrix = r_full.loc[common, common], x_full.loc[common, common]
     off = ~np.eye(len(r_matrix), dtype=bool)
     r_flags, x_flags = _flag(r_matrix.to_numpy(float))[off], _flag(x_matrix.to_numpy(float))[off]
     same = (r_flags == x_flags) | (np.isnan(r_flags) & np.isnan(x_flags))
     return {
+        "channel_mismatches": len(channel_mismatches),
+        "channels_rated_by_one_side": channel_mismatches,
         "segment_rows": {"upstream": len(r_info), "rust": len(x_info), "matched": len(rows)},
         "cutoff_max_abs": max_abs(cuts["cutoff_r"], cuts["cutoff_x"]),
         "segment_values_max_abs": max(max_abs(rows[f"{c}_r"], rows[f"{c}_x"]) for c in SPILLQC_NUMERIC),

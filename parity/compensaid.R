@@ -4,7 +4,7 @@
 # The CompensAID vignette chain on each raw tube: RemoveMargins, compensate
 # with $SPILL, estimateLogicle + transform and PeacoQC over the spillover
 # channels (the vignette passes every column; cytiq uses the spillover
-# channels), the marker channels, then CompensAID with its defaults.
+# channels), the marker channels among them, then CompensAID with its defaults.
 compensaid_chain <- function(path) {
   suppressPackageStartupMessages({ library(PeacoQC); library(CompensAID) })
   ff <- read.FCS(path, truncate_max_range = FALSE)
@@ -16,7 +16,10 @@ compensaid_chain <- function(path) {
   pq <- suppressWarnings(PeacoQC(ff, channels = channels, determine_good_cells = "all", plot = FALSE,
                                  save_fcs = FALSE, report = FALSE, output_directory = NULL,
                                  suppress_message = TRUE))
-  pq$FinalFF[, names(markernames(pq$FinalFF))]
+  # The marker channels the matrix compensates, as cytiq spillqc picks them: markernames()
+  # drops only time/fsc/ssc names, and a Kaluza export labels a Navios's `FS INT`,
+  # `SS PEAK`, `SS INT` and `SS TOF` too, which CompensAID would then rate as fluorochromes.
+  pq$FinalFF[, intersect(names(markernames(pq$FinalFF)), channels)]
 }
 
 # CompensAID's matrix, matrixInfo and the .DensityGating cut-offs it starts from.

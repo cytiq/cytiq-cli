@@ -318,7 +318,8 @@ impl Drawing<'_> {
         let positions = selection.positions(&selection.shown);
         let histogram = Histogram::new(request.bins, positions.iter().copied());
         let surface = contour::smooth(&histogram, contour::bandwidth(&positions, request.bins));
-        let thresholds = contour::probability_thresholds(&surface, request.contour_step);
+        let thresholds =
+            contour::probability_thresholds(&surface, &histogram, request.contour_step);
         if let Some(&outer) = thresholds.first() {
             let outliers = selection
                 .shown

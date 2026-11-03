@@ -8,7 +8,7 @@ viewers.
 | --- | --- |
 | `density` | Pseudocolor: events binned on a `bins × bins` grid (default 256), coloured by log count |
 | `scatter` | Dots, sampled evenly to `--max-points` (default 10,000) per layer |
-| `contour` | Equal-probability contours (each band holds `--contour-step` of the events, default 10%) with outlier dots |
+| `contour` | Equal-probability contours (each band holds `--contour-step` of the events, default 10%; the events outside the outer contour are drawn as dots) |
 
 On any type:
 

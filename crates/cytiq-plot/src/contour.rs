@@ -3,9 +3,14 @@
 //! The histogram is smoothed with a separable Gaussian whose width follows
 //! Scott's rule (`h = spread · n^(-1/6)` per axis, with a robust spread), so
 //! sparse populations get smooth contours and isolated events fall outside
-//! the outer contour as outliers. Thresholds are then
-//! chosen so the region above the `k`-th threshold holds `1 − k · step` of
-//! the smoothed mass (`FlowJo`'s equal-probability contouring). Marching
+//! the outer contour as outliers. Thresholds are then chosen so the region
+//! above the `k`-th threshold holds `1 − k · step` of the *events*
+//! (`FlowJo`'s equal-probability contouring): cells are ranked by the
+//! smoothed surface but weighed by the events they hold. Weighing them by the
+//! smoothed mass instead lets the smoothing set the fractions: a wide kernel
+//! over separate clusters spreads mass into empty space, and the `50%`
+//! contour of the CD4/CD8/DN T cells of the pipeline fixture held 64% of
+//! them. Marching
 //! squares on a zero-padded grid gives closed lines; segment ends are keyed by
 //! the integer id of the grid edge they lie on, so stitching is exact and the
 //! output deterministic.
@@ -106,21 +111,27 @@ fn gaussian_kernel(sigma: f64) -> Vec<f64> {
     weights.into_iter().map(|weight| weight / total).collect()
 }
 
-/// Thresholds, outermost (lowest) first, whose super-level sets hold
-/// `1 − step, 1 − 2·step, …` of the surface's mass. Empty when the surface
-/// has no mass.
-pub(crate) fn probability_thresholds(surface: &Surface, step: f64) -> Vec<f64> {
-    let mut values = surface
-        .values
+/// Thresholds, outermost (lowest) first, whose super-level sets of `surface`
+/// hold `1 − step, 1 − 2·step, …` of the events of `histogram` (the surface
+/// smooths it). Empty when the histogram holds no events.
+pub(crate) fn probability_thresholds(
+    surface: &Surface,
+    histogram: &Histogram,
+    step: f64,
+) -> Vec<f64> {
+    // Occupied cells, densest first by the smoothed surface, with their events.
+    let mut cells = histogram
+        .counts
         .iter()
-        .copied()
-        .filter(|value| *value > 0.0)
+        .zip(&surface.values)
+        .filter(|(count, _)| **count > 0)
+        .map(|(count, value)| (*value, f64::from(*count)))
         .collect::<Vec<_>>();
-    let total = values.iter().sum::<f64>();
-    if total.is_nan() || total <= 0.0 {
+    let total = cells.iter().map(|(_, events)| events).sum::<f64>();
+    if total <= 0.0 {
         return Vec::new();
     }
-    values.sort_unstable_by(|a, b| b.total_cmp(a));
+    cells.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
     let mut thresholds = Vec::new();
     let mut level = 1;
     loop {
@@ -130,9 +141,9 @@ pub(crate) fn probability_thresholds(surface: &Surface, step: f64) -> Vec<f64> {
             break;
         }
         let mut cumulative = 0.0;
-        let mut threshold = values[values.len() - 1];
-        for value in &values {
-            cumulative += value;
+        let mut threshold = cells[cells.len() - 1].0;
+        for (value, events) in &cells {
+            cumulative += events;
             if cumulative >= enclosed * total {
                 threshold = *value;
                 break;
@@ -333,7 +344,7 @@ mod tests {
         let points = gaussian_points(20_000, [0.5, 0.5], 0.1);
         let histogram = Histogram::new(64, points.iter().copied());
         let surface = smooth(&histogram, bandwidth(&points, 64));
-        let thresholds = probability_thresholds(&surface, 0.1);
+        let thresholds = probability_thresholds(&surface, &histogram, 0.1);
         assert_eq!(thresholds.len(), 9);
         assert!(thresholds.windows(2).all(|pair| pair[0] < pair[1]));
         let lines = contour_lines(&surface, thresholds[0]);
@@ -355,7 +366,7 @@ mod tests {
         let points = gaussian_points(50_000, [0.4, 0.6], 0.08);
         let histogram = Histogram::new(128, points.iter().copied());
         let surface = smooth(&histogram, bandwidth(&points, 128));
-        let outer = probability_thresholds(&surface, 0.1)[0];
+        let outer = probability_thresholds(&surface, &histogram, 0.1)[0];
         let inside = points
             .iter()
             .filter(|point| surface.values[histogram.cell_of(**point)] >= outer)
@@ -393,13 +404,43 @@ mod tests {
         points.push([0.95, 0.05]);
         let histogram = Histogram::new(256, points.iter().copied());
         let surface = smooth(&histogram, bandwidth(&points, 256));
-        let outer = probability_thresholds(&surface, 0.1)[0];
+        let outer = probability_thresholds(&surface, &histogram, 0.1)[0];
         assert!(surface.values[histogram.cell_of([0.95, 0.05])] < outer);
     }
 
     #[test]
     fn empty_surface_has_no_thresholds() {
-        let surface = smooth(&Histogram::new(16, std::iter::empty()), [1.0, 1.0]);
-        assert_eq!(probability_thresholds(&surface, 0.1), Vec::<f64>::new());
+        let histogram = Histogram::new(16, std::iter::empty());
+        let surface = smooth(&histogram, [1.0, 1.0]);
+        assert_eq!(
+            probability_thresholds(&surface, &histogram, 0.1),
+            Vec::<f64>::new()
+        );
+    }
+
+    /// Every level of three separate clusters of different sizes holds its
+    /// share of the events, although the robust spread of all of them sets a
+    /// wide kernel that spreads their mass into the space between them.
+    #[test]
+    fn every_level_of_separate_clusters_holds_its_share_of_the_events() {
+        let mut points = gaussian_points(6_000, [0.25, 0.3], 0.03);
+        points.extend(gaussian_points(3_000, [0.7, 0.7], 0.05));
+        points.extend(gaussian_points(1_000, [0.3, 0.75], 0.02));
+        let histogram = Histogram::new(256, points.iter().copied());
+        let surface = smooth(&histogram, bandwidth(&points, 256));
+        let thresholds = probability_thresholds(&surface, &histogram, 0.1);
+        assert_eq!(thresholds.len(), 9);
+        for (level, threshold) in thresholds.iter().enumerate() {
+            let inside = points
+                .iter()
+                .filter(|point| surface.values[histogram.cell_of(**point)] >= *threshold)
+                .count();
+            let fraction = inside as f64 / points.len() as f64;
+            let expected = 1.0 - 0.1 * (level + 1) as f64;
+            assert!(
+                (fraction - expected).abs() < 0.01,
+                "level {level}: {fraction}"
+            );
+        }
     }
 }

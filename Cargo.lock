@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-autospectral"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-density",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-autospill"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-classify"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-clean"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cytiq-density",
  "cytiq-fcs",
@@ -634,7 +634,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "clap",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-compensate"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-fcs",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-cytonorm"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-cytoscan"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-fcs",
@@ -722,11 +722,11 @@ dependencies = [
 
 [[package]]
 name = "cytiq-density"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "cytiq-fcs"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "log",
  "proptest",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-flowsom"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-fcs",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-gating"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-fcs",
@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-manifest"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-mask"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-meta"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cytiq-fcs",
  "cytiq-provenance",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-peacoqc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-density",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-plot"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-preflight"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cytiq-compensate",
  "cytiq-fcs",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-provenance"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cytiq-publish",
  "log",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-publish"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "tempfile",
  "thiserror",
@@ -885,7 +885,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-qc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cytiq-fcs",
  "cytiq-manifest",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-spillqc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-compensate",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "cytiq-transform"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "csv",
  "cytiq-density",

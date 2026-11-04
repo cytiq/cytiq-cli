@@ -1,0 +1,17 @@
+# Stage one reports risk without failing on scores or regressions.
+threshold = 30.0
+fail-above = false
+fail-regression = false
+missing = "pessimistic"
+try-weight = 1.0
+epsilon = 0.01
+# Match llvm-cov's test-file exclusions too: helpers in out-of-line
+# #[cfg(test)] modules otherwise look like untested production functions.
+exclude = [
+    "**/build.rs",
+    "**/fuzz/**",
+    "**/tests/**",
+    "**/tests.rs",
+    "**/*_tests.rs",
+    "**/*-tests.rs",
+]

@@ -119,6 +119,21 @@ lock:
 test:
     cargo test --workspace
 
+# ---- Run the CI test suite once with LLVM line coverage (see CONTRIBUTING.md)
+[group('quality')]
+coverage:
+    bash .github/scripts/crap.sh coverage
+
+# ---- Report CRAP and baseline deltas from an existing successful coverage run
+[group('quality')]
+crap:
+    bash .github/scripts/crap.sh report
+
+# ---- Test the report validation and summary without installing coverage tools
+[group('quality')]
+crap-check:
+    python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
 # ---- Format the codebase
 [group('quality')]
 fmt:
@@ -137,6 +152,7 @@ verify:
     just lint
     just test
     just performance-check
+    just crap-check
 
 # ---- Start Docker
 [group('ci-cd')]

@@ -25,12 +25,15 @@ Use `just` as the primary command runner. The recipes wrap the same Cargo comman
 - `just fmt` formats the codebase with `rustfmt`.
 - `just lint` runs Clippy with warnings denied.
 - `just test` runs the workspace test suite.
+- `just coverage` runs the CI test suite with LLVM line coverage.
+- `just crap` reports CRAP and baseline deltas from that coverage run.
+- `just crap-check` tests report validation without coverage tools.
 - `just verify` runs the standard local quality gate.
 - `just performance-check` checks the algorithm benchmark harness; `just performance --help`
   describes the paired CLI benchmarks in [`performance/`](performance/README.md).
 - `just docker-build` verifies container changes.
 
-Before opening a pull request, run `just verify`. CI enforces the equivalent checks on every pull request with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` (job `quality`) and `cargo test --workspace --locked` (job `test`). The release build and the Docker image (`.github/workflows/package.yml`, job `docker`) take about six minutes, so they run only on pull requests that change manifests, the lockfile, `build.rs`, `cytiq-classify`, its fixtures or `docker/`, plus weekly and on demand; run `just docker-build` locally when a change can affect packaging in other ways.
+Before opening a pull request, run `just verify`. CI enforces the equivalent checks on every pull request with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` (job `quality`) and `cargo test --workspace --locked` under coverage instrumentation (job `test`). The release build and the Docker image (`.github/workflows/package.yml`, job `docker`) take about six minutes, so they run only on pull requests that change manifests, the lockfile, `build.rs`, `cytiq-classify`, its fixtures or `docker/`, plus weekly and on demand; run `just docker-build` locally when a change can affect packaging in other ways.
 
 Releases go through `.github/workflows/cd.yml`, which calls the reusable workflows of [`cytiq-ci`](https://github.com/cytiq/cytiq-ci).
 1. Pushing an `X.Y.Z-rcN` tag opens a `chore/update-changelog-X.Y.Z` PR with `CHANGELOG.md`, `RELEASE_NOTES.md` (git-cliff, `cliff.toml`) and the workspace version bump in `Cargo.toml`/`Cargo.lock`. It also publishes `ghcr.io/cytiq/cytiq-cli:X.Y.Z-rcN` for `linux/amd64` and `linux/arm64`, each built on a native runner.
@@ -59,6 +62,60 @@ more than 10%. It never controls Docker or Rust runners.
 `.github/workflows/fuzz.yml` fuzzes the FCS reader and the spillover parser for one minute a target on pull requests that change `cytiq-fcs`, for ten minutes weekly, and on demand. It is not a required check. A crash uploads its input as an artifact; turn it into a regression test as `crates/cytiq-fcs/CONTRIBUTING.md` describes. `cargo test` replays the saved regressions on every run.
 
 The parity suites against the upstream R/Python tools run locally, not in CI: installing the R environment takes too long for hosted runners. Run `just parity-setup` once, then `just parity` and `just parity-real` before merging a change that can move results; a violated tolerance exits non-zero. CI still runs a scientific smoke test (`crates/cytiq-cli/tests/parity_smoke.rs`) against R outputs committed in `data/fixtures/parity`; regenerate them with `just parity-smoke-fixture` when the generator, a dataset size or an upstream pin changes, never to make a cytiq change pass. Keep `parity/tolerances.json` and `parity/real/tolerances.json` honest: every rule states why its bound holds.
+
+## Coverage and CRAP
+
+Install the same versions used by CI:
+
+```sh
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --version 0.9.1 --locked
+cargo install cargo-crap --version 0.9.0 --locked
+just coverage
+just crap
+```
+
+`just coverage` uses `cargo llvm-cov show-env --sh` and runs the existing
+`cargo test --workspace --locked`, the Python performance/report tests and the
+`performance_support` Rust example tests once. Plain Cargo preserves doctests;
+their own coverage instrumentation is not enabled on stable. Instrumented
+dependencies live in `target/coverage`, separate from ordinary local builds.
+CI caches this directory under the existing `test` job and saves only on `main`.
+`just test` and `just verify` do not require coverage tools or collect coverage.
+
+`just crap` reads `target/quality/lcov.info` without running tests. The
+`crap-report` CI artifact contains the full absolute `crap.json`, the full
+`crap-delta.json`, `summary.md`, LCOV and `coverage-run.json` (test success,
+source revision, platform, compiler, coverage-tool version and input hashes).
+Artifacts are retained for 35 days. The job summary lists per-crate metrics,
+functions above 30, maximum CRAP, regressions and the top 30 functions.
+The top-30 limit applies only to the summary; JSON and baseline contain every
+analyzed function. CI uses the same scripts as the `just` recipes.
+
+CRAP combines cyclomatic complexity and **line** coverage:
+`CC² × (1 − coverage / 100)³ + CC`. At 100% coverage it still equals CC.
+The threshold of 30 is an initial reporting choice, not a standard or an
+active quality gate. `.cargo-crap.toml` keeps both `fail-above` and
+`fail-regression` disabled. Scores and regressions do not fail CI; failed
+tests, tool installation, invalid reports, missing baselines and zero
+source/LCOV overlap do. Missing coverage remains visible and is scored as 0%.
+Test code, examples, benches, fuzz targets and build scripts are not scored.
+This metric complements scientific parity and future mutation/branch coverage
+checks; it does not replace them.
+
+The reviewed Linux CI reference lives in `.github/crap-baseline.json`, with
+its collection provenance in `.github/crap-baseline-run.json`. CI never updates
+either file. To intentionally refresh it, download `crap-report` from a
+successful Linux `test` job, review the full absolute report and changes to
+the compiler, tool versions or exclusions, then copy its `crap.json` and
+`coverage-run.json` to those two paths in a reviewed PR. Keep the absolute
+report sorted by file and never use a delta report or a top-30 selection as
+a baseline. Local macOS reports are useful for investigation but do not
+replace the Linux reference. Record the originating Actions run in the PR.
+For initial collection or a tool-version migration, the explicit
+`bash .github/scripts/crap.sh baseline` command generates an absolute candidate
+after `coverage`, without reading or modifying the checked-in reference;
+use it in the Linux CI preparation commit, then restore `report` before merge.
 
 ## Coding Style
 

@@ -81,6 +81,8 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: target/coverage
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -89,20 +91,39 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
       - name: Cache Cargo artifacts
         id: cargo-cache
         uses: Swatinem/rust-cache@v2
         with:
+          key: coverage-v1
+          workspaces: . -> target/coverage
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Run tests
-        run: cargo test --workspace --locked
+      # Cache restoration can restore installed Cargo binaries as well.
+      - name: Install coverage and CRAP tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1,cargo-crap@0.9.0
 
-      - name: Test performance harness
-        run: |
-          python3 -m unittest discover -s performance -p 'test_*.py'
-          cargo test -p cytiq-cli --example performance_support --locked
+      - name: Test and collect coverage
+        id: coverage
+        run: bash .github/scripts/crap.sh coverage
+
+      - name: Report CRAP
+        id: crap
+        run: bash .github/scripts/crap.sh report
+
+      - name: Upload CRAP report
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' && steps.crap.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: crap-report
+          path: target/quality/
+          if-no-files-found: error
+          retention-days: 35
 
       - *cache-telemetry
       - *upload-cache-telemetry

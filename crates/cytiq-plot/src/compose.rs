@@ -23,7 +23,9 @@ use crate::palette::{
     self, CATEGORICAL, GATE_COLOR, OTHER_COLOR, POINT_COLOR, REMOVED_COLOR, UNLABELLED_COLOR,
 };
 use crate::sample::Sample;
-use crate::spec::{AxisSpec, Frame, LEGEND_ROW_HEIGHT, Label, Layer, LegendEntry, PlotSpec};
+use crate::spec::{
+    AxisSpec, Frame, LEGEND_ROW_HEIGHT, Label, Layer, LegendEntry, PlotSpec, Polyline,
+};
 
 /// Logicle defaults of `cytiq transform` (and FlowJo): `W`, `M`, `A`.
 const LOGICLE_W: f64 = 0.5;
@@ -33,6 +35,9 @@ const LOGICLE_A: f64 = 0.0;
 const LOGICLE_DEFAULT_T: f64 = 262_144.0;
 const GATE_LINE_WIDTH: f64 = 1.5;
 const CONTOUR_LINE_WIDTH: f64 = 1.0;
+const HISTOGRAM_LINE_WIDTH: f64 = 1.5;
+/// Headroom above the tallest histogram bin.
+const HISTOGRAM_HEADROOM: f64 = 1.05;
 
 /// Event counts behind one plot.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -76,6 +81,9 @@ pub(crate) fn compose(
     sample: &Sample,
 ) -> Result<(PlotSpec, PlotStats), PlotError> {
     request.validate()?;
+    if request.kind == PlotKind::Histogram {
+        return compose_histogram(request, sample);
+    }
     let plot = request.name.as_str();
     if request.color_by && sample.classes.is_none() {
         return Err(PlotError::ColorByWithoutClasses {
@@ -177,6 +185,214 @@ pub(crate) fn compose(
         legend,
     };
     Ok((spec, stats))
+}
+
+/// A one-channel histogram: the `x` axis as any plot builds it, counts of the
+/// shown (and, overlaid, the removed) events per bin on a linear `y` axis.
+fn compose_histogram(
+    request: &PlotRequest,
+    sample: &Sample,
+) -> Result<(PlotSpec, PlotStats), PlotError> {
+    let plot = request.name.as_str();
+    let gating = gating(request, sample)?;
+    let population = match (&request.population, &gating) {
+        (Some(id), Some(gating)) => {
+            Some(
+                gating
+                    .results
+                    .membership(id)
+                    .ok_or_else(|| PlotError::UnknownGate {
+                        plot: plot.to_owned(),
+                        gate: id.clone(),
+                    })?,
+            )
+        }
+        _ => None,
+    };
+    let channel = request.x.channel.as_deref().unwrap_or_default();
+    let index =
+        sample
+            .dataset
+            .find_parameter(channel)
+            .ok_or_else(|| PlotError::MissingChannel {
+                channel: channel.to_owned(),
+                available: available_channels(&sample.dataset),
+            })?;
+    let strategy = gating.as_ref().map(|gating| gating.strategy);
+    let x = build_axis(
+        Source::Channel(index),
+        &request.x,
+        "x",
+        request,
+        sample,
+        strategy,
+        population,
+    )?;
+    let keep = sample.keep.as_deref();
+    let counts = HistogramCounts::of(&x, request.bins, population, keep);
+    let overlay = keep.is_some() && request.removed == RemovedLayer::Overlay;
+    let peak = counts.peak(overlay);
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "event counts stay far below 2^52"
+    )]
+    let top = (peak as f64 * HISTOGRAM_HEADROOM).max(1.0);
+    let y = Axis::new(AxisInput {
+        title: "Events".to_owned(),
+        data: None,
+        display: Display::Linear,
+        values: &[0.0, top],
+        population: &[],
+        range: Some((0.0, top)),
+        starts_at_zero: true,
+    })
+    .expect("a positive linear range is a valid axis");
+    let (layers, mut legend) = histogram_layers(&counts, &y, overlay);
+    let frame = Frame::new(request.width, request.height, !legend.is_empty()).ok_or_else(|| {
+        PlotError::InvalidOption {
+            plot: plot.to_owned(),
+            field: "width",
+            message: "leaves too little room for the plot area".to_owned(),
+        }
+    })?;
+    fit_legend(&mut legend, frame);
+    let stats = counts.stats;
+    let spec = PlotSpec {
+        name: plot.to_owned(),
+        title: request
+            .title
+            .clone()
+            .unwrap_or_else(|| format!("{}: {}", sample.name, x.short)),
+        subtitle: subtitle(request, &stats, keep.is_some(), sample),
+        notes: selection_notes(&stats, keep.is_some()),
+        width: request.width,
+        height: request.height,
+        frame,
+        x: AxisSpec {
+            ticks: x.axis.ticks(frame.width),
+            title: x.axis.title.clone(),
+        },
+        y: AxisSpec {
+            ticks: y.ticks(frame.height),
+            title: y.title.clone(),
+        },
+        layers,
+        labels: Vec::new(),
+        legend,
+    };
+    Ok((spec, stats))
+}
+
+/// The outline of the shown events and, when overlaid, of the removed ones.
+fn histogram_layers(
+    counts: &HistogramCounts,
+    y: &Axis,
+    overlay: bool,
+) -> (Vec<Layer>, Vec<LegendEntry>) {
+    let mut layers = vec![Layer::Lines {
+        name: "events".to_owned(),
+        color: POINT_COLOR.to_owned(),
+        width: HISTOGRAM_LINE_WIDTH,
+        paths: vec![step_outline(&counts.shown, y)],
+    }];
+    let mut legend = Vec::new();
+    if overlay {
+        layers.push(Layer::Lines {
+            name: "removed by mask".to_owned(),
+            color: REMOVED_COLOR.to_owned(),
+            width: HISTOGRAM_LINE_WIDTH,
+            paths: vec![step_outline(&counts.removed, y)],
+        });
+        legend.push(LegendEntry {
+            color: REMOVED_COLOR.to_owned(),
+            text: format!("removed by mask ({})", count(counts.stats.removed)),
+        });
+    }
+    (layers, legend)
+}
+
+/// Per-bin counts of a histogram's `x` axis in unit space.
+struct HistogramCounts {
+    shown: Vec<u64>,
+    removed: Vec<u64>,
+    stats: PlotStats,
+}
+
+impl HistogramCounts {
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "bins are at most MAX_BINS and the unit position is clamped to [0, 1]"
+    )]
+    fn of(
+        x: &ResolvedAxis<'_>,
+        bins: usize,
+        population: Option<&[bool]>,
+        keep: Option<&[bool]>,
+    ) -> Self {
+        let mut counts = Self {
+            shown: vec![0; bins],
+            removed: vec![0; bins],
+            stats: PlotStats {
+                events: x.values.len(),
+                ..PlotStats::default()
+            },
+        };
+        for (event, value) in x.values.iter().enumerate() {
+            if population.is_some_and(|members| !members[event]) {
+                continue;
+            }
+            let unit = x.axis.unit(*value);
+            if !unit.is_finite() {
+                counts.stats.non_finite += 1;
+                continue;
+            }
+            if !(0.0..=1.0).contains(&unit) {
+                counts.stats.off_scale += 1;
+            }
+            let bin = ((unit.clamp(0.0, 1.0) * bins as f64) as usize).min(bins - 1);
+            if keep.is_none_or(|keep| keep[event]) {
+                counts.shown[bin] += 1;
+                counts.stats.shown += 1;
+            } else {
+                counts.removed[bin] += 1;
+                counts.stats.removed += 1;
+            }
+        }
+        counts
+    }
+
+    fn peak(&self, with_removed: bool) -> u64 {
+        let shown = self.shown.iter().copied().max().unwrap_or(0);
+        let removed = self.removed.iter().copied().max().unwrap_or(0);
+        if with_removed {
+            shown.max(removed)
+        } else {
+            shown
+        }
+    }
+}
+
+/// The step outline of per-bin counts, from the baseline at the left edge to
+/// the baseline at the right edge.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "bins are at most MAX_BINS, counts far below 2^52"
+)]
+fn step_outline(counts: &[u64], y: &Axis) -> Polyline {
+    let bins = counts.len() as f64;
+    let mut points = vec![[0.0, 0.0]];
+    for (bin, count) in counts.iter().enumerate() {
+        let height = y.unit(*count as f64);
+        points.push([bin as f64 / bins, height]);
+        points.push([(bin + 1) as f64 / bins, height]);
+    }
+    points.push([1.0, 0.0]);
+    Polyline {
+        points,
+        closed: false,
+    }
 }
 
 /// Which events a plot shows, and where they sit.
@@ -313,6 +529,7 @@ impl Drawing<'_> {
             }
             PlotKind::Scatter => self.points("events", POINT_COLOR, &selection.shown),
             PlotKind::Contour => self.contours(request),
+            PlotKind::Histogram => unreachable!("histograms are composed by compose_histogram"),
         }
         Ok(())
     }

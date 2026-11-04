@@ -1,7 +1,7 @@
 # cytiq-plot
 
-FlowJo-style 2-D plots of one FCS file as vector SVG, and the `cytiq plot`
-command. Optionally writes the same plot as Plotly figure JSON for interactive
+FlowJo-style plots of one FCS file as vector SVG (2-D plots and 1-D
+histograms), and the `cytiq plot` command. Optionally writes the same plot as Plotly figure JSON for interactive
 viewers.
 
 | Type | Shows |
@@ -9,6 +9,7 @@ viewers.
 | `density` | Pseudocolor: events binned on a `bins × bins` grid (default 256), coloured by log count |
 | `scatter` | Dots, sampled evenly to `--max-points` (default 10,000) per layer |
 | `contour` | Equal-probability contours (each band holds `--contour-step` of the events, default 10%; the events outside the outer contour are drawn as dots) |
+| `histogram` | One channel (`--x`): events per bin (`--bins`) as a step outline on a linear count axis, removed events as a second outline in red. It takes no `--y` and draws no gates (`--population` still applies) |
 
 On any type:
 
@@ -68,6 +69,7 @@ plots:
   - { name: singlets, type: scatter, gates: [singlets] }
   - { name: t_cd4_cd8, type: contour, x: CD4, y: CD8, population: T }
   - { name: classes, type: scatter, x: CD3, y: CD19, color_by: true }
+  - { name: hist_cd45, type: histogram, x: CD45, bins: 128 }
 ```
 
 Plot fields: `name`, `type`, `x`, `y`, `gates`, `population`, `x_scale`,

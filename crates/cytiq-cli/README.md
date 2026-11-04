@@ -28,8 +28,9 @@ chain and signal-state checks.
 | `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | FlowSOM-style clustering |
 | `cytiq flowsom train/apply` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | Persist and reuse SOM models, with optional consensus metaclustering |
 | `cytiq cytonorm train/apply` | [`cytiq-cytonorm`](../cytiq-cytonorm/README.md) | Panel-specific batch normalization, controls/aggregates and QC |
-| `cytiq plot` | [`cytiq-plot`](../cytiq-plot/README.md) | 2-D density, scatter and contour plots as vector SVG (or Plotly JSON), with removed events, gates and classes overlaid |
+| `cytiq plot` | [`cytiq-plot`](../cytiq-plot/README.md) | 2-D density, scatter and contour plots and 1-D histograms as vector SVG (or Plotly JSON), with removed events, gates and classes overlaid |
 | `cytiq meta` | [`cytiq-meta`](../cytiq-meta/README.md) | FCS metadata export as JSON |
+| `cytiq stats` | [`cytiq-stats`](../cytiq-stats/README.md) | Per-channel statistics for technical QC: distribution, detector-limit and zero counts, histograms, Time channel |
 
 `cytiq <command> --help` lists every flag with its default.
 
@@ -56,7 +57,7 @@ variables or companion `lib/` directory. See the
   required). `transform` takes `--channels` / `--exclude-channels` only.
 - Numeric flags are validated at parse time (positive, non-negative or finite,
   depending on the flag).
-- `--overwrite` exists on `classify`, `transform`, `meta`, `compensate`,
+- `--overwrite` exists on `classify`, `transform`, `meta`, `stats`, `compensate`,
   `mask combine` and `plot`; other commands follow the output rules of their library
   crate.
 - `--mask FILE` (repeatable) restricts `classify`, `gate`, `flowsom` and `clean` to events
@@ -67,7 +68,8 @@ variables or companion `lib/` directory. See the
 Each command arm finishes with `record_provenance`, which writes
 `<output>.provenance.json` (or `<dir>/provenance.json`) with the arguments and
 the SHA-256 of the command's input and output files; see
-[`cytiq-provenance`](../cytiq-provenance). `meta` writes none.
+[`cytiq-provenance`](../cytiq-provenance). `meta` writes one only for a file
+`--output`; the JSON it prints on stdout carries the input's SHA-256 itself.
 
 ## Logging and output streams
 

@@ -26,6 +26,7 @@ use crate::commands::plot::PlotArgs;
 use crate::commands::preflight::PreflightArgs;
 use crate::commands::qc::QcArgs;
 use crate::commands::spillqc::SpillqcArgs;
+use crate::commands::stats::StatsArgs;
 use crate::commands::transform::TransformArgs;
 
 #[derive(Debug, Parser)]
@@ -83,6 +84,9 @@ pub(crate) enum Commands {
     /// Check the spillover matrix applied to fully stained samples with
     /// `CompensAID`'s Secondary Stain Index; flags need expert review.
     Spillqc(SpillqcArgs),
+    /// Per-channel statistics for technical QC: range, distribution, detector-limit and zero counts,
+    /// histograms, and the Time channel's monotonicity and event rate.
+    Stats(StatsArgs),
     /// Cluster cytometry events using a deterministic FlowSOM-style workflow.
     #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
     Flowsom(FlowsomArgs),
@@ -179,6 +183,8 @@ pub(crate) enum CliPlotKind {
     Scatter,
     /// Equal-probability contours with outlier dots.
     Contour,
+    /// Event counts of the `--x` channel.
+    Histogram,
 }
 
 impl From<CliPlotKind> for PlotKind {
@@ -187,6 +193,7 @@ impl From<CliPlotKind> for PlotKind {
             CliPlotKind::Density => Self::Density,
             CliPlotKind::Scatter => Self::Scatter,
             CliPlotKind::Contour => Self::Contour,
+            CliPlotKind::Histogram => Self::Histogram,
         }
     }
 }
@@ -398,6 +405,7 @@ pub(crate) const fn command_name(command: &Commands) -> &'static str {
         Commands::Compensate(_) => "compensate",
         Commands::Clean(_) => "clean",
         Commands::Spillqc(_) => "spillqc",
+        Commands::Stats(_) => "stats",
         Commands::Flowsom(FlowsomArgs {
             command: Some(FlowSomCommand::Train { .. }),
             ..

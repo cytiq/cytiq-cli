@@ -22,6 +22,7 @@ members = [
     "crates/cytiq-publish",
     "crates/cytiq-qc",
     "crates/cytiq-spillqc",
+    "crates/cytiq-stats",
     "crates/cytiq-transform",
 ]
 resolver = "3"

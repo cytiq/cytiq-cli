@@ -16,6 +16,7 @@ provenance record of every command (see [cytiq-provenance](../cytiq-provenance/R
 
 ```bash
 cytiq meta       --input sample.fcs --output sample.meta.json
+cytiq stats      --input sample.fcs --output sample.stats.json
 cytiq spillqc    --input samples/ --output spillqc/     # optional: flags likely $SPILL errors for review
 cytiq compensate --input sample.fcs --output sample.comp.fcs
 cytiq transform  --input sample.comp.fcs --output sample.t.fcs

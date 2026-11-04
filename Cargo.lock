@@ -657,6 +657,7 @@ dependencies = [
  "cytiq-provenance",
  "cytiq-qc",
  "cytiq-spillqc",
+ "cytiq-stats",
  "cytiq-transform",
  "log",
  "parquet",
@@ -914,6 +915,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-stats"
+version = "0.2.1"
+dependencies = [
+ "cytiq-fcs",
+ "cytiq-provenance",
+ "cytiq-publish",
+ "log",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

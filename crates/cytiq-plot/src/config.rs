@@ -38,6 +38,8 @@ pub enum PlotKind {
     Scatter,
     /// Equal-probability contours with outlier dots.
     Contour,
+    /// One channel (`x`): event counts per bin as a step outline.
+    Histogram,
 }
 
 impl PlotKind {
@@ -47,6 +49,7 @@ impl PlotKind {
             Self::Density => "density",
             Self::Scatter => "scatter",
             Self::Contour => "contour",
+            Self::Histogram => "histogram",
         }
     }
 }
@@ -226,6 +229,35 @@ impl PlotRequest {
                 plot: self.name.clone(),
             });
         }
+        if self.kind == PlotKind::Histogram {
+            self.validate_histogram()?;
+        }
+        Ok(())
+    }
+
+    /// A histogram has one axis, `x`, and draws no gates (`population` still
+    /// selects its events).
+    fn validate_histogram(&self) -> Result<(), PlotError> {
+        let invalid = |field: &'static str, message: &str| PlotError::InvalidOption {
+            plot: self.name.clone(),
+            field,
+            message: message.to_owned(),
+        };
+        if self.x.channel.is_none() {
+            return Err(invalid("x", "a histogram needs a channel on x"));
+        }
+        if self.y.channel.is_some() || self.y.range.is_some() {
+            return Err(invalid(
+                "y",
+                "a histogram counts events on y; set no y channel or range",
+            ));
+        }
+        if !self.gates.is_empty() {
+            return Err(invalid(
+                "gates",
+                "a histogram draws no gates; use population",
+            ));
+        }
         Ok(())
     }
 }
@@ -329,6 +361,38 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("x_range")
+        );
+    }
+
+    #[test]
+    fn histograms_have_one_axis_and_no_gates() {
+        let mut request = PlotRequest::new("cd45");
+        request.kind = PlotKind::Histogram;
+        assert!(
+            request
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("needs a channel on x")
+        );
+        request.x.channel = Some("CD45".into());
+        assert!(request.validate().is_ok());
+        request.y.channel = Some("SSC-A".into());
+        assert!(
+            request
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("counts events on y")
+        );
+        request.y.channel = None;
+        request.gates = vec!["Lymphocytes".into()];
+        assert!(
+            request
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("draws no gates")
         );
     }
 

@@ -22,6 +22,7 @@ flowchart TB
         direction LR
         preflight["preflight<br/>cytiq-preflight"]
         meta["meta<br/>cytiq-meta"]
+        stats["stats (technical QC)<br/>cytiq-stats"]
         cytoscan["cytoscan (cohort)<br/>cytiq-cytoscan"]
     end
 
@@ -52,7 +53,7 @@ flowchart TB
 
     inputs --> checks
     checks ~~~ signal
-    preflight ~~~ meta ~~~ cytoscan
+    preflight ~~~ meta ~~~ stats ~~~ cytoscan
     gate ~~~ flowsom ~~~ classify
 
     plot["plot (vector SVG, any stage)<br/>cytiq-plot"]

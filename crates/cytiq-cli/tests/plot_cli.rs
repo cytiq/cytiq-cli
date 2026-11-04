@@ -139,6 +139,58 @@ fn plots_density_of_raw_scatter_channels() {
 }
 
 #[test]
+fn plots_a_histogram_of_one_channel() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let input = fixture("clean", "sample.fcs");
+    let output = directory.path().join("fl1.svg");
+    run(&[
+        "plot",
+        "--input",
+        utf8(&input),
+        "--type",
+        "histogram",
+        "--x",
+        "FL1-A",
+        "--bins",
+        "64",
+        "--output",
+        utf8(&output),
+    ]);
+    let svg = read_svg(&output);
+    assert!(
+        svg.contains("<title>sample: CD3</title>"),
+        "titled by the marker label, like every plot"
+    );
+    assert!(svg.contains("histogram · 10,000 events shown"));
+    assert!(svg.contains(">Events</text>"));
+    let outline = svg
+        .split(r#"stroke-width="1.5""#)
+        .nth(1)
+        .and_then(|rest| rest.split(r#"d=""#).nth(1))
+        .and_then(|rest| rest.split('"').next())
+        .expect("one outline path");
+    assert_eq!(
+        outline.matches('L').count(),
+        2 * 64 + 1,
+        "a step per bin from baseline to baseline"
+    );
+    let second = fails(&[
+        "plot",
+        "--input",
+        utf8(&input),
+        "--type",
+        "histogram",
+        "--x",
+        "FL1-A",
+        "--y",
+        "SSC-A",
+        "--output",
+        utf8(&directory.path().join("bad.svg")),
+    ]);
+    assert!(second.contains("counts events on y"));
+}
+
+#[test]
 fn overlays_events_removed_by_the_mask() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let input = fixture("clean", "sample.fcs");

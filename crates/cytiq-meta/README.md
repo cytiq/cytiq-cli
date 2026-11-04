@@ -47,6 +47,10 @@ cytiq meta --input raw.fcs | jq '.text | length'
 cytiq meta --input raw.fcs --output raw.meta.json --overwrite
 ```
 
+A file `--output` also gets `raw.meta.json.provenance.json` (the SHA-256 of the
+input and of the document), like every other command's output; stdout output
+writes no record.
+
 From Rust:
 
 ```rust

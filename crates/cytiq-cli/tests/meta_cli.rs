@@ -65,6 +65,10 @@ fn meta_dash_output_writes_to_stdout() {
     assert!(output.status.success());
     serde_json::from_slice::<Value>(&output.stdout).expect("stdout should be JSON");
     assert!(!directory.join("-").exists());
+    assert!(
+        !directory.join("-.provenance.json").exists(),
+        "stdout output writes no provenance"
+    );
 }
 
 #[test]
@@ -85,6 +89,14 @@ fn meta_output_file_requires_overwrite() {
         serde_json::from_slice(&fs::read(&json).expect("metadata file should exist"))
             .expect("metadata file should be JSON");
     assert_eq!(document["file"]["name"], "input.fcs");
+    let record: Value = serde_json::from_slice(
+        &fs::read(json.with_file_name("input.meta.json.provenance.json"))
+            .expect("a file output has provenance"),
+    )
+    .expect("provenance should be JSON");
+    assert_eq!(record["tool"], "cytiq meta");
+    assert_eq!(record["inputs"][0]["sha256"], sha256_hex(&input));
+    assert_eq!(record["outputs"][0]["sha256"], sha256_hex(&json));
 
     let second = run_meta(&["--input", utf8(&input), "--output", utf8(&json)]);
     assert!(!second.status.success());

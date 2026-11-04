@@ -1,0 +1,9 @@
+# Stage one reports risk without failing on scores or regressions.
+threshold = 30.0
+fail-above = false
+fail-regression = false
+missing = "pessimistic"
+try-weight = 1.0
+epsilon = 0.01
+# Keep the built-in tests/**, benches/** and examples/** exclusions.
+exclude = ["**/build.rs", "**/fuzz/**"]

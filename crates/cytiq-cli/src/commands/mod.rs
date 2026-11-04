@@ -17,4 +17,5 @@ pub(crate) mod plot;
 pub(crate) mod preflight;
 pub(crate) mod qc;
 pub(crate) mod spillqc;
+pub(crate) mod stats;
 pub(crate) mod transform;

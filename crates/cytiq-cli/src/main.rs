@@ -55,6 +55,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Qc(args) => commands::qc::run(args, recorder),
         Commands::Meta(args) => commands::meta::run(args, recorder),
         Commands::Spillqc(args) => commands::spillqc::run(&args, recorder),
+        Commands::Stats(args) => commands::stats::run(args, recorder),
         Commands::Clean(args) => commands::clean::run(args, recorder),
         Commands::Flowsom(args) => commands::flowsom::run(args, recorder),
         Commands::Cytonorm(command) => commands::cytonorm::run(command, recorder),

@@ -23,8 +23,10 @@ export CYTIQ_LOG=warn
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-# Files over 100 MB: the writer's offset handling (ignored in CI for size).
-(cd "$ROOT" && cargo test -p cytiq-fcs --release --quiet -- --ignored)
+# Files over 100 MB: the writer's offset handling (ignored in CI for size). Only reader.rs's
+# ignored tests: characterization.rs's `writes_real_data_digests` is a separate tool that needs
+# CYTIQ_REAL_DATA and CYTIQ_DIGESTS_OUT, and failed every run without them.
+(cd "$ROOT" && cargo test -p cytiq-fcs --release --quiet --test reader -- --ignored)
 
 # --- FlowSOM 68983: compensate, manual gating, logicle, FlowSOM -------------
 run_flowsom_chain() {

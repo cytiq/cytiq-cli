@@ -19,6 +19,8 @@
      "why": "unmixing equals upstream OLS on the same spectra"},
     {"path": ["peacoqc", "*", "agreement"], "min": 1.0,
      "why": "PeacoQC masks equal R PeacoQC in every mode"},
+    {"path": ["spillqc", "files", "*", "channel_mismatches"], "equals": 0,
+     "why": "cytiq and CompensAID rate the same marker channels: the labelled ones the matrix compensates"},
     {"path": ["spillqc", "files", "*", "cutoff_max_abs"], "max": 1e-9,
      "why": "deGate cut-offs are density grid points; density (1e-9) and smooth.spline match R, so the same grid point is chosen"},
     {"path": ["spillqc", "files", "*", "segment_values_max_abs"], "max": 1e-9,

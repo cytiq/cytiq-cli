@@ -2194,6 +2194,8 @@
   "spillqc": {
     "files": {
       "tube_1": {
+        "channel_mismatches": 0,
+        "channels_rated_by_one_side": [],
         "segment_rows": {
           "upstream": 120,
           "rust": 120,
@@ -2212,6 +2214,8 @@
         "injected": 2
       },
       "tube_2": {
+        "channel_mismatches": 0,
+        "channels_rated_by_one_side": [],
         "segment_rows": {
           "upstream": 120,
           "rust": 120,
@@ -2230,6 +2234,8 @@
         "injected": 2
       },
       "tube_3": {
+        "channel_mismatches": 0,
+        "channels_rated_by_one_side": [],
         "segment_rows": {
           "upstream": 120,
           "rust": 120,
@@ -2256,50 +2262,50 @@
   "timing": {
     "autospill": {
       "rust": {
-        "seconds": 2.86,
-        "max_rss_mb": 56.2
+        "seconds": 2.31,
+        "max_rss_mb": 61.77
       },
-      "upstream_seconds": 13.418
+      "upstream_seconds": 9.892
     },
     "peacoqc_all": {
       "rust": {
-        "seconds": 0.26,
-        "max_rss_mb": 96.38
+        "seconds": 0.21,
+        "max_rss_mb": 98.88
       },
-      "upstream_seconds": 2.825
+      "upstream_seconds": 1.988
     },
     "flowsom": {
       "rust": {
-        "seconds": 0.69,
-        "max_rss_mb": 40.73
+        "seconds": 0.58,
+        "max_rss_mb": 45.19
       },
-      "upstream_seconds": 8.373
+      "upstream_seconds": 5.887
     },
     "flowsom_hard": {
       "rust": {
-        "seconds": 0.7,
-        "max_rss_mb": 40.8
+        "seconds": 0.61,
+        "max_rss_mb": 45.22
       },
-      "upstream_seconds": 4.177
+      "upstream_seconds": 4.94
     },
     "autospectral": {
       "rust": {
-        "seconds": 4.65,
-        "max_rss_mb": 50.58
+        "seconds": 3.87,
+        "max_rss_mb": 68.94
       }
     },
     "gating": {
       "rust": {
         "seconds": 0.03,
-        "max_rss_mb": 11.83
+        "max_rss_mb": 11.89
       }
     },
     "spillqc": {
       "rust": {
-        "seconds": 0.15,
-        "max_rss_mb": 52.16
+        "seconds": 0.13,
+        "max_rss_mb": 64.17
       },
-      "upstream_seconds": 3.333
+      "upstream_seconds": 3.763
     }
   }
 }

@@ -99,5 +99,10 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked
 
+      - name: Test performance harness
+        run: |
+          python3 -m unittest discover -s performance -p 'test_*.py'
+          cargo test -p cytiq-cli --example performance_support --locked
+
       - *cache-telemetry
       - *upload-cache-telemetry

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use cytiq_fcs::{
-    COMPENSATION_KEYWORD, CompensationState, FcsDataset, FcsReader, FcsWriteOptions,
+    COMPENSATION_KEYWORD, ColumnData, CompensationState, FcsDataset, FcsReader, FcsWriteOptions,
     FcsWriteParameter, MARGINS_KEYWORD, SOURCE_SPILLOVER_KEYWORD, SignalState,
 };
 use cytiq_mask::EventMask;
@@ -207,13 +207,28 @@ fn ensure_untransformed(
     Ok(())
 }
 
-fn stored_values(dataset: &FcsDataset, index: usize) -> Vec<f64> {
-    dataset
-        .data
-        .column(index)
-        .expect("every parameter has a data column")
-        .to_f64_vec()
+#[allow(clippy::cast_precision_loss)]
+fn differs_from_stored(values: &[f64], stored: &ColumnData) -> bool {
+    let differs = |raw: f64, value: &f64| value.to_bits() != raw.to_bits();
+    match stored {
+        ColumnData::UInt(raw) => values
+            .iter()
+            .zip(raw)
+            .any(|(value, raw)| differs(*raw as f64, value)),
+        ColumnData::F32(raw) => values
+            .iter()
+            .zip(raw)
+            .any(|(value, raw)| differs(f64::from(*raw), value)),
+        ColumnData::F64(raw) => values
+            .iter()
+            .zip(raw)
+            .any(|(value, raw)| differs(*raw, value)),
+    }
 }
+
+#[cfg(test)]
+#[path = "runner_tests.rs"]
+mod tests;
 
 /// Output parameters and values. Matrix channels hold compensated values;
 /// other channels whose `$PnE`/`$PnG` scaling changes their values are written
@@ -232,33 +247,33 @@ fn compensated_columns(
         .map(|index| cytiq_fcs::linear_values(dataset, *index))
         .collect::<Vec<_>>();
     let compensated = cytiq_fcs::compensate(&linear, &matrix.values);
+    drop(linear);
+    let mut compensated = compensated.into_iter().map(Some).collect::<Vec<_>>();
 
     let mut parameters = Vec::with_capacity(dataset.parameters.len());
     let mut columns = Vec::with_capacity(dataset.parameters.len());
     for (index, parameter) in dataset.parameters.iter().enumerate() {
-        let stored = stored_values(dataset, index);
-        let values = if let Some(position) = matrix_indices.iter().position(|i| *i == index) {
-            compensated[position].clone()
+        let stored = &dataset.data.columns[index];
+        let mut values = if let Some(position) = matrix_indices.iter().position(|i| *i == index) {
+            compensated[position]
+                .take()
+                .expect("matrix channels are unique")
         } else if parameter.name.eq_ignore_ascii_case("time") {
             // `$TIMESTEP` is carried over and still applies to stored time.
-            stored.clone()
+            stored.to_f64_vec()
         } else {
             cytiq_fcs::linear_values(dataset, index)
         };
         let mut output = FcsWriteParameter::from_source(parameter);
-        if values
-            .iter()
-            .zip(&stored)
-            .any(|(value, raw)| value.to_bits() != raw.to_bits())
-        {
+        if differs_from_stored(&values, stored) {
             output.range = None;
             output.keywords.retain(|(suffix, _)| suffix != "G");
-            parameters.push(output);
-            columns.push(values.iter().map(|value| round_to_f32(*value)).collect());
-        } else {
-            parameters.push(output);
-            columns.push(values);
+            for value in &mut values {
+                *value = round_to_f32(*value);
+            }
         }
+        parameters.push(output);
+        columns.push(values);
     }
     (parameters, columns)
 }

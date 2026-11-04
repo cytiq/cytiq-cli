@@ -444,6 +444,32 @@ fn preserves_large_original_ids_exactly() {
 }
 
 #[test]
+fn non_finite_output_publishes_neither_fcs_mask_nor_provenance() {
+    let directory = create_temp_dir("cytiq-cli-compensate-nonfinite");
+    let input = directory.join("input.fcs");
+    fs::copy(fixture("gating", "sample.fcs"), &input).unwrap();
+    let dataset = read(&input);
+    assert!(matches!(dataset.data.columns[0], ColumnData::F32(_)));
+    let start = usize::try_from(dataset.header.data.unwrap().start).unwrap();
+    let index = dataset.find_parameter("FL1-A").unwrap();
+    let mut bytes = fs::read(&input).unwrap();
+    bytes[start + index * 4..start + (index + 1) * 4].copy_from_slice(&f32::NAN.to_le_bytes());
+    fs::write(&input, bytes).unwrap();
+    let output = directory.join("output.fcs");
+    let result = cytiq(&[
+        "compensate",
+        "--input",
+        utf8(&input),
+        "--output",
+        utf8(&output),
+    ]);
+    assert!(!result.status.success());
+    assert!(!output.exists());
+    assert!(!directory.join("output.masks.parquet").exists());
+    assert!(!directory.join("output.fcs.provenance.json").exists());
+}
+
+#[test]
 fn refuses_to_compensate_unmixed_input() {
     let directory = create_temp_dir("cytiq-cli-compensate-unmixed");
     let input = directory.join("sample.unmixed.fcs");

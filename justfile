@@ -47,6 +47,17 @@ parity-cytonorm-fixture:
 benchmark-spillqc:
     parity/benchmark/run_spillqc.sh
 
+# ---- Paired algorithm performance measurements (build both binaries and the helper first)
+[group('validation')]
+performance *args:
+    python3 performance/run.py {{ args }}
+
+# ---- Fast benchmark-runner checks; no performance workloads
+[group('quality')]
+performance-check:
+    python3 -m unittest discover -s performance -p 'test_*.py'
+    cargo test -p cytiq-cli --example performance_support --locked
+
 # ---- Regenerate the golden end-to-end CI fixture
 [group('validation')]
 parity-ci-fixture:
@@ -125,6 +136,7 @@ verify:
     just check
     just lint
     just test
+    just performance-check
 
 # ---- Start Docker
 [group('ci-cd')]

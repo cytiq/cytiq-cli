@@ -26,6 +26,8 @@ Use `just` as the primary command runner. The recipes wrap the same Cargo comman
 - `just lint` runs Clippy with warnings denied.
 - `just test` runs the workspace test suite.
 - `just verify` runs the standard local quality gate.
+- `just performance-check` checks the algorithm benchmark harness; `just performance --help`
+  describes the paired CLI benchmarks in [`performance/`](performance/README.md).
 - `just docker-build` verifies container changes.
 
 Before opening a pull request, run `just verify`. CI enforces the equivalent checks on every pull request with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` (job `quality`) and `cargo test --workspace --locked` (job `test`). The release build and the Docker image (`.github/workflows/package.yml`, job `docker`) take about six minutes, so they run only on pull requests that change manifests, the lockfile, `build.rs`, `cytiq-classify`, its fixtures or `docker/`, plus weekly and on demand; run `just docker-build` locally when a change can affect packaging in other ways.

@@ -9,6 +9,8 @@
     clippy::too_many_lines
 )]
 
+#[cfg(test)]
+mod allocation_tests;
 mod error;
 mod export;
 pub mod scales;
@@ -895,53 +897,72 @@ fn transform_column(
     input: &Path,
     channel: &str,
 ) -> Result<TransformedColumn, TransformError> {
-    let values = match column {
-        ColumnData::UInt(values) => values
-            .par_iter()
-            .map(|value| {
-                transform_raw_value(
-                    *value as f64,
-                    selected_channel.is_some(),
-                    operator,
-                    input,
-                    channel,
-                )
-            })
-            .collect::<Vec<_>>(),
-        ColumnData::F32(values) => values
-            .par_iter()
-            .map(|value| {
-                transform_raw_value(
-                    f64::from(*value),
-                    selected_channel.is_some(),
-                    operator,
-                    input,
-                    channel,
-                )
-            })
-            .collect::<Vec<_>>(),
-        ColumnData::F64(values) => values
-            .par_iter()
-            .map(|value| {
-                transform_raw_value(*value, selected_channel.is_some(), operator, input, channel)
-            })
-            .collect::<Vec<_>>(),
-    };
+    match column {
+        ColumnData::UInt(values) => transform_typed_column(
+            values,
+            |value| *value as f64,
+            selected_channel,
+            operator,
+            input,
+            channel,
+        ),
+        ColumnData::F32(values) => transform_typed_column(
+            values,
+            |value| f64::from(*value),
+            selected_channel,
+            operator,
+            input,
+            channel,
+        ),
+        ColumnData::F64(values) => transform_typed_column(
+            values,
+            |value| *value,
+            selected_channel,
+            operator,
+            input,
+            channel,
+        ),
+    }
+}
 
-    let mut output = Vec::with_capacity(values.len());
-    let mut raw_values = Vec::new();
-    let mut transformed_values = Vec::new();
-    for value in values {
-        let value = value?;
-        if selected_channel.is_some() {
-            raw_values.push(f64::from(value.raw));
-            transformed_values.push(value.transformed);
-        }
-        output.push(value.transformed);
+fn transform_typed_column<T: Sync>(
+    values: &[T],
+    as_f64: impl Fn(&T) -> f64 + Sync,
+    selected_channel: Option<&str>,
+    operator: &TransformOperator,
+    input: &Path,
+    channel: &str,
+) -> Result<TransformedColumn, TransformError> {
+    const CHUNK_SIZE: usize = 8192;
+    let mut output = vec![0.0; values.len()];
+    let results = output
+        .par_chunks_mut(CHUNK_SIZE)
+        .zip(values.par_chunks(CHUNK_SIZE))
+        .map(|(destination, source)| {
+            for (out, value) in destination.iter_mut().zip(source) {
+                *out = transform_raw_value(
+                    as_f64(value),
+                    selected_channel.is_some(),
+                    operator,
+                    input,
+                    channel,
+                )?
+                .transformed;
+            }
+            Ok(())
+        })
+        .collect::<Vec<Result<(), TransformError>>>();
+    // Keep the first error in event order, independent of Rayon scheduling.
+    for result in results {
+        result?;
     }
 
-    let metrics = selected_channel
-        .map(|channel| build_channel_metrics(channel, &raw_values, &transformed_values));
+    let metrics = selected_channel.map(|channel| {
+        // Raw metrics historically describe f32-rounded input, even for D/I
+        // files. Re-read values rather than materialising two metric columns.
+        let raw = values.iter().map(|value| f64::from(as_f64(value) as f32));
+        build_channel_metrics(channel, raw, &output)
+    });
 
     Ok(TransformedColumn {
         values: output,
@@ -951,7 +972,6 @@ fn transform_column(
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct TransformedValue {
-    raw: f32,
     /// Transformed values are rounded to f32; values of unselected channels
     /// (such as `Original_ID`) are kept exact.
     transformed: f64,
@@ -982,7 +1002,6 @@ fn transform_raw_value(
     }
 
     Ok(TransformedValue {
-        raw: value as f32,
         transformed: if selected {
             f64::from(output as f32)
         } else {
@@ -993,24 +1012,24 @@ fn transform_raw_value(
 
 fn build_channel_metrics(
     channel: &str,
-    raw_values: &[f64],
+    raw_values: impl ExactSizeIterator<Item = f64> + Clone,
     transformed_values: &[f64],
 ) -> TransformChannelMetrics {
     TransformChannelMetrics {
         channel: channel.to_owned(),
         events: raw_values.len(),
-        raw: summarize_values(raw_values),
-        transformed: summarize_values(transformed_values),
-        raw_negative_count: raw_values.iter().filter(|value| **value < 0.0).count(),
+        raw: summarize_values(raw_values.clone()),
+        transformed: summarize_values(transformed_values.iter().copied()),
+        raw_negative_count: raw_values.clone().filter(|value| *value < 0.0).count(),
         raw_zero_count: raw_values
-            .iter()
             .filter(|value| value.abs() <= f64::EPSILON)
             .count(),
     }
 }
 
-fn summarize_values(values: &[f64]) -> TransformValueMetrics {
-    if values.is_empty() {
+fn summarize_values(values: impl ExactSizeIterator<Item = f64> + Clone) -> TransformValueMetrics {
+    let count = values.len();
+    if count == 0 {
         return TransformValueMetrics {
             min: 0.0,
             max: 0.0,
@@ -1019,20 +1038,19 @@ fn summarize_values(values: &[f64]) -> TransformValueMetrics {
         };
     }
 
-    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
-    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let standard_deviation = if values.len() < 2 {
+    let min = values.clone().fold(f64::INFINITY, f64::min);
+    let max = values.clone().fold(f64::NEG_INFINITY, f64::max);
+    let mean = values.clone().sum::<f64>() / count as f64;
+    let standard_deviation = if count < 2 {
         0.0
     } else {
         let variance = values
-            .iter()
             .map(|value| {
                 let delta = value - mean;
                 delta * delta
             })
             .sum::<f64>()
-            / (values.len() - 1) as f64;
+            / (count - 1) as f64;
         variance.sqrt()
     };
 

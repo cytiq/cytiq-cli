@@ -1,13 +1,9 @@
-## [0.3.0](https://github.com/cytiq/cytiq-cli/compare/0.2.1..0.3.0) - 2026-11-04
+## [0.3.1](https://github.com/cytiq/cytiq-cli/compare/0.3.0..0.3.1) - 2026-11-05
 
-### ⛰️  Features
+### 🚜 Refactor
 
-- Add cytiq stats, histogram plots and meta provenance for CAS ([#171](https://github.com/cytiq/cytiq-cli/issues/171)) - ([dc3915a](https://github.com/cytiq/cytiq-cli/commit/dc3915ae537838512cdee6ada69ac8e861bb6986))
+- Reduce CRAP risk and add targeted mutation tests ([#174](https://github.com/cytiq/cytiq-cli/issues/174)) - ([78bf649](https://github.com/cytiq/cytiq-cli/commit/78bf649570a92381b10e9e880f6b414a70276236))
 
-### 🐛 Bug Fixes
+### ⚙️ Miscellaneous Tasks
 
-- *(parity)* Run parity-real without real data and compare CompensAID on rated channels ([#169](https://github.com/cytiq/cytiq-cli/issues/169)) - ([1485c1d](https://github.com/cytiq/cytiq-cli/commit/1485c1d2a07a453c30bfbd48ae45c46345d40d64))
-
-### ⚡ Performance
-
-- Reduce transform and compensation allocations ([#170](https://github.com/cytiq/cytiq-cli/issues/170)) - ([422b175](https://github.com/cytiq/cytiq-cli/commit/422b175c7c295a88ade618eb95a688c5d46d74c4))
+- Report workspace CRAP risk against a reviewed baseline ([#173](https://github.com/cytiq/cytiq-cli/issues/173)) - ([2972489](https://github.com/cytiq/cytiq-cli/commit/29724893121999052611695e7b3911361d0ea974))

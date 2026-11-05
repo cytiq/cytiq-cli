@@ -204,38 +204,10 @@ pub fn prepare(
     let compensated = cytiq_fcs::compensate(&linear, &matrix.values);
 
     // estimateLogicle + transform, M = 4.5, T = maxRange
-    let mut logicle = Vec::with_capacity(indices.len());
-    let mut transformed = Vec::with_capacity(indices.len());
-    for (&index, values) in indices.iter().zip(&compensated) {
-        let parameter = &dataset.parameters[index];
-        let t = flowcore_bounds(dataset, parameter)
-            .upper
-            .unwrap_or(DEFAULT_LOGICLE_T);
-        let scale = estimate_logicle_width(values, t, LOGICLE_M, LOGICLE_Q)
-            .and_then(|w| Logicle::new(t, w, LOGICLE_M, LOGICLE_A).map(|scale| (w, scale)));
-        let (w, scale) = match scale {
-            Ok(pair) => pair,
-            Err(error) => {
-                return Ok(skip(format!(
-                    "logicle estimate for `{}` failed: {error}",
-                    parameter.name
-                )));
-            }
-        };
-        logicle.push(LogicleRecord {
-            channel: parameter.name.clone(),
-            t,
-            w,
-            m: LOGICLE_M,
-            a: LOGICLE_A,
-        });
-        transformed.push(
-            values
-                .iter()
-                .map(|value| LOGICLE_M * scale.scale(*value))
-                .collect::<Vec<_>>(),
-        );
-    }
+    let (logicle, transformed) = match prepare_logicle_columns(dataset, &indices, &compensated) {
+        Ok(columns) => columns,
+        Err(reason) => return Ok(skip(reason)),
+    };
 
     let mut good = vec![true; kept.len()];
     if options.peacoqc {
@@ -289,6 +261,41 @@ pub fn prepare(
         logicle,
         warnings,
     })))
+}
+
+fn prepare_logicle_columns(
+    dataset: &FcsDataset,
+    indices: &[usize],
+    compensated: &[Vec<f64>],
+) -> Result<(Vec<LogicleRecord>, Vec<Vec<f64>>), String> {
+    let mut logicle = Vec::with_capacity(indices.len());
+    let mut transformed = Vec::with_capacity(indices.len());
+    for (&index, values) in indices.iter().zip(compensated) {
+        let parameter = &dataset.parameters[index];
+        let t = flowcore_bounds(dataset, parameter)
+            .upper
+            .unwrap_or(DEFAULT_LOGICLE_T);
+        let scale = estimate_logicle_width(values, t, LOGICLE_M, LOGICLE_Q)
+            .and_then(|w| Logicle::new(t, w, LOGICLE_M, LOGICLE_A).map(|scale| (w, scale)));
+        let (w, scale) = scale.map_err(|error| {
+            format!("logicle estimate for `{}` failed: {error}", parameter.name)
+        })?;
+        logicle.push(LogicleRecord {
+            channel: parameter.name.clone(),
+            t,
+            w,
+            m: LOGICLE_M,
+            a: LOGICLE_A,
+        });
+        transformed.push(
+            values
+                .iter()
+                .map(|value| LOGICLE_M * scale.scale(*value))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    Ok((logicle, transformed))
 }
 
 /// `--preprocessed`: the stored values of the marker channels, as
@@ -502,5 +509,254 @@ mod tests {
         assert_eq!(base, matrix_id(&matrix(&["A", "B"], &[1.0, 0.0, 0.1, 1.0])));
         assert_ne!(base, matrix_id(&matrix(&["A", "C"], &[1.0, 0.0, 0.1, 1.0])));
         assert_ne!(base, matrix_id(&matrix(&["A", "B"], &[1.0, 0.0, 0.2, 1.0])));
+    }
+
+    use cytiq_fcs::{FcsReader, FcsWriteOptions, FcsWriteParameter};
+    use std::io::Cursor;
+
+    fn dataset(columns: &[Vec<f32>], keywords: &[(&str, &str)]) -> FcsDataset {
+        let parameters = [
+            FcsWriteParameter::with_label("A", "CD3").with_range(100.0),
+            FcsWriteParameter::with_label("B", "CD4").with_range(100.0),
+        ];
+        let options = FcsWriteOptions::new()
+            .with_text_keywords(keywords.iter().map(|(k, v)| ((*k).into(), (*v).into())));
+        let mut bytes = Vec::new();
+        cytiq_fcs::write_fcs3_1_f32_to_writer_with_options(
+            &mut bytes,
+            &parameters,
+            columns,
+            &options,
+        )
+        .unwrap();
+        FcsReader::new(Cursor::new(bytes)).read().unwrap()
+    }
+    fn columns() -> Vec<Vec<f32>> {
+        vec![
+            vec![0.0, 10.0, 20.0, 30.0, 100.0],
+            vec![0.0, 20.0, 30.0, 40.0, 100.0],
+        ]
+    }
+    fn identity_matrix() -> ExternalMatrix {
+        ExternalMatrix {
+            matrix: CompensationMatrix {
+                channels: vec!["A".into(), "B".into()],
+                values: vec![1.0, 0.0, 0.0, 1.0],
+            },
+        }
+    }
+    fn options() -> PreprocessOptions {
+        PreprocessOptions {
+            peacoqc: false,
+            ..PreprocessOptions::default()
+        }
+    }
+
+    #[test]
+    fn margin_warning_uses_the_fraction_of_events_removed() {
+        let a = (0_u16..20).map(f32::from).collect::<Vec<_>>();
+        let mut b = a.clone();
+        b[1] = 19.0;
+        let data = dataset(&[a.clone(), b], &[]);
+        let output = ready(prepare(
+            Path::new("x"),
+            &data,
+            Some(&identity_matrix()),
+            &options(),
+        ));
+        assert_eq!(output.margin_removed, 3);
+        assert_eq!(output.warnings, ["3 of 20 events are margin events"]);
+        let data = dataset(&[a.clone(), a], &[]);
+        let output = ready(prepare(
+            Path::new("x"),
+            &data,
+            Some(&identity_matrix()),
+            &options(),
+        ));
+        assert_eq!(output.margin_removed, 2);
+        assert_eq!(output.warnings, [] as [&str; 0]);
+    }
+    fn ready(result: Result<Preparation, SpillQcError>) -> Box<Prepared> {
+        let Preparation::Ready(prepared) = result.unwrap() else {
+            panic!("expected prepared data");
+        };
+        prepared
+    }
+
+    #[test]
+    fn preparation_removes_margins_before_transforming_and_keeps_requested_marker_order() {
+        let data = dataset(&columns(), &[]);
+        let external = identity_matrix();
+        let options = PreprocessOptions {
+            channels: Some(vec!["B".into(), "A".into()]),
+            ..options()
+        };
+        let output = ready(prepare(
+            Path::new("x.fcs"),
+            &data,
+            Some(&external),
+            &options,
+        ));
+        assert_eq!(
+            (
+                output.events_total,
+                output.margin_removed,
+                output.peacoqc_removed
+            ),
+            (5, 2, 0)
+        );
+        assert_eq!(output.warnings, ["2 of 5 events are margin events"]);
+        assert_eq!(
+            output
+                .markers
+                .iter()
+                .map(|m| m.channel.as_str())
+                .collect::<Vec<_>>(),
+            ["B", "A"]
+        );
+        assert_eq!(
+            output
+                .markers
+                .iter()
+                .map(|m| m.marker.as_str())
+                .collect::<Vec<_>>(),
+            ["CD4", "CD3"]
+        );
+        assert_eq!(
+            output.columns.iter().map(Vec::len).collect::<Vec<_>>(),
+            [3, 3]
+        );
+        // W = A = 0 reduces logicle to asinh(x / (2*a)) / ln(10),
+        // a = T / (10^M - 10^-M), with T = PnR - 1 = 99.
+        for (actual, expected) in output.columns[1].iter().zip([
+            3.504_364_847_533_351_3,
+            3.805_394_811_273_436_6,
+            3.981_486_064_417_284_3,
+        ]) {
+            assert!((actual - expected).abs() < 1e-8, "{actual} != {expected}");
+        }
+        assert_eq!(
+            output.logicle,
+            [
+                LogicleRecord {
+                    channel: "A".into(),
+                    t: 99.0,
+                    w: 0.0,
+                    m: 4.5,
+                    a: 0.0
+                },
+                LogicleRecord {
+                    channel: "B".into(),
+                    t: 99.0,
+                    w: 0.0,
+                    m: 4.5,
+                    a: 0.0
+                },
+            ]
+        );
+        let record = output.matrix.unwrap();
+        assert_eq!(record.source, "file");
+        assert!(record.applied);
+        assert_eq!(record.channels, ["A", "B"]);
+        let stored = ready(prepare(
+            Path::new("x"),
+            &data,
+            Some(&external),
+            &PreprocessOptions {
+                preprocessed: true,
+                channels: Some(vec!["A".into(), "B".into()]),
+                ..options
+            },
+        ));
+        assert_eq!(
+            stored.columns,
+            [
+                vec![0.0, 10.0, 20.0, 30.0, 100.0],
+                vec![0.0, 20.0, 30.0, 40.0, 100.0]
+            ]
+        );
+        assert!(!stored.matrix.unwrap().applied);
+        assert_eq!(stored.logicle, []);
+    }
+
+    #[test]
+    fn preparation_skips_unusable_inputs_with_specific_reasons() {
+        let data = dataset(&columns(), &[]);
+        let external = identity_matrix();
+        let path = Path::new("x.fcs");
+        assert!(
+            matches!(prepare(path,&data,None,&options()).unwrap(), Preparation::Skipped(reason) if reason.contains("no `$SPILLOVER`"))
+        );
+        let invalid = dataset(&columns(), &[("$SPILLOVER", "bad")]);
+        assert!(
+            matches!(prepare(path,&invalid,None,&options()).unwrap(), Preparation::Skipped(reason) if reason.starts_with("spillover keyword is invalid:"))
+        );
+        let mut missing = identity_matrix();
+        missing.matrix.channels[0] = "missing".into();
+        assert_eq!(
+            prepare(path, &data, Some(&missing), &options()).unwrap(),
+            Preparation::Skipped("matrix channel `missing` is not in the file".into())
+        );
+        let only_one = PreprocessOptions {
+            channels: Some(vec!["A".into()]),
+            ..options()
+        };
+        assert!(
+            matches!(prepare(path,&data,Some(&external),&only_one).unwrap(), Preparation::Skipped(reason) if reason.starts_with("1 marker channel(s)"))
+        );
+        let flat = dataset(&[vec![10.0; 5], vec![20.0; 5]], &[]);
+        assert_eq!(
+            prepare(path, &flat, Some(&external), &options()).unwrap(),
+            Preparation::Skipped("every event is a margin event".into())
+        );
+        let qc = PreprocessOptions {
+            peacoqc: true,
+            ..options()
+        };
+        assert_eq!(
+            ready(prepare(path, &data, Some(&external), &qc)).peacoqc_removed,
+            3
+        );
+        let mut nonfinite = data.clone();
+        nonfinite.data.columns[0] = cytiq_fcs::ColumnData::F64(vec![f64::NAN; 5]);
+        let qc = PreprocessOptions {
+            remove_margins: false,
+            ..qc
+        };
+        assert!(
+            matches!(prepare(path,&nonfinite,Some(&external),&qc).unwrap(), Preparation::Skipped(reason) if reason.starts_with("PeacoQC failed"))
+        );
+        let negative = dataset(&[vec![-1e-9, 10.0, 20.0], vec![1.0, 20.0, 30.0]], &[]);
+        assert!(
+            matches!(prepare(path,&negative,Some(&external),&PreprocessOptions { remove_margins:false,..options() }).unwrap(), Preparation::Skipped(reason) if reason.starts_with("logicle estimate for `A` failed:"))
+        );
+    }
+
+    #[test]
+    fn preparation_uses_internal_matrix_and_rejects_recorded_processing() {
+        let data = dataset(&columns(), &[("$SPILLOVER", "2,A,B,1,0,0,1")]);
+        let output = ready(prepare(Path::new("x"), &data, None, &options()));
+        assert_eq!(output.matrix.unwrap().source, "fcs");
+        let data = dataset(
+            &columns(),
+            &[(
+                "CYTIQ_TRANSFORM",
+                r#"{"method":"arcsinh","parameters":{"cofactor":150},"files":[{"channels":["A"]}]}"#,
+            )],
+        );
+        assert!(
+            matches!(prepare(Path::new("x"),&data,Some(&identity_matrix()),&options()), Err(SpillQcError::TransformedInput { channel, .. }) if channel == "A")
+        );
+        let data = dataset(
+            &columns(),
+            &[(
+                "CYTIQ_COMPENSATION",
+                r#"{"source":"fcs","channels":["A","B"]}"#,
+            )],
+        );
+        assert!(matches!(
+            prepare(Path::new("x"), &data, Some(&identity_matrix()), &options()),
+            Err(SpillQcError::AlreadyCompensated { .. })
+        ));
     }
 }

@@ -201,3 +201,99 @@ fn too_few_events(count: usize) -> FilterFit {
         format!("only {count} usable event(s); need at least {MIN_FIT_EVENTS}"),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cytiq_fcs::{ColumnData, FcsReader};
+    use std::path::PathBuf;
+
+    fn dataset() -> FcsDataset {
+        FcsReader::open(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/clean/sample.fcs"),
+        )
+        .unwrap()
+        .read()
+        .unwrap()
+    }
+    fn roles() -> ChannelRoles {
+        ChannelRoles {
+            fsc_a: "FSC-A".into(),
+            ssc_a: Some("SSC-A".into()),
+            ..ChannelRoles::default()
+        }
+    }
+
+    #[test]
+    fn population_requires_scatter_channels() {
+        let data = dataset();
+        let missing_roles = ChannelRoles {
+            ssc_a: None,
+            ..roles()
+        };
+        assert!(
+            matches!(fit_population(&data, &missing_roles, &[]), Err(CleanError::InvalidConfig(reason)) if reason == "--debris-mode population needs an SSC channel")
+        );
+        let roles = ChannelRoles {
+            ssc_a: Some("missing".into()),
+            ..roles()
+        };
+        assert!(fit_population(&data, &roles, &[]).is_err());
+    }
+
+    #[test]
+    fn population_reports_too_few_usable_events_and_degenerate_scatter() {
+        let mut data = dataset();
+        let fsc = data.find_parameter("FSC-A").unwrap();
+        data.data.columns[fsc] = ColumnData::F64(vec![f64::NAN; data.event_count()]);
+        let fitted = fit_population(&data, &roles(), &(0..100).collect::<Vec<_>>()).unwrap();
+        assert!(fitted.gate.is_none());
+        assert_eq!(fitted.report.status, FilterStatus::NotAssessed);
+        assert_eq!(
+            fitted.report.reason.as_deref(),
+            Some("only 0 usable event(s); need at least 100")
+        );
+        data.data.columns[fsc] = ColumnData::F64(vec![10.0; data.event_count()]);
+        let fitted = fit_population(&data, &roles(), &(0..99).collect::<Vec<_>>()).unwrap();
+        assert_eq!(
+            fitted.report.reason.as_deref(),
+            Some("only 99 usable event(s); need at least 100")
+        );
+        let fitted = fit_population(&data, &roles(), &(0..100).collect::<Vec<_>>()).unwrap();
+        assert!(fitted.gate.is_none());
+        assert_eq!(fitted.report.status, FilterStatus::NotAssessed);
+        assert_eq!(
+            fitted.report.reason.as_deref(),
+            Some("FSC/SSC population auto-gate failed: scatter values are constant")
+        );
+    }
+
+    #[test]
+    fn population_produces_a_raw_polygon_and_reproducible_report() {
+        let data = dataset();
+        let fitted = fit_population(
+            &data,
+            &roles(),
+            &(0..data.event_count()).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let gate = fitted.gate.unwrap();
+        assert_eq!(gate.id, NON_DEBRIS_GATE);
+        assert_eq!(gate.parent_id, None);
+        let GateKind::Polygon {
+            dimensions,
+            vertices,
+        } = gate.kind
+        else {
+            panic!("expected polygon");
+        };
+        assert_eq!(dimensions, [raw_dimension("FSC-A"), raw_dimension("SSC-A")]);
+        assert!(vertices.len() >= 3);
+        assert_eq!(fitted.report.status, FilterStatus::Applied);
+        assert_eq!(fitted.report.method, Some("fsc_ssc_population"));
+        assert_eq!(fitted.report.channels, ["FSC-A", "SSC-A"]);
+        assert_eq!(fitted.report.parameters["fit_events"], data.event_count());
+        assert_eq!(fitted.report.parameters["hull_vertices"], vertices.len());
+        assert!(fitted.report.parameters["strict_points"].as_u64().unwrap() >= 3);
+    }
+}

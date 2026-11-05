@@ -1757,4 +1757,97 @@ mod tests {
         assert_eq!(aggregate_matrix(&files).expect("aggregate").len(), 10_002);
         assert_eq!(aggregate_event_count(&files), 10_002);
     }
+
+    struct Directory(PathBuf);
+    impl Directory {
+        fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("cytiq-cytoscan-glob-{}", std::process::id()));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn globs_select_only_matching_files_in_sorted_order() {
+        let dir = Directory::new();
+        for name in [
+            "tube-b.fcs",
+            "tube-a.FCS",
+            "tube-ab.fcs",
+            "other.fcs",
+            "tube-c.txt",
+        ] {
+            fs::write(dir.0.join(name), []).unwrap();
+        }
+        fs::create_dir(dir.0.join("tube-d.fcs")).unwrap();
+        let pattern = dir.0.join("tube-?.*");
+        let result = resolve_glob(&pattern, &pattern.to_string_lossy()).unwrap();
+        assert_eq!(result, [dir.0.join("tube-a.FCS"), dir.0.join("tube-b.fcs")]);
+        let pattern = dir.0.join("tube-*.fcs");
+        let result = resolve_glob(&pattern, &pattern.to_string_lossy()).unwrap();
+        assert_eq!(
+            result,
+            [dir.0.join("tube-ab.fcs"), dir.0.join("tube-b.fcs")]
+        );
+        let pattern = dir.0.join("missing*.fcs");
+        assert!(
+            matches!(resolve_glob(&pattern, &pattern.to_string_lossy()), Err(CytoScanError::EmptyGlob { pattern: value }) if value == pattern.to_string_lossy())
+        );
+        let pattern = dir.0.join("missing").join("*.fcs");
+        assert!(matches!(
+            resolve_glob(&pattern, "missing/*.fcs"),
+            Err(CytoScanError::DirectoryRead { .. })
+        ));
+        for parent in ["wild*", "wild?"] {
+            let pattern = dir.0.join(parent).join("*.fcs");
+            assert!(
+                matches!(resolve_glob(&pattern, "unsupported"), Err(CytoScanError::UnsupportedGlob { pattern }) if pattern == "unsupported")
+            );
+        }
+        assert!(matches!(
+            resolve_glob(Path::new("/__cytiq_no_matches_92f6*.fcs"), "root"),
+            Err(CytoScanError::EmptyGlob { .. })
+        ));
+        assert!(matches!(
+            resolve_glob(Path::new("__cytiq_no_matches_92f6*.fcs"), "relative"),
+            Err(CytoScanError::EmptyGlob { .. })
+        ));
+        assert!(matches!(
+            resolve_glob(Path::new("/"), "root"),
+            Err(CytoScanError::UnsupportedGlob { .. })
+        ));
+    }
+
+    #[test]
+    fn wildcard_matching_handles_empty_repeated_and_backtracking_patterns() {
+        for (pattern, value, expected) in [
+            ("", "", true),
+            ("", "a", false),
+            ("*", "", true),
+            ("**", "abc", true),
+            ("?", "", false),
+            ("?", "a", true),
+            ("?", "ab", false),
+            ("abc", "ab", false),
+            ("abc", "abc", true),
+            ("abc", "abd", false),
+            ("a*b?c", "abbbc", true),
+            ("a*b?c", "ac", false),
+            ("*ab*bc", "ababcbc", true),
+            ("*x", "abc", false),
+            ("a", "ab", false),
+        ] {
+            assert_eq!(
+                wildcard_match(pattern, value),
+                expected,
+                "{pattern:?} {value:?}"
+            );
+        }
+    }
 }

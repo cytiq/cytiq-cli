@@ -104,13 +104,7 @@ impl ClassifyRunner {
     )]
     pub fn run(config: &ClassifyConfig) -> Result<ClassifyRunResult, ClassifyError> {
         let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
-        if config.batch_size == 0
-            || config.threads == Some(0)
-            || !config.abstain_margin.is_finite()
-            || config.abstain_margin < 0.0
-        {
-            return Err(invalid("invalid batch size, threads or abstain margin"));
-        }
+        let batch_size = validate_run_config(config)?;
         let bundle = Bundle::load(&config.model, config.abstain_margin)?;
         let model = config.model.join("model.onnx");
         if cytiq_provenance::hash_file(&model)?.1 != bundle.model_sha256 {
@@ -121,8 +115,6 @@ impl ClassifyRunner {
                 return Err(invalid("output exists; pass --overwrite to replace it"));
             }
         }
-        let batch_size = NonZeroUsize::new(config.batch_size)
-            .ok_or_else(|| invalid("invalid batch size, threads or abstain margin"))?;
         let FcsStream { metadata, batches } =
             FcsReader::open(&config.input)?.stream(batch_size, FcsReadLimits::default())?;
         let acquisition = cytiq_fcs::acquisition_id(&config.input, &metadata.text)?;
@@ -155,43 +147,13 @@ impl ClassifyRunner {
                 .map_err(|e| invalid(&e.to_string()))?;
         }
         let mut session = builder.commit_from_file(model)?;
-        if session.inputs().len() != 1 || session.inputs()[0].name() != bundle.input {
-            return Err(invalid("invalid ONNX feature input"));
-        }
-        let mut fields = vec![
-            Field::new("event_id", DataType::UInt64, false),
-            Field::new("source_event_id", DataType::UInt64, false),
-            Field::new("assessed", DataType::Boolean, false),
-        ];
-        fields.extend(
-            bundle
-                .classes
-                .iter()
-                .map(|id| Field::new(format!("p_{id}"), DataType::Float32, true)),
-        );
-        fields.push(Field::new("label", DataType::Utf8, true));
-        let mut metadata = HashMap::from([
-            (
-                "cytiq.classify.schema_version".into(),
-                bundle.schema_version.to_string(),
-            ),
-            ("cytiq.acquisition_sha256".into(), acquisition.clone()),
-            ("cytiq.event_id_base".into(), "0".into()),
-        ]);
-        if let Some(hash) = &bundle.vocabulary_sha256 {
-            metadata.insert("cytiq.classify.vocabulary_sha256".into(), hash.clone());
-            metadata.insert(
-                "cytiq.classify.classes".into(),
-                serde_json::to_string(&bundle.classes)?,
-            );
-        }
-        if let Some(contract) = &bundle.normalization {
-            metadata.insert(
-                "cytiq.classify.normalization".into(),
-                serde_json::to_string(contract)?,
-            );
-        }
-        let schema = Arc::new(Schema::new_with_metadata(fields, metadata));
+        let input_names = session
+            .inputs()
+            .iter()
+            .map(ort::value::Outlet::name)
+            .collect::<Vec<_>>();
+        validate_model_input(&input_names, &bundle.input)?;
+        let schema = Arc::new(prediction_schema(&bundle, &acquisition)?);
         let mut result = ClassifyRunResult {
             normalization: bundle.normalization.clone(),
             schema_version: bundle.schema_version,
@@ -230,36 +192,13 @@ impl ClassifyRunner {
                 let columns =
                     feature_columns_with_normalization(&window, &bundle.profile, normalization)?;
                 let selected = (0..end - start).filter(|i| keep[*i]).collect::<Vec<_>>();
-                let mut probabilities = vec![None; end - start];
-                if !selected.is_empty() {
-                    let values = selected
-                        .iter()
-                        .flat_map(|i| columns.iter().map(move |c| c[*i]))
-                        .collect::<Vec<_>>();
-                    let tensor = Tensor::from_array(([selected.len(), columns.len()], values))?;
-                    let outputs = session.run(ort::inputs!["features" => tensor])?;
-                    let probabilities_output = outputs
-                        .get("probabilities")
-                        .ok_or_else(|| invalid("ONNX probability output missing"))?;
-                    let (shape, data) = probabilities_output.try_extract_tensor::<f32>()?;
-                    let rows =
-                        i64::try_from(selected.len()).map_err(|_| invalid("batch too large"))?;
-                    let k = bundle.classes.len();
-                    let columns = i64::try_from(k).map_err(|_| invalid("too many classes"))?;
-                    if shape.as_ref() != [rows, columns]
-                        || data
-                            .iter()
-                            .any(|p| !p.is_finite() || !(0.0..=1.0).contains(p))
-                    {
-                        return Err(invalid("invalid ONNX probabilities"));
-                    }
-                    for (i, row) in selected.iter().zip(data.chunks_exact(k)) {
-                        if (row.iter().sum::<f32>() - 1.0).abs() > 1e-5 {
-                            return Err(invalid("ONNX probabilities do not sum to one"));
-                        }
-                        probabilities[*i] = Some(row.to_vec());
-                    }
-                }
+                let probabilities = infer_probabilities(
+                    &mut session,
+                    &columns,
+                    &selected,
+                    bundle.classes.len(),
+                    end - start,
+                )?;
                 let labels = probabilities
                     .iter()
                     .map(|row| {
@@ -295,42 +234,161 @@ impl ClassifyRunner {
             writer.close()?;
             Ok::<(), ClassifyError>(())
         })?;
-        if result.assessed > 0 {
-            result.blast_fraction = Some(result.blast as f64 / result.assessed as f64);
-            result.non_blast_fraction = Some(result.non_blast as f64 / result.assessed as f64);
-            result.unknown_fraction = Some(result.unknown as f64 / result.assessed as f64);
-        }
-        if let Some(counts) = &result.class_counts
-            && result.assessed > 0
-        {
-            result.class_fractions = Some(
-                counts
-                    .iter()
-                    .map(|(id, count)| (id.clone(), *count as f64 / result.assessed as f64))
-                    .collect(),
-            );
-        }
-        let mut summary = serde_json::to_value(&result)?;
-        if bundle.multiclass()
-            && let Some(object) = summary.as_object_mut()
-        {
-            for key in [
-                "blast",
-                "non_blast",
-                "blast_fraction",
-                "non_blast_fraction",
-                "threshold",
-                "abstain_margin",
-            ] {
-                object.remove(key);
-            }
-        }
+        let summary = classification_summary(&bundle, &mut result)?;
         publication.stage_file(config.output.join("summary.json"), |writer| {
             serde_json::to_writer_pretty(writer, &summary).map_err(ClassifyError::from)
         })?;
         publication.commit()?;
         Ok(result)
     }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn classification_summary(
+    bundle: &Bundle,
+    result: &mut ClassifyRunResult,
+) -> Result<serde_json::Value, ClassifyError> {
+    if result.assessed > 0 {
+        result.blast_fraction = Some(result.blast as f64 / result.assessed as f64);
+        result.non_blast_fraction = Some(result.non_blast as f64 / result.assessed as f64);
+        result.unknown_fraction = Some(result.unknown as f64 / result.assessed as f64);
+    }
+    if let Some(counts) = &result.class_counts
+        && result.assessed > 0
+    {
+        result.class_fractions = Some(
+            counts
+                .iter()
+                .map(|(id, count)| (id.clone(), *count as f64 / result.assessed as f64))
+                .collect(),
+        );
+    }
+    let mut summary = serde_json::to_value(&*result)?;
+    if bundle.multiclass()
+        && let Some(object) = summary.as_object_mut()
+    {
+        for key in [
+            "blast",
+            "non_blast",
+            "blast_fraction",
+            "non_blast_fraction",
+            "threshold",
+            "abstain_margin",
+        ] {
+            object.remove(key);
+        }
+    }
+    Ok(summary)
+}
+
+fn validate_run_config(config: &ClassifyConfig) -> Result<NonZeroUsize, ClassifyError> {
+    let invalid =
+        || ClassifyError::Invalid("invalid batch size, threads or abstain margin".to_owned());
+    if config.threads == Some(0)
+        || !config.abstain_margin.is_finite()
+        || config.abstain_margin < 0.0
+    {
+        return Err(invalid());
+    }
+    NonZeroUsize::new(config.batch_size).ok_or_else(invalid)
+}
+
+fn validate_model_input(names: &[&str], expected: &str) -> Result<(), ClassifyError> {
+    if names.len() != 1 || names[0] != expected {
+        return Err(ClassifyError::Invalid(
+            "invalid ONNX feature input".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn prediction_schema(bundle: &Bundle, acquisition: &str) -> Result<Schema, ClassifyError> {
+    let mut fields = vec![
+        Field::new("event_id", DataType::UInt64, false),
+        Field::new("source_event_id", DataType::UInt64, false),
+        Field::new("assessed", DataType::Boolean, false),
+    ];
+    fields.extend(
+        bundle
+            .classes
+            .iter()
+            .map(|id| Field::new(format!("p_{id}"), DataType::Float32, true)),
+    );
+    fields.push(Field::new("label", DataType::Utf8, true));
+    let mut metadata = HashMap::from([
+        (
+            "cytiq.classify.schema_version".into(),
+            bundle.schema_version.to_string(),
+        ),
+        ("cytiq.acquisition_sha256".into(), acquisition.to_owned()),
+        ("cytiq.event_id_base".into(), "0".into()),
+    ]);
+    if let Some(hash) = &bundle.vocabulary_sha256 {
+        metadata.insert("cytiq.classify.vocabulary_sha256".into(), hash.clone());
+        metadata.insert(
+            "cytiq.classify.classes".into(),
+            serde_json::to_string(&bundle.classes)?,
+        );
+    }
+    if let Some(contract) = &bundle.normalization {
+        metadata.insert(
+            "cytiq.classify.normalization".into(),
+            serde_json::to_string(contract)?,
+        );
+    }
+    Ok(Schema::new_with_metadata(fields, metadata))
+}
+
+fn infer_probabilities(
+    session: &mut Session,
+    columns: &[Vec<f32>],
+    selected: &[usize],
+    classes: usize,
+    batch_len: usize,
+) -> Result<Vec<Option<Vec<f32>>>, ClassifyError> {
+    let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
+    let mut probabilities = vec![None; batch_len];
+    if !selected.is_empty() {
+        let values = selected
+            .iter()
+            .flat_map(|i| columns.iter().map(move |c| c[*i]))
+            .collect::<Vec<_>>();
+        let tensor = Tensor::from_array(([selected.len(), columns.len()], values))?;
+        let outputs = session.run(ort::inputs!["features" => tensor])?;
+        let probabilities_output = outputs
+            .get("probabilities")
+            .ok_or_else(|| invalid("ONNX probability output missing"))?;
+        let (shape, data) = probabilities_output.try_extract_tensor::<f32>()?;
+        validate_probabilities(shape.as_ref(), data, selected.len(), classes)?;
+        for (i, row) in selected.iter().zip(data.chunks_exact(classes)) {
+            probabilities[*i] = Some(row.to_vec());
+        }
+    }
+    Ok(probabilities)
+}
+
+fn validate_probabilities(
+    shape: &[i64],
+    data: &[f32],
+    rows: usize,
+    k: usize,
+) -> Result<(), ClassifyError> {
+    let invalid = |s: &str| ClassifyError::Invalid(s.to_owned());
+    let rows = i64::try_from(rows).map_err(|_| invalid("batch too large"))?;
+    let columns = i64::try_from(k).map_err(|_| invalid("too many classes"))?;
+    if shape != [rows, columns]
+        || data
+            .iter()
+            .any(|p| !p.is_finite() || !(0.0..=1.0).contains(p))
+    {
+        return Err(invalid("invalid ONNX probabilities"));
+    }
+    for row in data.chunks_exact(k) {
+        if (row.iter().sum::<f32>() - 1.0).abs() > 1e-5 {
+            return Err(invalid("ONNX probabilities do not sum to one"));
+        }
+    }
+    Ok(())
 }
 
 /// Raw-file rows of a batch holding rows `rows` of the input: `Original_ID`
@@ -387,4 +445,180 @@ fn runtime_environment() -> Result<&'static ort::environment::Environment, Class
         .get_or_init(|| ort::init().build().map_err(|error| error.to_string()))
         .as_ref()
         .map_err(|message| ClassifyError::Invalid(format!("ONNX initialization: {message}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary_result() -> ClassifyRunResult {
+        ClassifyRunResult {
+            normalization: None,
+            schema_version: 1,
+            acquisition_sha256: "acquisition".into(),
+            model_sha256: "model".into(),
+            run_id: "run".into(),
+            events: 8,
+            assessed: 4,
+            blast: 1,
+            non_blast: 2,
+            unknown: 1,
+            blast_fraction: None,
+            non_blast_fraction: None,
+            unknown_fraction: None,
+            threshold: 0.5,
+            abstain_margin: 0.0,
+            class_counts: None,
+            class_fractions: None,
+            vocabulary_sha256: None,
+            task: None,
+        }
+    }
+
+    #[test]
+    fn summary_uses_assessed_events_as_the_fraction_denominator() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/classify");
+        let bundle = Bundle::load(&root.join("catboost"), 0.0).unwrap();
+        let mut result = summary_result();
+        let summary = classification_summary(&bundle, &mut result).unwrap();
+        assert_eq!(result.blast_fraction, Some(0.25));
+        assert_eq!(result.non_blast_fraction, Some(0.5));
+        assert_eq!(result.unknown_fraction, Some(0.25));
+        assert_eq!(summary["assessed"], 4);
+        assert_eq!(summary["events"], 8);
+        assert_eq!(summary["blast_fraction"], 0.25);
+        let bundle = Bundle::load(&root.join("v2/catboost"), 0.0).unwrap();
+        assert!(bundle.multiclass());
+        let mut result = summary_result();
+        result.class_counts = Some(BTreeMap::from([
+            ("a".into(), 1),
+            ("b".into(), 2),
+            ("c".into(), 1),
+        ]));
+        let summary = classification_summary(&bundle, &mut result).unwrap();
+        assert_eq!(
+            result.class_fractions,
+            Some(BTreeMap::from([
+                ("a".into(), 0.25),
+                ("b".into(), 0.5),
+                ("c".into(), 0.25)
+            ]))
+        );
+        for key in [
+            "blast",
+            "non_blast",
+            "blast_fraction",
+            "non_blast_fraction",
+            "threshold",
+            "abstain_margin",
+        ] {
+            assert!(summary.get(key).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn summary_keeps_fractions_absent_when_no_events_were_assessed() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/classify");
+        let bundle = Bundle::load(&root.join("catboost"), 0.0).unwrap();
+        let mut result = summary_result();
+        result.assessed = 0;
+        result.blast = 0;
+        result.non_blast = 0;
+        result.unknown = 0;
+        result.class_counts = Some(BTreeMap::from([("a".into(), 0)]));
+        classification_summary(&bundle, &mut result).unwrap();
+        assert_eq!(result.blast_fraction, None);
+        assert_eq!(result.non_blast_fraction, None);
+        assert_eq!(result.unknown_fraction, None);
+        assert_eq!(result.class_fractions, None);
+    }
+
+    #[test]
+    fn model_input_requires_one_input_with_the_declared_name() {
+        assert!(validate_model_input(&["features"], "features").is_ok());
+        for names in [vec![], vec!["other"], vec!["features", "other"]] {
+            assert!(
+                matches!(validate_model_input(&names, "features"), Err(ClassifyError::Invalid(reason)) if reason == "invalid ONNX feature input")
+            );
+        }
+    }
+
+    #[test]
+    fn probability_validation_checks_shape_range_finiteness_and_each_row() {
+        assert!(validate_probabilities(&[2, 2], &[0.0, 1.0, 0.25, 0.75], 2, 2).is_ok());
+        for (shape, data) in [
+            (vec![1, 2], vec![0.0, 1.0]),
+            (vec![2, 1], vec![0.0, 1.0]),
+            (vec![2, 2], vec![f32::NAN, 1.0, 0.5, 0.5]),
+            (vec![2, 2], vec![f32::INFINITY, 1.0, 0.5, 0.5]),
+            (vec![2, 2], vec![-0.1, 1.1, 0.5, 0.5]),
+            (vec![2, 2], vec![0.0, 1.1, 0.5, 0.5]),
+            (vec![2, 2], vec![0.0, 1.0, 0.2, 0.3]),
+            (vec![2, 2], vec![0.0, 1.0, 0.8, 0.9]),
+        ] {
+            assert!(
+                matches!(
+                    validate_probabilities(&shape, &data, 2, 2),
+                    Err(ClassifyError::Invalid(_))
+                ),
+                "{shape:?} {data:?}"
+            );
+        }
+        assert!(validate_probabilities(&[1, 2], &[0.5, 0.500_005], 1, 2).is_ok());
+        assert!(validate_probabilities(&[1, 2], &[0.5, 0.500_02], 1, 2).is_err());
+        assert!(
+            validate_probabilities(&[], &[], usize::MAX, 2)
+                .unwrap_err()
+                .to_string()
+                .contains("batch too large")
+        );
+        assert!(
+            validate_probabilities(&[], &[], 1, usize::MAX)
+                .unwrap_err()
+                .to_string()
+                .contains("too many classes")
+        );
+    }
+
+    #[test]
+    fn probability_sum_checks_the_closest_representable_tolerance_boundaries() {
+        let above = 1.0_f32 + 1e-5;
+        let below = 1.0_f32 - 1e-5;
+        for sum in [above.next_down(), below.next_up()] {
+            assert!(validate_probabilities(&[1, 2], &[0.5, sum - 0.5], 1, 2).is_ok());
+        }
+        for sum in [above, below] {
+            assert!(validate_probabilities(&[1, 2], &[0.5, sum - 0.5], 1, 2).is_err());
+        }
+    }
+
+    #[test]
+    fn run_config_accepts_zero_margin_and_rejects_each_invalid_setting() {
+        let valid = ClassifyConfig {
+            input: "input.fcs".into(),
+            model: "model".into(),
+            output: "out".into(),
+            masks: vec![],
+            threads: None,
+            batch_size: 7,
+            abstain_margin: 0.0,
+            overwrite: false,
+        };
+        assert_eq!(validate_run_config(&valid).unwrap().get(), 7);
+        let mut changed = valid.clone();
+        changed.batch_size = 0;
+        assert!(validate_run_config(&changed).is_err());
+        changed = valid.clone();
+        changed.threads = Some(0);
+        assert!(validate_run_config(&changed).is_err());
+        changed.threads = Some(1);
+        assert_eq!(validate_run_config(&changed).unwrap().get(), 7);
+        for margin in [-0.1, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            changed = valid.clone();
+            changed.abstain_margin = margin;
+            assert!(validate_run_config(&changed).is_err());
+        }
+        changed.abstain_margin = 0.1;
+        assert!(validate_run_config(&changed).is_ok());
+    }
 }

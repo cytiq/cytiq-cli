@@ -376,30 +376,9 @@ fn parse_transformation(node: Node<'_, '_>, id: &str) -> Result<Transform, Gatin
     }
     let param = |name: &str| number_attr(element, TRANSFORMS_NS, name);
     let transform = match element.tag_name().name() {
-        "flin" => {
-            let (t, a) = (param("T")?, param("A")?);
-            if t + a == 0.0 {
-                return Err(invalid_transform(id, "flin requires T + A != 0"));
-            }
-            Transform::Linear { t, a }
-        }
-        "flog" => {
-            let (t, m) = (param("T")?, param("M")?);
-            if t <= 0.0 || m <= 0.0 {
-                return Err(invalid_transform(id, "flog requires T > 0 and M > 0"));
-            }
-            Transform::Log { t, m }
-        }
-        "fasinh" => {
-            let (t, m, a) = (param("T")?, param("M")?, param("A")?);
-            if t <= 0.0 || m <= 0.0 || m + a == 0.0 {
-                return Err(invalid_transform(
-                    id,
-                    "fasinh requires T > 0, M > 0 and M + A != 0",
-                ));
-            }
-            Transform::Asinh { t, m, a }
-        }
+        "flin" => parse_linear_transform(element, id)?,
+        "flog" => parse_log_transform(element, id)?,
+        "fasinh" => parse_asinh_transform(element, id)?,
         "logicle" => Transform::Logicle(
             Logicle::new(param("T")?, param("W")?, param("M")?, param("A")?)
                 .map_err(|error| invalid_transform(id, &error.to_string()))?,
@@ -415,6 +394,37 @@ fn parse_transformation(node: Node<'_, '_>, id: &str) -> Result<Transform, Gatin
         }
     };
     Ok(transform)
+}
+
+fn parse_linear_transform(element: Node<'_, '_>, id: &str) -> Result<Transform, GatingError> {
+    let t = number_attr(element, TRANSFORMS_NS, "T")?;
+    let a = number_attr(element, TRANSFORMS_NS, "A")?;
+    if t + a == 0.0 {
+        return Err(invalid_transform(id, "flin requires T + A != 0"));
+    }
+    Ok(Transform::Linear { t, a })
+}
+
+fn parse_log_transform(element: Node<'_, '_>, id: &str) -> Result<Transform, GatingError> {
+    let t = number_attr(element, TRANSFORMS_NS, "T")?;
+    let m = number_attr(element, TRANSFORMS_NS, "M")?;
+    if t <= 0.0 || m <= 0.0 {
+        return Err(invalid_transform(id, "flog requires T > 0 and M > 0"));
+    }
+    Ok(Transform::Log { t, m })
+}
+
+fn parse_asinh_transform(element: Node<'_, '_>, id: &str) -> Result<Transform, GatingError> {
+    let t = number_attr(element, TRANSFORMS_NS, "T")?;
+    let m = number_attr(element, TRANSFORMS_NS, "M")?;
+    let a = number_attr(element, TRANSFORMS_NS, "A")?;
+    if t <= 0.0 || m <= 0.0 || m + a == 0.0 {
+        return Err(invalid_transform(
+            id,
+            "fasinh requires T > 0, M > 0 and M + A != 0",
+        ));
+    }
+    Ok(Transform::Asinh { t, m, a })
 }
 
 fn parse_spectrum_matrix(node: Node<'_, '_>, id: &str) -> Result<SpectrumMatrix, GatingError> {

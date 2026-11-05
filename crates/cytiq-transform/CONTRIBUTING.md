@@ -59,8 +59,10 @@ cargo test -p cytiq-cli --test transform_cli
 ```
 
 Unit tests are in `src/lib.rs` (arcsinh formula, finite outputs of the
-log-like methods, glob matching) and `src/scales.rs` (flowCore /
-flowWorkspace parity). `tests/value_transform.rs` checks that
+log-like methods, glob matching, bit-identical output against a frozen copy of
+the pre-optimisation column transform) and `src/scales.rs` (flowCore /
+flowWorkspace parity). `tests/publication.rs` checks that a non-finite input
+publishes neither the FCS nor the metadata file. `tests/value_transform.rs` checks that
 `ValueTransform::from_contract` reproduces the stored values of every method,
 so `cytiq-plot` axes stay in step with the command. R reference values are included from
 `data/fixtures/transform/flowcore_reference.rs`. End-to-end CLI tests in

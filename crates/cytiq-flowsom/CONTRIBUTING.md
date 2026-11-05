@@ -66,6 +66,8 @@ cargo test -p cytiq-cli --test flowsom_cli
 - `src/runner.rs` `#[cfg(test)]` — channel-list parsing, deterministic
   training, radius quantile, Chebyshev distance, distinct-event
   initialisation, metacluster count.
+- `tests/populations.rs` — `FlowSomModel::populations` signal means, empty
+  metaclusters and input validation.
 - `crates/cytiq-cli/tests/flowsom_cli.rs` — end-to-end runs with debug
   artifacts, determinism, event masks, missing input / channel / output, zero
   threads.

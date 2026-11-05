@@ -21,7 +21,7 @@ permissions:
 jobs:
   changelog:
     if: github.event_name == 'push'
-    uses: cytiq/cytiq-ci/.github/workflows/release.yml@0.2.0
+    uses: cytiq/cytiq-ci/.github/workflows/release.yml@2d72f3d33c423f5ae35e1d0694303da8b706ce5e # 0.2.0
     with:
       tag: ${{ github.ref_name }}
       update_changelog: true
@@ -36,7 +36,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'chore/update-changelog-')
-    uses: cytiq/cytiq-ci/.github/workflows/release.yml@0.2.0
+    uses: cytiq/cytiq-ci/.github/workflows/release.yml@2d72f3d33c423f5ae35e1d0694303da8b706ce5e # 0.2.0
     with:
       tag: ${{ github.event.pull_request.head.ref }}
       tag_prefix: chore/update-changelog-
@@ -87,7 +87,7 @@ jobs:
 
   build-and-push:
     needs: resolve-version
-    uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@0.2.0
+    uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@2d72f3d33c423f5ae35e1d0694303da8b706ce5e # 0.2.0
     with:
       image: cytiq-cli
       dockerfile: docker/Dockerfile

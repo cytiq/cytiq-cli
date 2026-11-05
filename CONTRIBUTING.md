@@ -30,16 +30,19 @@ Use `just` as the primary command runner. The recipes wrap the same Cargo comman
 - `just crap-check` tests report validation without coverage tools.
 - `just mutants` runs mutation tests for the CRAP remediation functions;
   `just mutants cytiq-fcs` selects one of the ten supported crates.
+- `just package-check` checks crates.io metadata and internal dependency
+  versions and packages every crate without uploading anything.
 - `just verify` runs the standard local quality gate.
 - `just performance-check` checks the algorithm benchmark harness; `just performance --help`
   describes the paired CLI benchmarks in [`performance/`](performance/README.md).
 - `just docker-build` verifies container changes.
 
-Before opening a pull request, run `just verify`. CI enforces the equivalent checks on every pull request with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` (job `quality`) and `cargo test --workspace --locked` under coverage instrumentation (job `test`). The release build and the Docker image (`.github/workflows/package.yml`, job `docker`) take about six minutes, so they run only on pull requests that change manifests, the lockfile, `build.rs`, `cytiq-classify`, its fixtures or `docker/`, plus weekly and on demand; run `just docker-build` locally when a change can affect packaging in other ways.
+Before opening a pull request, run `just verify`. CI enforces the equivalent checks on every pull request with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` and the packaging check (job `quality`) and `cargo test --workspace --locked` under coverage instrumentation (job `test`). The release build and the Docker image (`.github/workflows/package.yml`, job `docker`) take about six minutes, so they run only on pull requests that change manifests, the lockfile, `build.rs`, `cytiq-classify`, its fixtures or `docker/`, plus weekly and on demand; run `just docker-build` locally when a change can affect packaging in other ways.
 
 Releases go through `.github/workflows/cd.yml`, which calls the reusable workflows of [`cytiq-ci`](https://github.com/cytiq/cytiq-ci).
 1. Pushing an `X.Y.Z-rcN` tag opens a `chore/update-changelog-X.Y.Z` PR with `CHANGELOG.md`, `RELEASE_NOTES.md` (git-cliff, `cliff.toml`) and the workspace version bump in `Cargo.toml`/`Cargo.lock`. It also publishes `ghcr.io/cytiq/cytiq-cli:X.Y.Z-rcN` for `linux/amd64` and `linux/arm64`, each built on a native runner.
 2. Merging that PR pushes the signed `X.Y.Z` tag and the GitHub Release, and publishes `:X.Y.Z` and `:latest` built from the merge commit.
+3. The same merge dispatches `.github/workflows/crates-publish.yml` on the `X.Y.Z` tag, which publishes all 24 crates to crates.io (see [crates.io publication](#cratesio-publication)); release candidates are never published there.
 
 Images record that commit in `CYTIQ_BUILD_COMMIT` and carry SBOM and provenance attestations. The release jobs need the `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`, `GPG_FINGERPRINT` and `GH_TOKEN` secrets.
 
@@ -67,6 +70,53 @@ more than 10%. It never controls Docker or Rust runners.
 `.github/workflows/fuzz.yml` fuzzes the FCS reader and the spillover parser for one minute a target on pull requests that change `cytiq-fcs`, for ten minutes weekly, and on demand. It is not a required check. A crash uploads its input as an artifact; turn it into a regression test as `crates/cytiq-fcs/CONTRIBUTING.md` describes. `cargo test` replays the saved regressions on every run.
 
 The parity suites against the upstream R/Python tools run locally, not in CI: installing the R environment takes too long for hosted runners. Run `just parity-setup` once, then `just parity` and `just parity-real` before merging a change that can move results; a violated tolerance exits non-zero. CI still runs a scientific smoke test (`crates/cytiq-cli/tests/parity_smoke.rs`) against R outputs committed in `data/fixtures/parity`; regenerate them with `just parity-smoke-fixture` when the generator, a dataset size or an upstream pin changes, never to make a cytiq change pass. Keep `parity/tolerances.json` and `parity/real/tolerances.json` honest: every rule states why its bound holds.
+
+## crates.io publication
+
+Every workspace crate is published, because `cytiq-cli` depends on all the
+others. They share the workspace version. Library crates are depended on through
+`[workspace.dependencies]` in the root `Cargo.toml`, which gives crates.io the
+version and local builds the path. Each such version must equal the workspace
+version; `just package-check` and the `quality` job reject a mismatch, a crate
+without `description` or `license`, and an internal dependency missing from
+`[workspace.dependencies]`. The `cytiq-ci` release job pinned in `cd.yml`
+bumps only `[workspace.package]`, so until it also bumps those requirements,
+update them in the changelog PR (the `quality` job fails until you do):
+
+```sh
+# GNU sed; on macOS use sed -i '' -E
+sed -i -E '/path = "crates\//s/version = "[^"]+"/version = "X.Y.Z"/' Cargo.toml
+cargo update --workspace
+```
+
+`.github/scripts/publish_crates.py` checks the versions against the tag, skips
+versions already on crates.io and runs one `cargo publish --workspace`, which
+orders the crates by their dependencies. The workflow verifies every package by
+building it from its `.crate` archive first, then mints a 30-minute token through
+trusted publishing (OIDC) and uploads without building again. A failed run is
+safe to re-run, or to dispatch by hand on the tag (**Run workflow**, tag
+`X.Y.Z`). The dispatch job stops if the tag does not point to the merge commit
+the images were built from.
+
+Trusted publishing cannot create a crate. The first version of a crate, and of
+any crate added to the workspace later, is published once by hand. The
+workflow refuses a release with such a crate before uploading anything:
+
+1. Sign in to crates.io with GitHub, verify the email and create an API token
+   with the `publish-new` and `publish-update` scopes, expiring soon.
+2. From a clean checkout of the release tag, `cargo login`, then
+   `just publish-crates-first`. It verifies every new crate, then publishes
+   them. crates.io creates at most five new crates at once and then about one
+   every ten minutes, so the first publication of all 24 takes over three
+   hours; the script waits out each refusal and resumes. Ask help@crates.io to
+   raise the limit beforehand to shorten it. Revoke the token afterwards.
+3. For each crate, add a trusted publisher in **Settings → Trusted Publishing**:
+   owner `cytiq`, repository `cytiq-cli`, workflow `crates-publish.yml`,
+   environment `crates-io`.
+
+The repository needs a `crates-io` environment (**Settings → Environments**)
+whose deployment rule admits only release tags (`[0-9]*.[0-9]*.[0-9]*`; the
+workflow itself rejects RC tags); required reviewers are optional. No registry secret is stored.
 
 ## Coverage and CRAP
 

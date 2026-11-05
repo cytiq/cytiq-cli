@@ -2,12 +2,17 @@
 name = "cytiq-preflight"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Checks a cytometry run manifest and its FCS files before any computation"
 
 [dependencies]
-cytiq-compensate = { path = "../cytiq-compensate" }
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-manifest = { path = "../cytiq-manifest" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-compensate.workspace = true
+cytiq-fcs.workspace = true
+cytiq-manifest.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"

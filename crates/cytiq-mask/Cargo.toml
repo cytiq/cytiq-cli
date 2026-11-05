@@ -2,12 +2,17 @@
 name = "cytiq-mask"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Per-event masks shared by cytiq stages, stored next to unmodified FCS files"
 
 [dependencies]
 arrow-array = "60.1.0"
 arrow-schema = "60.1.0"
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-fcs.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 parquet = { version = "60.1.0", default-features = false, features = ["arrow"] }
 thiserror = "2.0.17"

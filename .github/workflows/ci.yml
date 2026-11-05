@@ -48,6 +48,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+      # What a release would otherwise reveal on crates.io: a crate without
+      # its description or license, or a stale internal version requirement.
+      - name: Check crates.io packaging
+        run: python3 .github/scripts/publish_crates.py --check
+
       - &cache-telemetry
         name: Record Cargo cache restore
         if: always()

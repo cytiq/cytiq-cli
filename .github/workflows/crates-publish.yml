@@ -1,0 +1,63 @@
+name: Publish to crates.io
+
+# Publishes every workspace crate at the version of a stable release tag.
+# cd.yml dispatches this workflow on the tag once the GitHub Release exists;
+# a failed run can be re-run, or dispatched by hand on the tag, and skips the
+# versions already published. crates.io trusts this file in the `crates-io`
+# environment (trusted publishing), so the repository stores no registry token.
+# Third-party actions are pinned by commit: this job can mint a publish token.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: crates-io
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish
+    if: github.repository == 'cytiq/cytiq-cli' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check release tag
+        run: |
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$TAG is not a stable release tag"
+            exit 1
+          fi
+
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+
+      # Builds each package from its .crate archive, as `cargo install` will.
+      # Nothing is uploaded, and no token exists yet.
+      - name: Verify packages
+        run: python3 .github/scripts/publish_crates.py --version "$TAG" --dry-run
+
+      # The token expires after 30 minutes; the verified packages upload in a
+      # few, without building again.
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+
+      - name: Publish packages
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: python3 .github/scripts/publish_crates.py --version "$TAG" --no-verify

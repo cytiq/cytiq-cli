@@ -2,33 +2,38 @@
 name = "cytiq-cli"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories = ["command-line-utilities", "science"]
+description = "Command-line tool for flow cytometry preprocessing, quality control and analysis of FCS files"
 
 [[bin]]
 name = "cytiq"
 path = "src/main.rs"
 
 [dependencies]
-cytiq-cytonorm = { path = "../cytiq-cytonorm" }
-cytiq-classify = { path = "../cytiq-classify" }
+cytiq-cytonorm.workspace = true
+cytiq-classify.workspace = true
 clap = { version = "4.5.38", features = ["derive"] }
-cytiq-autospectral = { path = "../cytiq-autospectral" }
-cytiq-autospill = { path = "../cytiq-autospill" }
-cytiq-clean = { path = "../cytiq-clean" }
-cytiq-compensate = { path = "../cytiq-compensate" }
-cytiq-cytoscan = { path = "../cytiq-cytoscan" }
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-flowsom = { path = "../cytiq-flowsom" }
-cytiq-gating = { path = "../cytiq-gating" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-meta = { path = "../cytiq-meta" }
-cytiq-peacoqc = { path = "../cytiq-peacoqc" }
-cytiq-plot = { path = "../cytiq-plot" }
-cytiq-preflight = { path = "../cytiq-preflight" }
-cytiq-provenance = { path = "../cytiq-provenance" }
-cytiq-qc = { path = "../cytiq-qc" }
-cytiq-spillqc = { path = "../cytiq-spillqc" }
-cytiq-stats = { path = "../cytiq-stats" }
-cytiq-transform = { path = "../cytiq-transform" }
+cytiq-autospectral.workspace = true
+cytiq-autospill.workspace = true
+cytiq-clean.workspace = true
+cytiq-compensate.workspace = true
+cytiq-cytoscan.workspace = true
+cytiq-fcs.workspace = true
+cytiq-flowsom.workspace = true
+cytiq-gating.workspace = true
+cytiq-mask.workspace = true
+cytiq-meta.workspace = true
+cytiq-peacoqc.workspace = true
+cytiq-plot.workspace = true
+cytiq-preflight.workspace = true
+cytiq-provenance.workspace = true
+cytiq-qc.workspace = true
+cytiq-spillqc.workspace = true
+cytiq-stats.workspace = true
+cytiq-transform.workspace = true
 log = "0.4.30"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"

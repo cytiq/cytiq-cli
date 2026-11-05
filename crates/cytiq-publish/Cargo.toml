@@ -2,6 +2,11 @@
 name = "cytiq-publish"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "All-or-nothing publication of command output files"
 
 [dependencies]
 tempfile = "3.27.0"

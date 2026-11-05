@@ -30,6 +30,38 @@ resolver = "3"
 [workspace.package]
 version = "0.3.1"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/cytiq/cytiq-cli"
+keywords = ["cytometry", "flow-cytometry", "fcs", "bioinformatics"]
+categories = ["science"]
+
+# Library crates of this workspace. crates.io resolves the version, local builds
+# the path. Keep each version equal to the workspace version above: packages
+# are published together, and `just package-check` rejects a mismatch.
+[workspace.dependencies]
+cytiq-autospectral = { path = "crates/cytiq-autospectral", version = "0.3.1" }
+cytiq-autospill = { path = "crates/cytiq-autospill", version = "0.3.1" }
+cytiq-classify = { path = "crates/cytiq-classify", version = "0.3.1" }
+cytiq-clean = { path = "crates/cytiq-clean", version = "0.3.1" }
+cytiq-compensate = { path = "crates/cytiq-compensate", version = "0.3.1" }
+cytiq-cytonorm = { path = "crates/cytiq-cytonorm", version = "0.3.1" }
+cytiq-cytoscan = { path = "crates/cytiq-cytoscan", version = "0.3.1" }
+cytiq-density = { path = "crates/cytiq-density", version = "0.3.1" }
+cytiq-fcs = { path = "crates/cytiq-fcs", version = "0.3.1" }
+cytiq-flowsom = { path = "crates/cytiq-flowsom", version = "0.3.1" }
+cytiq-gating = { path = "crates/cytiq-gating", version = "0.3.1" }
+cytiq-manifest = { path = "crates/cytiq-manifest", version = "0.3.1" }
+cytiq-mask = { path = "crates/cytiq-mask", version = "0.3.1" }
+cytiq-meta = { path = "crates/cytiq-meta", version = "0.3.1" }
+cytiq-peacoqc = { path = "crates/cytiq-peacoqc", version = "0.3.1" }
+cytiq-plot = { path = "crates/cytiq-plot", version = "0.3.1" }
+cytiq-preflight = { path = "crates/cytiq-preflight", version = "0.3.1" }
+cytiq-provenance = { path = "crates/cytiq-provenance", version = "0.3.1" }
+cytiq-publish = { path = "crates/cytiq-publish", version = "0.3.1" }
+cytiq-qc = { path = "crates/cytiq-qc", version = "0.3.1" }
+cytiq-spillqc = { path = "crates/cytiq-spillqc", version = "0.3.1" }
+cytiq-stats = { path = "crates/cytiq-stats", version = "0.3.1" }
+cytiq-transform = { path = "crates/cytiq-transform", version = "0.3.1" }
 
 [workspace.lints.clippy]
 all = "warn"

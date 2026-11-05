@@ -2,12 +2,17 @@
 name = "cytiq-compensate"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Applies a spillover or compensation matrix to the events of an FCS file"
 
 [dependencies]
 csv = "1.3.1"
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-fcs.workspace = true
+cytiq-mask.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 thiserror = "2.0.17"
 

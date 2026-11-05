@@ -5,6 +5,7 @@ name: Continuous Delivery
 # GitHub Release and publishes :X.Y.Z and :latest. Images are built for
 # linux/amd64 and linux/arm64 (each on a native runner) and carry SBOM and
 # provenance attestations; deployments pin the digest the merge job reports.
+# The merge also dispatches crates-publish.yml on the X.Y.Z tag.
 
 on:
   push:
@@ -101,3 +102,35 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+  # crates.io publication runs as its own workflow on the release tag: the
+  # `crates-io` environment and the trusted publisher then see refs/tags/X.Y.Z,
+  # and a failed upload is retried without rebuilding images. Skipped with
+  # `release`, so it runs only when a changelog PR is merged.
+  publish-crates:
+    needs: [release, resolve-version]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch crates.io publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          COMMIT: ${{ needs.resolve-version.outputs.commit }}
+        run: |
+          # The release job tags main's head, which is the merge commit unless
+          # another pull request merged meanwhile; crates and images must agree.
+          tag=$(gh api "repos/$REPOSITORY/git/ref/tags/$VERSION" --jq '.object | "\(.type) \(.sha)"')
+          read -r type sha <<< "$tag"
+          if [ "$type" = tag ]; then
+            sha=$(gh api "repos/$REPOSITORY/git/tags/$sha" --jq .object.sha)
+          fi
+          if [ "$sha" != "$COMMIT" ]; then
+            echo "::error::tag $VERSION points to $sha, not $COMMIT, the commit the images were built from"
+            exit 1
+          fi
+          gh workflow run crates-publish.yml --repo "$REPOSITORY" --ref "$VERSION"

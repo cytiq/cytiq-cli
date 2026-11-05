@@ -2,6 +2,11 @@
 name = "cytiq-manifest"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Run manifest (YAML or JSON) describing a flow cytometry acquisition run"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }

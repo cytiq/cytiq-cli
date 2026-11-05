@@ -154,6 +154,13 @@ the full parity suites run locally. Regenerate reference fixtures only for
 intentional generator, dataset or upstream-version changes; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Install with Cargo
+
+Releases are published to crates.io as `cytiq-cli`, which installs the `cytiq`
+binary; [`crates/cytiq-cli`](crates/cytiq-cli/README.md#build-and-distribute)
+gives the `cargo install --locked` command that builds it with the release
+profile of the Docker image.
+
 ## Docker
 
 ```bash

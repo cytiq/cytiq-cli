@@ -49,6 +49,9 @@ cargo-chef in a layer of their own, keyed by a recipe of the manifests and lockf
 Source changes and release version bumps reuse that layer; any dependency change in `Cargo.lock` rebuilds it. The
 workspace crates and the fat-LTO link of `cytiq` always rebuild. The `package.yml` job reads the amd64 release cache
 and never writes it. Keep the reusable workflow pinned to a released tag after rollout validation.
+If GitHub cannot resolve an annotated release tag, pin its peeled commit SHA
+and retain the version in a comment; this keeps the same reviewed workflow
+code without rewriting the upstream release tag.
 
 Rust checks keep their `quality` and `test` names and parallel runners. Optional `ci-cache-*` artifacts record
 exact Cargo cache hits for the organization usage report; telemetry failures do not affect correctness checks.

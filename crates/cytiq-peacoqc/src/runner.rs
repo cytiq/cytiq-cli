@@ -1083,24 +1083,12 @@ fn isolation_tree_good_bins(matrix: &[Vec<f64>], gain_limit: f64) -> Vec<bool> {
             .collect::<Vec<_>>();
         if rows.len() > 3 && nodes[node_index].depth < max_depth {
             if let Some(split) = best_isolation_split(matrix, &rows, current_gain_limit) {
-                let left = nodes[node_index]
-                    .selection
-                    .iter()
-                    .enumerate()
-                    .map(|(row, selected)| *selected && matrix[row][split.column] <= split.value)
-                    .collect::<Vec<_>>();
-                let right = nodes[node_index]
-                    .selection
-                    .iter()
-                    .enumerate()
-                    .map(|(row, selected)| *selected && matrix[row][split.column] > split.value)
-                    .collect::<Vec<_>>();
-                let left_count = left.iter().filter(|selected| **selected).count();
-                let right_count = right.iter().filter(|selected| **selected).count();
-                if left_count == 0 || right_count == 0 {
+                let Some([left, right]) =
+                    isolation_children(matrix, &nodes[node_index].selection, split)
+                else {
                     close_it_node(&mut nodes[node_index], rows.len());
                     continue;
-                }
+                };
 
                 nodes[node_index].to_split = false;
                 current_gain_limit = split.gain;
@@ -1139,6 +1127,30 @@ struct IsolationSplit {
     column: usize,
     value: f64,
     gain: f64,
+}
+
+fn isolation_children(
+    matrix: &[Vec<f64>],
+    selection: &[bool],
+    split: IsolationSplit,
+) -> Option<[Vec<bool>; 2]> {
+    let left = selection
+        .iter()
+        .enumerate()
+        .map(|(row, selected)| *selected && matrix[row][split.column] <= split.value)
+        .collect::<Vec<_>>();
+    let right = selection
+        .iter()
+        .enumerate()
+        .map(|(row, selected)| *selected && matrix[row][split.column] > split.value)
+        .collect::<Vec<_>>();
+    let left_count = left.iter().filter(|selected| **selected).count();
+    let right_count = right.iter().filter(|selected| **selected).count();
+    if left_count == 0 || right_count == 0 {
+        None
+    } else {
+        Some([left, right])
+    }
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -1764,5 +1776,82 @@ mod tests {
             .filter(|index| result.bad_bins[*index])
             .collect::<Vec<_>>();
         assert_eq!(flagged, (12..29).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn isolation_children_partition_only_selected_rows_and_require_two_nonempty_children() {
+        let matrix = vec![
+            vec![0.0, 3.0],
+            vec![1.0, 2.0],
+            vec![2.0, 1.0],
+            vec![3.0, 0.0],
+        ];
+        let selection = [false, true, true, false];
+        let split = IsolationSplit {
+            column: 1,
+            value: 1.0,
+            gain: 0.5,
+        };
+        assert_eq!(
+            isolation_children(&matrix, &selection, split),
+            Some([
+                vec![false, false, true, false],
+                vec![false, true, false, false]
+            ])
+        );
+        for value in [-1.0, 3.0] {
+            assert_eq!(
+                isolation_children(&matrix, &selection, IsolationSplit { value, ..split }),
+                None
+            );
+        }
+        assert_eq!(isolation_children(&matrix, &[false; 4], split), None);
+    }
+
+    #[test]
+    fn isolation_tree_preserves_small_and_unsplittable_samples() {
+        assert_eq!(isolation_tree_good_bins(&[], 0.0), Vec::<bool>::new());
+        for count in 1..=3 {
+            let values = (0..count).map(|i| vec![f64::from(i)]).collect::<Vec<_>>();
+            assert_eq!(
+                isolation_tree_good_bins(&values, 0.0),
+                vec![true; values.len()]
+            );
+        }
+        assert_eq!(
+            isolation_tree_good_bins(&vec![vec![2.0]; 8], 0.0),
+            vec![true; 8]
+        );
+    }
+
+    #[test]
+    fn isolation_tree_keeps_the_largest_leaf_and_respects_gain_limit() {
+        let matrix = vec![vec![0.0], vec![0.0], vec![10.0], vec![0.0]];
+        assert_eq!(
+            isolation_tree_good_bins(&matrix, 0.0),
+            [true, true, false, true]
+        );
+        assert_eq!(isolation_tree_good_bins(&matrix, 1.0), [true; 4]);
+        let tied = vec![vec![0.0], vec![0.0], vec![10.0], vec![10.0]];
+        assert_eq!(
+            isolation_tree_good_bins(&tied, 0.0),
+            [true, true, false, false]
+        );
+    }
+
+    #[test]
+    fn isolation_tree_observes_depth_limit_and_can_keep_the_right_leaf() {
+        let matrix = (0..8)
+            .map(|i| vec![f64::from(i).sqrt().exp()])
+            .collect::<Vec<_>>();
+        assert_eq!(
+            isolation_tree_good_bins(&matrix, 0.0),
+            [true, true, true, true, true, false, false, false]
+        );
+        let right = vec![vec![10.0], vec![10.0], vec![0.0], vec![10.0]];
+        assert_eq!(
+            isolation_tree_good_bins(&right, 0.0),
+            [true, true, false, true]
+        );
     }
 }

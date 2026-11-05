@@ -317,7 +317,6 @@ fn fit_mappings(
     Ok((goals, mappings))
 }
 
-#[allow(clippy::too_many_lines)]
 fn train_inner(config: &TrainConfig) -> Result<RunResult> {
     let manifest = Manifest::load(&config.manifest)?;
     let inputs = CytoNormRunner::input_files(&config.manifest)?;
@@ -352,56 +351,8 @@ fn train_inner(config: &TrainConfig) -> Result<RunResult> {
         sampling,
     } = load_cohort(&manifest, &selected_channels)?;
     let batch_names = batches.keys().cloned().collect::<BTreeSet<_>>();
-    let mut som_values = Vec::new();
-    for batch in &batch_names {
-        let files = samples
-            .iter()
-            .filter(|s| s.role == Role::Train && s.batch == *batch)
-            .count();
-        let quota = manifest.training_events / batch_names.len() / files;
-        if quota == 0 {
-            return Err(invalid(
-                "training_events is smaller than the balanced file quotas",
-            ));
-        }
-        for sample in samples
-            .iter()
-            .filter(|s| s.role == Role::Train && s.batch == *batch)
-        {
-            let rows = subsample(
-                &sample.values,
-                quota,
-                sample_seed(manifest.som.seed, &sample.id),
-            );
-            som_values.extend(select_columns(&rows, &cluster_indices));
-        }
-    }
-    let mut som_config = FlowSomConfig::new(
-        cluster_indices
-            .iter()
-            .map(|&i| manifest.panel.markers[i].channel.clone())
-            .collect(),
-    );
-    som_config.xdim = manifest.som.xdim;
-    som_config.ydim = manifest.som.ydim;
-    som_config.metaclusters = manifest.som.metaclusters;
-    som_config.scale = manifest.som.scale;
-    som_config.seed = manifest.som.seed;
-    let mut som = FlowSomModel::train(&som_values, &som_config, Metaclustering::Consensus)?;
-    som.transform = Some(transform.clone());
-    som.channel_labels = Some(
-        cluster_indices
-            .iter()
-            .map(|&i| {
-                let marker = &manifest.panel.markers[i];
-                if marker.labels.is_empty() {
-                    vec![marker.marker.clone()]
-                } else {
-                    marker.labels.clone()
-                }
-            })
-            .collect(),
-    );
+    let som_values = balanced_training_values(&manifest, &samples, &batch_names, &cluster_indices)?;
+    let som = train_som(&manifest, &cluster_indices, &som_values, &transform)?;
     for s in &mut samples {
         s.clusters = som
             .assign(&select_columns(&s.values, &cluster_indices))?
@@ -430,7 +381,7 @@ fn train_inner(config: &TrainConfig) -> Result<RunResult> {
         files: BTreeMap::new(),
         goals,
     };
-    let mut model = CytoNormModel {
+    let model = CytoNormModel {
         document,
         markers,
         som,
@@ -441,12 +392,89 @@ fn train_inner(config: &TrainConfig) -> Result<RunResult> {
     model.validate()?;
     let mut qc = cohort_qc(&samples, &model)?;
     qc["sampling"] = json!(sampling);
+    publish_training_model(config, model, &qc, &samples)
+}
+
+fn balanced_training_values(
+    manifest: &Manifest,
+    samples: &[LoadedSample],
+    batch_names: &BTreeSet<String>,
+    cluster_indices: &[usize],
+) -> Result<Vec<Vec<f64>>> {
+    let mut som_values = Vec::new();
+    for batch in batch_names {
+        let files = samples
+            .iter()
+            .filter(|s| s.role == Role::Train && s.batch == *batch)
+            .count();
+        let quota = manifest.training_events / batch_names.len() / files;
+        if quota == 0 {
+            return Err(invalid(
+                "training_events is smaller than the balanced file quotas",
+            ));
+        }
+        for sample in samples
+            .iter()
+            .filter(|s| s.role == Role::Train && s.batch == *batch)
+        {
+            let rows = subsample(
+                &sample.values,
+                quota,
+                sample_seed(manifest.som.seed, &sample.id),
+            );
+            som_values.extend(select_columns(&rows, cluster_indices));
+        }
+    }
+    Ok(som_values)
+}
+
+fn train_som(
+    manifest: &Manifest,
+    cluster_indices: &[usize],
+    som_values: &[Vec<f64>],
+    transform: &TransformContract,
+) -> Result<FlowSomModel> {
+    let mut som_config = FlowSomConfig::new(
+        cluster_indices
+            .iter()
+            .map(|&i| manifest.panel.markers[i].channel.clone())
+            .collect(),
+    );
+    som_config.xdim = manifest.som.xdim;
+    som_config.ydim = manifest.som.ydim;
+    som_config.metaclusters = manifest.som.metaclusters;
+    som_config.scale = manifest.som.scale;
+    som_config.seed = manifest.som.seed;
+    let mut som = FlowSomModel::train(som_values, &som_config, Metaclustering::Consensus)?;
+    som.transform = Some(transform.clone());
+    som.channel_labels = Some(
+        cluster_indices
+            .iter()
+            .map(|&i| {
+                let marker = &manifest.panel.markers[i];
+                if marker.labels.is_empty() {
+                    vec![marker.marker.clone()]
+                } else {
+                    marker.labels.clone()
+                }
+            })
+            .collect(),
+    );
+    Ok(som)
+}
+
+fn publish_training_model(
+    config: &TrainConfig,
+    mut model: CytoNormModel,
+    qc: &Value,
+    samples: &[LoadedSample],
+) -> Result<RunResult> {
     let mut publication = Publication::new(Existing::overwrite(config.overwrite));
     let stage = publication.stage_dir(&config.output)?;
     write_json(&stage.join("som.json"), &model.som)?;
     write_json(&stage.join("markers.json"), &model.markers)?;
     write_mappings(&stage.join("splines.parquet"), &model.mappings)?;
-    write_json(&stage.join("training-qc.json"), &qc)?;
+    write_json(&stage.join("training-qc.json"), qc)?;
     for name in ["som.json", "markers.json", "splines.parquet"] {
         model.document.files.insert(
             name.into(),
@@ -456,7 +484,7 @@ fn train_inner(config: &TrainConfig) -> Result<RunResult> {
     write_json(&stage.join("model.json"), &model.document)?;
     let model = CytoNormModel::load(&stage)?;
     if let Some(debug) = &config.debug_dir {
-        write_diagnostics(debug, &model, &qc, config.overwrite)?;
+        write_diagnostics(debug, &model, qc, config.overwrite)?;
     }
     publication.commit()?;
     let mut outputs = CytoNormModel::input_files(&config.output);
@@ -1045,4 +1073,86 @@ fn check_separate_debug(output: &Path, debug: &Path) -> Result<()> {
         return Err(invalid("debug-dir must be separate from the output path"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest() -> Manifest {
+        serde_json::from_value(json!({"schema_version":1,"panel":{"id":"panel","markers":[{"marker":"A","channel":"A"},{"marker":"B","channel":"B","labels":["CD4"]}]},"mode":"controls","clustering_markers":["A"],"normalization_markers":["B"],"training_events":4,"samples":[],"som":{"xdim":2,"ydim":1,"metaclusters":2,"scale":true,"seed":23}})).unwrap()
+    }
+    fn sample(id: &str, batch: &str, role: Role, base: f64) -> LoadedSample {
+        LoadedSample {
+            id: id.into(),
+            batch: batch.into(),
+            role,
+            values: (0..5)
+                .map(|i| vec![f64::from(i), base + f64::from(i)])
+                .collect(),
+            clusters: vec![],
+        }
+    }
+
+    #[test]
+    fn balanced_training_samples_each_file_without_using_validation_rows() {
+        let mut manifest = manifest();
+        let samples = [
+            sample("a1", "a", Role::Train, 100.0),
+            sample("a2", "a", Role::Train, 200.0),
+            sample("b1", "b", Role::Train, 300.0),
+            sample("validation", "a", Role::Validation, 900.0),
+        ];
+        let batches = BTreeSet::from(["a".into(), "b".into()]);
+        let values = balanced_training_values(&manifest, &samples, &batches, &[1]).unwrap();
+        assert_eq!(values.len(), 4);
+        for (index, base) in [100.0, 200.0, 300.0, 300.0].iter().enumerate() {
+            assert_eq!(values[index].len(), 1);
+            assert!((*base..*base + 5.0).contains(&values[index][0]));
+        }
+        assert_eq!(
+            values,
+            balanced_training_values(&manifest, &samples, &batches, &[1]).unwrap()
+        );
+        manifest.training_events = 3;
+        assert!(
+            balanced_training_values(&manifest, &samples, &batches, &[1])
+                .unwrap_err()
+                .to_string()
+                .contains("balanced file quotas")
+        );
+    }
+
+    #[test]
+    fn trained_som_keeps_marker_order_labels_scale_and_transform_contract() {
+        let manifest = manifest();
+        let transform = TransformContract {
+            method: "arcsinh".into(),
+            parameters: json!({"cofactor":150.0}),
+        };
+        let values = [
+            vec![10.0, 0.0],
+            vec![11.0, 1.0],
+            vec![20.0, 10.0],
+            vec![21.0, 11.0],
+        ];
+        let model = train_som(&manifest, &[1, 0], &values, &transform).unwrap();
+        assert_eq!(model.channels, ["B", "A"]);
+        assert_eq!(
+            model.channel_labels,
+            Some(vec![vec!["CD4".into()], vec!["A".into()]])
+        );
+        assert_eq!(
+            (
+                model.xdim,
+                model.ydim,
+                model.seed,
+                model.scale_input,
+                model.training_events
+            ),
+            (2, 1, 23, true, 4)
+        );
+        assert_eq!(model.metaclustering, Metaclustering::Consensus);
+        assert_eq!(model.transform, Some(transform));
+    }
 }

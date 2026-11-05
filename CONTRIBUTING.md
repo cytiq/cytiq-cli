@@ -28,6 +28,8 @@ Use `just` as the primary command runner. The recipes wrap the same Cargo comman
 - `just coverage` runs the CI test suite with LLVM line coverage.
 - `just crap` reports CRAP and baseline deltas from that coverage run.
 - `just crap-check` tests report validation without coverage tools.
+- `just mutants` runs mutation tests for the CRAP remediation functions;
+  `just mutants cytiq-fcs` selects one of the ten supported crates.
 - `just verify` runs the standard local quality gate.
 - `just performance-check` checks the algorithm benchmark harness; `just performance --help`
   describes the paired CLI benchmarks in [`performance/`](performance/README.md).
@@ -100,8 +102,8 @@ active quality gate. `.cargo-crap.toml` keeps both `fail-above` and
 tests, tool installation, invalid reports, missing baselines and zero
 source/LCOV overlap do. Missing coverage remains visible and is scored as 0%.
 Test code, examples, benches, fuzz targets and build scripts are not scored.
-This metric complements scientific parity and future mutation/branch coverage
-checks; it does not replace them.
+This metric complements scientific parity and mutation testing; it does not
+replace them.
 
 The reviewed Linux CI reference lives in `.github/crap-baseline.json`, with
 its collection provenance in `.github/crap-baseline-run.json`. CI never updates
@@ -116,6 +118,48 @@ For initial collection or a tool-version migration, the explicit
 `bash .github/scripts/crap.sh baseline` command generates an absolute candidate
 after `coverage`, without reading or modifying the checked-in reference;
 use it in the Linux CI preparation commit, then restore `report` before merge.
+
+## Mutation testing
+
+Install the version pinned in the standalone mutation workflow:
+
+```sh
+cargo install cargo-mutants --version 27.1.0 --locked
+just mutants
+just mutants cytiq-gating
+```
+
+`.cargo/mutants.toml` selects the 15 functions addressed by the initial CRAP
+analysis and their extracted helpers in ten crates. Keep this selection in sync
+when extracting or renaming helpers: a move must not remove mutation coverage.
+The runner rejects an empty selection and checks the unmodified tests before
+injecting mutations into a scratch copy; the working tree is never mutated.
+It uses `cargo test --locked` for the mutated crate, including its integration
+tests and doctests. Library regressions must be tested in that library, not
+only by CLI tests. Coverage instrumentation is not used for mutation tests.
+
+Results live in `target/mutation/<crate>/mutants.out/`: `outcomes.json`, mutant
+diffs and build/test logs. `selected.json` alongside it records the selected
+mutations. `caught` means a test failed; `missed` means a test still needs a
+meaningful assertion. `unviable` means the mutant did not compile and does not
+demonstrate test strength. A timeout is a separate failure, not a caught mutant.
+The command fails on survivors, timeouts or baseline failures. Add a minimal
+regression test for each meaningful survivor and rerun the affected crate.
+Only demonstrably equivalent mutants may be excluded, with a narrow regex and
+a comment explaining why their behavior is identical; do not skip whole
+functions to obtain a passing report.
+
+The initial selection excludes one equivalent mutant: `>` to `>=` at the
+`f32` probability-sum tolerance. Equality with `1e-5` cannot occur after
+subtracting one from an `f32` sum near one. Tests exercise the nearest
+representable sums inside and outside that boundary; the exact exclusion and
+its rationale live in `.cargo/mutants.toml`.
+
+The **Mutation tests** workflow runs manually and on Mondays at 04:00 UTC,
+separately from PR checks. Its ten-crate matrix runs up to three jobs at once,
+with a 120-minute limit per crate and reports retained for 35 days even on
+failure. `just verify` remains the ordinary quality gate. Neither mutation
+testing nor local CRAP analysis rewrites the reviewed Linux CRAP baseline.
 
 ## Coding Style
 

@@ -60,6 +60,8 @@ cargo test -p cytiq-cli --test gate_cli
 ```
 
 Unit tests sit next to the code in `geometry.rs`, `parse.rs`, `transforms.rs`
-and `write.rs`. When you change semantics or add a gate/transform type, extend
+and `write.rs`. `tests/parse_transforms.rs` checks transformation parameters,
+their boundaries and duplicate or reserved ids through `parse_gatingml`. When
+you change semantics or add a gate/transform type, extend
 `parity/gen/gating.py`, regenerate `data/fixtures/gating/` (command in its
 README) and keep `tests/flowkit_parity.rs` green.

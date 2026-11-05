@@ -134,6 +134,11 @@ crap:
 crap-check:
     python3 -m unittest discover -s .github/scripts -p 'test_*.py'
 
+# ---- Mutation tests for the CRAP remediation functions (optionally one crate)
+[group('quality')]
+mutants crate="all":
+    bash .github/scripts/mutants.sh {{ quote(crate) }}
+
 # ---- Format the codebase
 [group('quality')]
 fmt:

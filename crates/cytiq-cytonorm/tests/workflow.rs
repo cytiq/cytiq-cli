@@ -333,3 +333,56 @@ fn accepts_reordered_channels_and_rejects_a_superset_panel() {
     );
     assert!(!wrong.output.exists());
 }
+
+#[test]
+fn overwrite_refuses_files_and_directories_without_a_bundle() {
+    let temp = tempfile::tempdir().unwrap();
+    let (mut train, _) = configs(temp.path(), "controls");
+    train.overwrite = true;
+    std::fs::write(&train.output, b"protected").unwrap();
+    assert!(
+        CytoNormRunner::train(&train)
+            .unwrap_err()
+            .to_string()
+            .contains("overwrite requires an existing CytoNorm bundle directory")
+    );
+    assert_eq!(std::fs::read(&train.output).unwrap(), b"protected");
+    std::fs::remove_file(&train.output).unwrap();
+    std::fs::create_dir(&train.output).unwrap();
+    let sentinel = train.output.join("sentinel");
+    std::fs::write(&sentinel, b"protected").unwrap();
+    assert!(
+        CytoNormRunner::train(&train)
+            .unwrap_err()
+            .to_string()
+            .contains("overwrite requires an existing CytoNorm bundle directory")
+    );
+    assert_eq!(std::fs::read(sentinel).unwrap(), b"protected");
+    assert_eq!(std::fs::read_dir(&train.output).unwrap().count(), 1);
+}
+
+#[test]
+fn training_reports_only_fitted_events_and_publishes_debug_artifacts() {
+    let temp = tempfile::tempdir().unwrap();
+    let (mut train, _) = configs(temp.path(), "controls");
+    let mut manifest: Value =
+        serde_json::from_reader(std::fs::File::open(&train.manifest).unwrap()).unwrap();
+    manifest["samples"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|sample| sample["role"] != "validation");
+    support::save(&train.manifest, &manifest);
+    let debug = temp.path().join("debug");
+    train.debug_dir = Some(debug.clone());
+    let result = CytoNormRunner::train(&train).unwrap();
+    assert_eq!(result.events, 4000);
+    assert_eq!(result.outputs.len(), 6);
+    assert!(result.outputs.contains(&debug.join("report.html")));
+    assert!(result.outputs.iter().all(|path| path.is_file()));
+    let model = CytoNormModel::load(&train.output).unwrap();
+    assert_eq!(result.model_sha256, model.model_sha256);
+    train.overwrite = true;
+    let repeated = CytoNormRunner::train(&train).unwrap();
+    assert_eq!(repeated.events, 4000);
+    assert_eq!(repeated.model_sha256, result.model_sha256);
+}

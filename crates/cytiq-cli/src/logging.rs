@@ -85,3 +85,34 @@ pub(crate) fn parse_log_level_token(token: &str) -> Option<LevelFilter> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_each_level_and_directive_suffix() {
+        for (name, level) in [
+            ("off", LevelFilter::Off),
+            ("error", LevelFilter::Error),
+            ("warn", LevelFilter::Warn),
+            ("warning", LevelFilter::Warn),
+            ("info", LevelFilter::Info),
+            ("debug", LevelFilter::Debug),
+            ("trace", LevelFilter::Trace),
+        ] {
+            assert_eq!(parse_log_level_token(name), Some(level));
+            assert_eq!(
+                parse_log_level_token(&format!("cytiq= {} ", name.to_uppercase())),
+                Some(level)
+            );
+        }
+        for name in ["", "cytiq=", "verbose", "info extra"] {
+            assert_eq!(parse_log_level_token(name), None);
+        }
+        assert_eq!(
+            parse_log_level("info, cytiq=trace,unknown"),
+            Some(LevelFilter::Trace)
+        );
+    }
+}

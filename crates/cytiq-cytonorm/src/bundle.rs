@@ -112,10 +112,12 @@ impl CytoNormModel {
     ///
     /// # Errors
     /// Rejects inconsistent panels, goals and batch/cluster/marker coverage.
-    #[allow(clippy::too_many_lines)]
     pub fn validate(&self) -> Result<()> {
         self.som.validate()?;
-        let d = &self.document;
+        self.validate_panel()?;
+        self.validate_som_contract()?;
+        self.validate_training_contract()?;
+        self.validate_channel_labels()?;
         let k = self
             .som
             .node_metaclusters
@@ -123,6 +125,12 @@ impl CytoNormModel {
             .copied()
             .max()
             .unwrap_or(0);
+        self.validate_goals(k)?;
+        self.validate_mappings(k)
+    }
+
+    fn validate_panel(&self) -> Result<()> {
+        let d = &self.document;
         let panel = &self.markers.panel;
         let names = panel
             .markers
@@ -158,15 +166,6 @@ impl CytoNormModel {
                 .channels
                 .iter()
                 .any(|c| !channels.contains(c.as_str()))
-            || self.som.transform.as_ref() != Some(&self.markers.transform)
-            || self.som.normalization_model.is_some()
-            || d.som.xdim != self.som.xdim
-            || d.som.ydim != self.som.ydim
-            || d.som.metaclusters != k
-            || d.som.seed != self.som.seed
-            || d.som.scale != self.som.scale_input
-            || d.training_events != self.som.training_events
-            || self.som.metaclustering != cytiq_flowsom::Metaclustering::Consensus
             || d.normalization_markers.iter().any(|name| {
                 panel.markers.iter().any(|m| {
                     m.marker == *name && {
@@ -178,7 +177,43 @@ impl CytoNormModel {
                     }
                 })
             })
-            || d.batches.len() < 2
+        {
+            return Err(invalid(
+                "inconsistent model panel, SOM, batch or quantile contract",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_som_contract(&self) -> Result<()> {
+        let d = &self.document;
+        let k = self
+            .som
+            .node_metaclusters
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0);
+        if self.som.transform.as_ref() != Some(&self.markers.transform)
+            || self.som.normalization_model.is_some()
+            || d.som.xdim != self.som.xdim
+            || d.som.ydim != self.som.ydim
+            || d.som.metaclusters != k
+            || d.som.seed != self.som.seed
+            || d.som.scale != self.som.scale_input
+            || d.training_events != self.som.training_events
+            || self.som.metaclustering != cytiq_flowsom::Metaclustering::Consensus
+        {
+            return Err(invalid(
+                "inconsistent model panel, SOM, batch or quantile contract",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_training_contract(&self) -> Result<()> {
+        let d = &self.document;
+        if d.batches.len() < 2
             || d.batches.keys().any(|s| s.trim().is_empty())
             || d.min_cluster_events < 2
             || d.training_events == 0
@@ -193,6 +228,11 @@ impl CytoNormModel {
                 "inconsistent model panel, SOM, batch or quantile contract",
             ));
         }
+        Ok(())
+    }
+
+    fn validate_channel_labels(&self) -> Result<()> {
+        let panel = &self.markers.panel;
         if let Some(labels) = &self.som.channel_labels {
             for (channel, labels) in self.som.channels.iter().zip(labels) {
                 let marker = panel
@@ -210,6 +250,11 @@ impl CytoNormModel {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn validate_goals(&self, k: usize) -> Result<()> {
+        let d = &self.document;
         let mut goals = BTreeSet::new();
         for g in &d.goals {
             if g.metacluster == 0
@@ -228,6 +273,11 @@ impl CytoNormModel {
         if goals.len() != k * d.normalization_markers.len() {
             return Err(invalid("missing goal distribution"));
         }
+        Ok(())
+    }
+
+    fn validate_mappings(&self, k: usize) -> Result<()> {
+        let d = &self.document;
         let mut seen = BTreeSet::new();
         for m in &self.mappings {
             if !d.batches.contains_key(&m.batch)

@@ -1,0 +1,45 @@
+name: Mutation tests
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutants:
+    name: mutants (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        crate: [cytiq-cli, cytiq-clean, cytiq-flowsom, cytiq-peacoqc, cytiq-cytoscan, cytiq-spillqc, cytiq-gating, cytiq-fcs, cytiq-cytonorm, cytiq-classify]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install mutation tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-mutants@27.1.0
+      - name: Run mutation tests
+        run: just mutants ${{ matrix.crate }}
+      - name: Upload mutation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-${{ matrix.crate }}
+          path: target/mutation/${{ matrix.crate }}/
+          if-no-files-found: warn
+          retention-days: 35

@@ -98,64 +98,20 @@ pub(crate) fn resolve_layout(
     let mut fcs30_numeric_width = None;
 
     for index in 1..=parameter_count {
-        let index_u16 = u16::try_from(index)
-            .map_err(|_| FcsError::UnsupportedLayout("parameter count exceeds u16"))?;
-        let name = required_parameter_value(text, index, "N")?.to_owned();
-        let label = optional_parameter_value(text, index, "S").map(str::to_owned);
-        let width_value = required_parameter_value(text, index, "B")?;
-        let _range_value = required_parameter_value(text, index, "R")?;
-        let _scale_value = required_parameter_value(text, index, "E")?;
-
-        let data_type = if version == FcsVersion::V3_2 {
-            optional_parameter_value(text, index, "DATATYPE")
-                .map(parse_data_type)
-                .transpose()?
-                .unwrap_or(dataset_type)
-        } else {
-            dataset_type
-        };
-
         let keywords = std::mem::take(&mut keywords_by_parameter[index - 1]);
-        let (width, encoding) = parse_width(index_u16, width_value, data_type)?;
-        match encoding {
-            ParameterEncoding::AsciiFixed { .. } => {}
-            ParameterEncoding::Integer { width_bytes } => {
-                has_numeric = true;
-                max_numeric_width = max_numeric_width.max(width_bytes);
-                if version == FcsVersion::V3_0 {
-                    ensure_consistent_fcs30_width(&mut fcs30_numeric_width, width_bytes)?;
-                }
-            }
-            ParameterEncoding::Float32 => {
-                has_numeric = true;
-                max_numeric_width = max_numeric_width.max(4);
-                if version == FcsVersion::V3_0 {
-                    ensure_consistent_fcs30_width(&mut fcs30_numeric_width, 4)?;
-                }
-            }
-            ParameterEncoding::Float64 => {
-                has_numeric = true;
-                max_numeric_width = max_numeric_width.max(8);
-                if version == FcsVersion::V3_0 {
-                    ensure_consistent_fcs30_width(&mut fcs30_numeric_width, 8)?;
-                }
+        let parameter = resolve_parameter(version, text, index, dataset_type, keywords)?;
+        if !matches!(parameter.encoding, ParameterEncoding::AsciiFixed { .. }) {
+            let width_bytes = parameter.encoding.stored_bytes();
+            has_numeric = true;
+            max_numeric_width = max_numeric_width.max(width_bytes);
+            if version == FcsVersion::V3_0 {
+                ensure_consistent_fcs30_width(&mut fcs30_numeric_width, width_bytes)?;
             }
         }
-        if width == ParameterWidth::DelimitedAscii {
+        if parameter.public.width == ParameterWidth::DelimitedAscii {
             has_delimited_ascii = true;
         }
-
-        parameters.push(ResolvedParameter {
-            public: Parameter {
-                index: index_u16,
-                name,
-                label,
-                width,
-                data_type,
-                keywords,
-            },
-            encoding,
-        });
+        parameters.push(parameter);
     }
 
     if has_delimited_ascii {
@@ -174,6 +130,44 @@ pub(crate) fn resolve_layout(
         byte_order,
         row_count,
         parameters,
+    })
+}
+
+fn resolve_parameter(
+    version: FcsVersion,
+    text: &FcsText,
+    index: usize,
+    dataset_type: ParameterDataType,
+    keywords: Vec<(String, String)>,
+) -> Result<ResolvedParameter, FcsError> {
+    let index_u16 = u16::try_from(index)
+        .map_err(|_| FcsError::UnsupportedLayout("parameter count exceeds u16"))?;
+    let name = required_parameter_value(text, index, "N")?.to_owned();
+    let label = optional_parameter_value(text, index, "S").map(str::to_owned);
+    let width_value = required_parameter_value(text, index, "B")?;
+    let _range_value = required_parameter_value(text, index, "R")?;
+    let _scale_value = required_parameter_value(text, index, "E")?;
+
+    let data_type = if version == FcsVersion::V3_2 {
+        optional_parameter_value(text, index, "DATATYPE")
+            .map(parse_data_type)
+            .transpose()?
+            .unwrap_or(dataset_type)
+    } else {
+        dataset_type
+    };
+
+    let (width, encoding) = parse_width(index_u16, width_value, data_type)?;
+    Ok(ResolvedParameter {
+        public: Parameter {
+            index: index_u16,
+            name,
+            label,
+            width,
+            data_type,
+            keywords,
+        },
+        encoding,
     })
 }
 
@@ -419,4 +413,134 @@ fn parse_ordered_byte_order(raw_value: &str, numeric_width: usize) -> Result<Byt
     }
 
     Ok(ByteOrder::Ordered(order, numeric_width))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::TextSegment;
+
+    fn text(overrides: &[(&str, &str)]) -> FcsText {
+        let mut pairs = [
+            ("$MODE", "L"),
+            ("$TOT", "7"),
+            ("$PAR", "2"),
+            ("$DATATYPE", "I"),
+            ("$BYTEORD", "1,2,3,4"),
+            ("$P1N", "A"),
+            ("$P1B", "16"),
+            ("$P1R", "65536"),
+            ("$P1E", "0,0"),
+            ("$P1S", "marker A"),
+            ("$P2N", "B"),
+            ("$P2B", "32"),
+            ("$P2R", "65536"),
+            ("$P2E", "0,0"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<Vec<_>>();
+        for (key, value) in overrides {
+            if let Some(pair) = pairs.iter_mut().find(|(k, _)| k == key) {
+                pair.1 = (*value).into();
+            } else {
+                pairs.push(((*key).into(), (*value).into()));
+            }
+        }
+        let lookup = pairs.iter().cloned().collect();
+        FcsText::new(
+            TextSegment {
+                delimiter: b'|',
+                pairs,
+            },
+            None,
+            lookup,
+        )
+    }
+
+    #[test]
+    fn layout_preserves_rows_parameters_labels_and_keywords() {
+        let layout = resolve_layout(FcsVersion::V3_1, &text(&[])).unwrap();
+        assert_eq!(layout.row_count(), 7);
+        assert_eq!(layout.byte_order(), ByteOrder::LittleEndian);
+        let parameters = layout.public_parameters();
+        assert_eq!(parameters.len(), 2);
+        assert_eq!((parameters[0].index, parameters[1].index), (1, 2));
+        assert_eq!(
+            (&parameters[0].name, &parameters[1].name),
+            (&"A".to_owned(), &"B".to_owned())
+        );
+        assert_eq!(parameters[0].label.as_deref(), Some("marker A"));
+        assert_eq!(parameters[1].label, None);
+        assert_eq!(parameters[0].width, ParameterWidth::Bits(16));
+        assert_eq!(parameters[1].width, ParameterWidth::Bits(32));
+        assert_eq!(parameters[0].data_type, ParameterDataType::Integer);
+        assert!(
+            parameters[0]
+                .keywords
+                .contains(&("$P1S".into(), "marker A".into()))
+        );
+        assert!(
+            parameters[0]
+                .keywords
+                .iter()
+                .all(|(k, _)| k.starts_with("$P1"))
+        );
+        assert!(
+            matches!(resolve_layout(FcsVersion::V3_1, &text(&[("$MODE", "C")])), Err(FcsError::UnsupportedMode(mode)) if mode == "C")
+        );
+    }
+
+    #[test]
+    fn layout_honors_version_specific_types_and_widths() {
+        assert!(matches!(
+            resolve_layout(FcsVersion::V3_0, &text(&[("$BYTEORD", "1,2")])),
+            Err(FcsError::UnsupportedLayout(_))
+        ));
+        let fixed = text(&[("$P2B", "16"), ("$BYTEORD", "2,1")]);
+        assert_eq!(
+            resolve_layout(FcsVersion::V3_0, &fixed)
+                .unwrap()
+                .byte_order(),
+            ByteOrder::Ordered([1, 0, 0, 0, 0, 0, 0, 0], 2)
+        );
+        let mixed = text(&[("$P2DATATYPE", "F")]);
+        assert_eq!(
+            resolve_layout(FcsVersion::V3_2, &mixed)
+                .unwrap()
+                .parameters()[1]
+                .encoding,
+            ParameterEncoding::Float32
+        );
+        assert_eq!(
+            resolve_layout(FcsVersion::V3_1, &mixed)
+                .unwrap()
+                .parameters()[1]
+                .encoding,
+            ParameterEncoding::Integer { width_bytes: 4 }
+        );
+        let ascii = text(&[
+            ("$DATATYPE", "A"),
+            ("$P1B", "5"),
+            ("$P2B", "10"),
+            ("$BYTEORD", "ignored"),
+        ]);
+        assert_eq!(
+            resolve_layout(FcsVersion::V3_2, &ascii)
+                .unwrap()
+                .byte_order(),
+            ByteOrder::None
+        );
+        assert!(matches!(
+            resolve_layout(
+                FcsVersion::V3_2,
+                &text(&[("$DATATYPE", "A"), ("$P1B", "*"), ("$P2B", "10")])
+            ),
+            Err(FcsError::UnsupportedLayout(_))
+        ));
+        assert!(matches!(
+            resolve_layout(FcsVersion::V3_2, &text(&[("$P2DATATYPE", "bad")])),
+            Err(FcsError::InvalidKeywordValue { .. })
+        ));
+    }
 }

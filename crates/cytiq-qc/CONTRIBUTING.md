@@ -33,5 +33,5 @@ this crate.
 
 ```bash
 cargo test -p cytiq-qc
-cargo test -p cytiq-cli --test qc_cli
+cargo test -p cytiq-engine --test qc_cli
 ```

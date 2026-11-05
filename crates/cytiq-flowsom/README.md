@@ -121,5 +121,5 @@ learning rate and radius schedules remain fixed constants.
 
 ```bash
 cargo test -p cytiq-flowsom
-cargo test -p cytiq-cli --test flowsom_cli
+cargo test -p cytiq-engine --test flowsom_cli
 ```

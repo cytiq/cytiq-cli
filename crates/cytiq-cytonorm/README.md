@@ -142,7 +142,7 @@ The library writes computational artifacts; the CLI adds standard provenance.
 
 ```bash
 cargo test -p cytiq-cytonorm
-cargo test -p cytiq-cli --test cytonorm_cli
+cargo test -p cytiq-engine --test cytonorm_cli
 just parity-cytonorm
 just parity-cytonorm-real
 ```

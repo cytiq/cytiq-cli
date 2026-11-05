@@ -46,7 +46,7 @@ fn run_gate(output: &Path, format: &str) -> std::process::Output {
 
 #[test]
 fn cli_writes_gate_counts_csv() {
-    let directory = create_temp_dir("cytiq-cli-gate-csv");
+    let directory = create_temp_dir("cytiq-engine-gate-csv");
     let output_path = directory.join("nested").join("counts.csv");
 
     let output = run_gate(&output_path, "csv");
@@ -90,7 +90,7 @@ fn cli_writes_gate_counts_csv() {
 
 #[test]
 fn cli_writes_gate_counts_json() {
-    let directory = create_temp_dir("cytiq-cli-gate-json");
+    let directory = create_temp_dir("cytiq-engine-gate-json");
     let output_path = directory.join("counts.json");
 
     let output = run_gate(&output_path, "json");
@@ -110,7 +110,7 @@ fn cli_writes_gate_counts_json() {
 
 #[test]
 fn cli_fails_when_gating_ml_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-gate-missing");
+    let directory = create_temp_dir("cytiq-engine-gate-missing");
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
             "gate",
@@ -132,7 +132,7 @@ fn cli_fails_when_gating_ml_is_missing() {
 
 #[test]
 fn cli_refuses_to_transform_already_transformed_channels() {
-    let directory = create_temp_dir("cytiq-cli-gate-transformed");
+    let directory = create_temp_dir("cytiq-engine-gate-transformed");
     let transformed = directory.join("sample.transformed.fcs");
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -178,7 +178,7 @@ fn every_third_removed(events: usize) -> Vec<bool> {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn cli_gates_only_events_inside_the_mask() {
-    let directory = create_temp_dir("cytiq-cli-gate-mask");
+    let directory = create_temp_dir("cytiq-engine-gate-mask");
     let input = fixture("sample.fcs");
     let dataset = cytiq_fcs::FcsReader::open(&input)
         .and_then(cytiq_fcs::FcsReader::read)
@@ -294,7 +294,7 @@ fn cli_gates_only_events_inside_the_mask() {
 
 #[test]
 fn fails_when_mask_belongs_to_another_file() {
-    let directory = create_temp_dir("cytiq-cli-gate-foreign-mask");
+    let directory = create_temp_dir("cytiq-engine-gate-foreign-mask");
     let input = fixture("sample.fcs");
     let events = cytiq_fcs::FcsReader::open(&input)
         .and_then(cytiq_fcs::FcsReader::read)

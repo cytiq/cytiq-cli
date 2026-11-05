@@ -45,14 +45,14 @@ this crate.
 ## Where changes belong
 
 - FCS parsing, spillover parsing and matrix inversion belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/cytoscan.rs`; this crate takes a
+- CLI flags belong in `crates/cytiq-engine/src/commands/cytoscan.rs`; this crate takes a
   `CytoScanConfig` and has no `clap` dependency.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-cytoscan
-cargo test -p cytiq-cli --test cytoscan_cli
+cargo test -p cytiq-engine --test cytoscan_cli
 ```
 
 - `src/runner.rs` `#[cfg(test)]` — EMD vs `transport::wasserstein1d`, binning
@@ -62,7 +62,7 @@ cargo test -p cytiq-cli --test cytoscan_cli
   vs `Mclust` (`n > d` and `n <= d`), `hclass` partitions, chosen model and
   log-densities; fixtures from `parity/make_fixtures.R`.
 - `src/novelty.rs` `#[cfg(test)]` — `XXX` densities, determinism, no model.
-- `crates/cytiq-cli/tests/cytoscan_cli.rs` — end-to-end runs for every
+- `crates/cytiq-engine/tests/cytoscan_cli.rs` — end-to-end runs for every
   feature method, novelty with reference, debug artifacts, error cases.
 
 The crate's `tests/` directory is currently empty. Reference values in unit

@@ -1,4 +1,4 @@
-# cytiq-cli
+# cytiq-engine
 
 The `cytiq` binary. A thin `clap` front end that parses arguments, builds the
 config of a library crate, calls its runner and logs a summary. All algorithms
@@ -36,7 +36,7 @@ chain and signal-state checks.
 
 ```bash
 just run meta --input data/fixtures/gating/sample.fcs
-cargo run -p cytiq-cli -- transform --input raw.fcs --output out.fcs --method logicle
+cargo run -p cytiq-engine -- transform --input raw.fcs --output out.fcs --method logicle
 ```
 
 ## Build and distribute
@@ -50,7 +50,7 @@ variables or companion `lib/` directory. See the
 Releases are also published to crates.io, from source:
 
 ```bash
-cargo install --locked cytiq-cli \
+cargo install --locked cytiq-engine \
   --config 'profile.release.overflow-checks=true' \
   --config 'profile.release.lto="fat"' \
   --config 'profile.release.codegen-units=1' \
@@ -113,8 +113,8 @@ documented chain on the golden fixture `data/fixtures/pipeline` and checks
 every stage against per-event truth, lineage, provenance and reproducibility:
 
 ```bash
-cargo test -p cytiq-cli
-cargo test -p cytiq-cli --test transform_cli
+cargo test -p cytiq-engine
+cargo test -p cytiq-engine --test transform_cli
 ```
 
 Some tests read fixtures from `data/fixtures/`; `autospill_cli.rs` and

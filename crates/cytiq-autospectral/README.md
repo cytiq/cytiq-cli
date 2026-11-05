@@ -156,7 +156,7 @@ The optional detectors CSV uses the [AutoSpill detector format](../cytiq-autospi
 
 ```bash
 cargo test -p cytiq-autospectral
-cargo test -p cytiq-cli --test autospectral_cli
+cargo test -p cytiq-engine --test autospectral_cli
 ```
 
 Integration tests run on `data/fixtures/autospectral/` (unstained, FITC and PE

@@ -6,7 +6,7 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 # ---- Project configuration
 
-CLI_PACKAGE := env("CLI_PACKAGE", "cytiq-cli")
+CLI_PACKAGE := env("CLI_PACKAGE", "cytiq-engine")
 DOCKER_IMAGE := env("DOCKER_IMAGE", "cytiq:dev")
 DOCKERFILE := env("DOCKERFILE", "docker/Dockerfile")
 
@@ -28,13 +28,13 @@ parity-real:
 # ---- Validate CytoNorm quantiles/splines and full clustering against pinned R
 [group('validation')]
 parity-cytonorm:
-    cargo build -p cytiq-cli --locked
+    cargo build -p cytiq-engine --locked
     R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm.R target/debug/cytiq
 
 # ---- Validate CytoNorm on six real CyTOF controls with a held-out donor
 [group('validation')]
 parity-cytonorm-real:
-    cargo build -p cytiq-cli --locked
+    cargo build -p cytiq-engine --locked
     R_LIBS_USER=parity/.env/Rlib Rscript parity/cytonorm_real.R target/debug/cytiq
 
 # ---- Regenerate the independent R numerical fixtures for CytoNorm
@@ -56,7 +56,7 @@ performance *args:
 [group('quality')]
 performance-check:
     python3 -m unittest discover -s performance -p 'test_*.py'
-    cargo test -p cytiq-cli --example performance_support --locked
+    cargo test -p cytiq-engine --example performance_support --locked
 
 # ---- Regenerate the golden end-to-end CI fixture
 [group('validation')]

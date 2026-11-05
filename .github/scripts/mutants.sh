@@ -7,7 +7,7 @@ if [[ "$(cargo mutants --version)" != 'cargo-mutants 27.1.0' ]]; then
     exit 1
 fi
 
-crates=(cytiq-cli cytiq-clean cytiq-flowsom cytiq-peacoqc cytiq-cytoscan
+crates=(cytiq-engine cytiq-clean cytiq-flowsom cytiq-peacoqc cytiq-cytoscan
         cytiq-spillqc cytiq-gating cytiq-fcs cytiq-cytonorm cytiq-classify)
 if [[ "${1:-all}" != all ]]; then
     selected="$1"

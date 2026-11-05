@@ -79,7 +79,7 @@ fn failed_checks(report: &Value) -> Vec<String> {
 
 #[test]
 fn passes_a_consistent_run() {
-    let directory = create_temp_dir("cytiq-cli-preflight-pass");
+    let directory = create_temp_dir("cytiq-engine-preflight-pass");
     let (output, report, manifest_path) = preflight(
         &directory,
         "run.yaml",
@@ -117,7 +117,7 @@ fn passes_a_consistent_run() {
 
 #[test]
 fn yaml_and_json_manifests_give_the_same_checks() {
-    let directory = create_temp_dir("cytiq-cli-preflight-json");
+    let directory = create_temp_dir("cytiq-engine-preflight-json");
     let yaml = manifest(&sample("S01", &fixture("sample.fcs")), MARKERS);
     let (_, from_yaml, _) = preflight(&directory, "run.yaml", &yaml);
     let json = format!(
@@ -134,7 +134,7 @@ fn yaml_and_json_manifests_give_the_same_checks() {
 
 #[test]
 fn fails_on_a_missing_required_marker() {
-    let directory = create_temp_dir("cytiq-cli-preflight-marker");
+    let directory = create_temp_dir("cytiq-engine-preflight-marker");
     let markers =
         format!("{MARKERS}    - {{ marker: CD8 }}\n    - {{ marker: CD45, required: false }}\n");
     let (output, report, _) = preflight(
@@ -151,7 +151,7 @@ fn fails_on_a_missing_required_marker() {
 
 #[test]
 fn fails_on_mismatched_detectors_and_processed_files() {
-    let directory = create_temp_dir("cytiq-cli-preflight-mismatch");
+    let directory = create_temp_dir("cytiq-engine-preflight-mismatch");
     let transformed = directory.join("sample.t.fcs");
     let transform = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -187,7 +187,7 @@ fn fails_on_mismatched_detectors_and_processed_files() {
 
 #[test]
 fn rejects_an_invalid_manifest() {
-    let directory = create_temp_dir("cytiq-cli-preflight-invalid");
+    let directory = create_temp_dir("cytiq-engine-preflight-invalid");
     let manifest_path = directory.join("run.yaml");
     fs::write(&manifest_path, "cytometry: conventional\nsampels: []\n").expect("write");
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -256,7 +256,7 @@ fn checks_named<'a>(report: &'a Value, name: &str) -> Vec<&'a Value> {
 
 #[test]
 fn passes_with_an_external_compensation_matrix() {
-    let directory = create_temp_dir("cytiq-cli-preflight-matrix");
+    let directory = create_temp_dir("cytiq-engine-preflight-matrix");
     let controls = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/autospill");
     let matrix = directory.join("compensation.csv");
     let autospill = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -310,7 +310,7 @@ fn passes_with_an_external_compensation_matrix() {
 
 #[test]
 fn fails_when_the_matrix_misses_a_sample_channel() {
-    let directory = create_temp_dir("cytiq-cli-preflight-matrix-channels");
+    let directory = create_temp_dir("cytiq-engine-preflight-matrix-channels");
     fs::write(
         directory.join("matrix.csv"),
         "channel,FL1-A,FL9-A\nFL1-A,1,0\nFL9-A,0,1\n",
@@ -340,7 +340,7 @@ fn fails_when_the_matrix_misses_a_sample_channel() {
 
 #[test]
 fn warns_on_an_ill_conditioned_matrix() {
-    let directory = create_temp_dir("cytiq-cli-preflight-matrix-condition");
+    let directory = create_temp_dir("cytiq-engine-preflight-matrix-condition");
     fs::write(
         directory.join("spillover.csv"),
         "channel,FL1-A,FL2-A\nFL1-A,1,0.99\nFL2-A,0.99,1\n",
@@ -369,7 +369,7 @@ fn warns_on_an_ill_conditioned_matrix() {
 
 #[test]
 fn controls_source_needs_controls_for_every_marker() {
-    let directory = create_temp_dir("cytiq-cli-preflight-controls");
+    let directory = create_temp_dir("cytiq-engine-preflight-controls");
     let text = manifest_with_compensation(
         &sample("S01", &fixture("sample.fcs")),
         "{ source: controls }",
@@ -403,7 +403,7 @@ fn controls_source_needs_controls_for_every_marker() {
 
 #[test]
 fn checks_each_sample_against_its_own_panel() {
-    let directory = create_temp_dir("cytiq-cli-preflight-panels");
+    let directory = create_temp_dir("cytiq-engine-preflight-panels");
     // `no_viability.fcs` has no Live/Dead channel: valid for a panel without it.
     let text = format!(
         "cytometry: conventional\n\
@@ -432,7 +432,7 @@ fn checks_each_sample_against_its_own_panel() {
 
 #[test]
 fn reports_log_amplified_samples_and_controls() {
-    let directory = create_temp_dir("cytiq-cli-preflight-log");
+    let directory = create_temp_dir("cytiq-engine-preflight-log");
     let sample_path = directory.join("sample.fcs");
     let control_path = directory.join("control.fcs");
     fs::copy(fixture("sample.fcs"), &sample_path).expect("fixture should copy");
@@ -482,7 +482,7 @@ fn reports_log_amplified_samples_and_controls() {
 
 #[test]
 fn declared_compensated_samples_must_not_keep_their_spillover() {
-    let directory = create_temp_dir("cytiq-cli-preflight-compensated");
+    let directory = create_temp_dir("cytiq-engine-preflight-compensated");
     let stripped = directory.join("sample.nospill.fcs");
     without_spillover(&fixture("sample.fcs"), &stripped);
     let declared = |samples: &str| {
@@ -517,7 +517,7 @@ fn declared_compensated_samples_must_not_keep_their_spillover() {
 
 #[test]
 fn accepts_samples_compensated_by_cytiq_only_where_declared() {
-    let directory = create_temp_dir("cytiq-cli-preflight-cytiq-compensated");
+    let directory = create_temp_dir("cytiq-engine-preflight-cytiq-compensated");
     let compensated = directory.join("sample.comp.fcs");
     let compensate = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([

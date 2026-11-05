@@ -73,6 +73,6 @@ removed when any is `false`.
 
 ```bash
 cargo test -p cytiq-qc
-cargo test -p cytiq-cli --test qc_cli
-cargo test -p cytiq-cli --test pipeline_cli   # the golden chain runs qc
+cargo test -p cytiq-engine --test qc_cli
+cargo test -p cytiq-engine --test pipeline_cli   # the golden chain runs qc
 ```

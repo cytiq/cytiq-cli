@@ -78,5 +78,5 @@ println!("{} events on a raw detector margin", result.margin_event_count);
 
 ```bash
 cargo test -p cytiq-compensate
-cargo test -p cytiq-cli --test compensate_cli
+cargo test -p cytiq-engine --test compensate_cli
 ```

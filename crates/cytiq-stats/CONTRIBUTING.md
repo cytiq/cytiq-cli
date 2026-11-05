@@ -29,11 +29,11 @@ this crate.
 ## Where changes belong
 
 - FCS parsing and margin bounds belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/stats.rs`.
+- CLI flags belong in `crates/cytiq-engine/src/commands/stats.rs`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-stats
-cargo test -p cytiq-cli --test stats_cli
+cargo test -p cytiq-engine --test stats_cli
 ```

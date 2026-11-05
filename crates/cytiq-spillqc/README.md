@@ -179,6 +179,6 @@ On the full vignette chain it keeps the same events as R. See
 
 ```bash
 cargo test -p cytiq-spillqc
-cargo test -p cytiq-cli --test spillqc_cli
-cargo test -p cytiq-cli --test parity_smoke spillqc
+cargo test -p cytiq-engine --test spillqc_cli
+cargo test -p cytiq-engine --test parity_smoke spillqc
 ```

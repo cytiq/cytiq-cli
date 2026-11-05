@@ -74,7 +74,7 @@ generator adds intermediate events on purpose.
 - `estimate_logicle_width` and `Logicle` live in `cytiq-transform::scales`.
 - flowCore range keywords live in `cytiq-fcs` (`MarginBounds`).
 - The PeacoQC mask lives in `cytiq-peacoqc` (`peacoqc_mask`).
-- CLI flags belong in `crates/cytiq-cli/src/commands/spillqc.rs` (`SpillqcArgs`). Keep this
+- CLI flags belong in `crates/cytiq-engine/src/commands/spillqc.rs` (`SpillqcArgs`). Keep this
   crate free of `clap`.
 - A future refinement mode should consume `ssi_segments.csv` and the
   `matrix_id`. It should write a candidate matrix file and never rewrite
@@ -84,8 +84,8 @@ generator adds intermediate events on purpose.
 
 ```bash
 cargo test -p cytiq-spillqc
-cargo test -p cytiq-cli --test spillqc_cli
-cargo test -p cytiq-cli --test parity_smoke spillqc
+cargo test -p cytiq-engine --test spillqc_cli
+cargo test -p cytiq-engine --test parity_smoke spillqc
 ```
 
 - **Unit tests** cover the center histogram, `.MergeSegments`, the

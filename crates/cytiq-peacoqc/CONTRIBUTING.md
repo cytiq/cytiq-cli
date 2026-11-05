@@ -47,13 +47,13 @@ this crate.
 - KDE / `stats::density` and `smooth.spline` live in `cytiq-density` (shared
   with `cytiq-clean` and `cytiq-spillqc`).
 - FCS reading and the `write_fcs3_1_f32` writer belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/peacoqc.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-engine/src/commands/peacoqc.rs`. Keep this crate free of `clap`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-peacoqc
-cargo test -p cytiq-cli --test peacoqc_cli
+cargo test -p cytiq-engine --test peacoqc_cli
 ```
 
 Unit tests sit in `runner.rs` (binning, consecutive bins, IT split, peaks,

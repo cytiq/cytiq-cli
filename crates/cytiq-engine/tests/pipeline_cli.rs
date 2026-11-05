@@ -342,7 +342,7 @@ fn best_purity(groups: &[u64], labels: &[&str], population: &str) -> f64 {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn golden_chain_recovers_the_known_truth() {
-    let directory = create_temp_dir("cytiq-cli-pipeline");
+    let directory = create_temp_dir("cytiq-engine-pipeline");
     run_chain(&directory);
     let truth = Truth::read();
     let limits = Thresholds::read();
@@ -616,7 +616,7 @@ fn golden_chain_recovers_the_known_truth() {
 /// file.
 #[test]
 fn peacoqc_mask_applies_after_transform() {
-    let directory = create_temp_dir("cytiq-cli-pipeline-peacoqc-first");
+    let directory = create_temp_dir("cytiq-engine-pipeline-peacoqc-first");
     let sample = fixture("sample.fcs");
     for step in [
         &[
@@ -672,8 +672,8 @@ fn peacoqc_mask_applies_after_transform() {
 
 #[test]
 fn golden_chain_is_reproducible() {
-    let first = create_temp_dir("cytiq-cli-pipeline-first");
-    let second = create_temp_dir("cytiq-cli-pipeline-second");
+    let first = create_temp_dir("cytiq-engine-pipeline-first");
+    let second = create_temp_dir("cytiq-engine-pipeline-second");
     run_chain(&first);
     run_chain(&second);
 
@@ -741,7 +741,7 @@ fn write_beads(path: &Path) {
 
 #[test]
 fn degenerate_beads_keep_their_events() {
-    let directory = create_temp_dir("cytiq-cli-pipeline-beads");
+    let directory = create_temp_dir("cytiq-engine-pipeline-beads");
     let beads = directory.join("beads.fcs");
     write_beads(&beads);
     let steps: [&[&str]; 5] = [

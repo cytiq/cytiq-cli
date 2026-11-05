@@ -46,7 +46,7 @@ this crate.
 ## Where changes belong
 
 - FCS parsing/writing details belong in `cytiq-fcs`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/transform.rs`. Note that the CLI does
+- CLI flags belong in `crates/cytiq-engine/src/commands/transform.rs`. Note that the CLI does
   not expose `BiexponentialParameters` yet (defaults only); adding flags means
   wiring them there.
 - New scales that other crates need go in `scales.rs` with reference tests.
@@ -55,7 +55,7 @@ this crate.
 
 ```bash
 cargo test -p cytiq-transform
-cargo test -p cytiq-cli --test transform_cli
+cargo test -p cytiq-engine --test transform_cli
 ```
 
 Unit tests are in `src/lib.rs` (arcsinh formula, finite outputs of the
@@ -66,6 +66,6 @@ publishes neither the FCS nor the metadata file. `tests/value_transform.rs` chec
 `ValueTransform::from_contract` reproduces the stored values of every method,
 so `cytiq-plot` axes stay in step with the command. R reference values are included from
 `data/fixtures/transform/flowcore_reference.rs`. End-to-end CLI tests in
-`crates/cytiq-cli/tests/transform_cli.rs` cover metadata, multiple inputs,
+`crates/cytiq-engine/tests/transform_cli.rs` cover metadata, multiple inputs,
 globs, channel selection, all methods, `--dry-run`, `--overwrite` and
 unsupported formats. For scale changes also re-run `parity/run_all.sh`.

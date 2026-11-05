@@ -54,13 +54,13 @@ this crate.
   the same matching order, when touching that code.
 - Transformations belong in `cytiq-transform`; this crate clusters values as
   given.
-- CLI flags belong in `crates/cytiq-cli/src/commands/flowsom.rs`.
+- CLI flags belong in `crates/cytiq-engine/src/commands/flowsom.rs`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-flowsom
-cargo test -p cytiq-cli --test flowsom_cli
+cargo test -p cytiq-engine --test flowsom_cli
 ```
 
 - `src/runner.rs` `#[cfg(test)]` — channel-list parsing, deterministic
@@ -68,6 +68,6 @@ cargo test -p cytiq-cli --test flowsom_cli
   initialisation, metacluster count.
 - `tests/populations.rs` — `FlowSomModel::populations` signal means, empty
   metaclusters and input validation.
-- `crates/cytiq-cli/tests/flowsom_cli.rs` — end-to-end runs with debug
+- `crates/cytiq-engine/tests/flowsom_cli.rs` — end-to-end runs with debug
   artifacts, determinism, event masks, missing input / channel / output, zero
   threads.

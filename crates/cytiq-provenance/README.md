@@ -84,5 +84,5 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 
 ```bash
 cargo test -p cytiq-provenance
-cargo test -p cytiq-cli   # every *_cli.rs checks its command's record via tests/common
+cargo test -p cytiq-engine   # every *_cli.rs checks its command's record via tests/common
 ```

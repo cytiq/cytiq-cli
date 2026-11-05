@@ -55,13 +55,13 @@ this crate.
 - FSC/SSC gate, KDE and generic statistics shared with other crates:
   `cytiq-density`.
 - Display scales: `cytiq-transform::scales`.
-- CLI flags and output path handling: `crates/cytiq-cli/src/commands/autospill.rs` and `autospread.rs`.
+- CLI flags and output path handling: `crates/cytiq-engine/src/commands/autospill.rs` and `autospread.rs`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-autospill
-cargo test -p cytiq-cli --test autospill_cli
+cargo test -p cytiq-engine --test autospill_cli
 parity/run_all.sh   # after parity/setup_env.sh; needs R + Python
 parity/real/run_real.sh   # real controls; CYTIQ_REAL_SLOW=1 adds the 24-colour set
 ```

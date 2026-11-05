@@ -9,7 +9,7 @@ use cytiq_fcs::FcsWriteParameter;
 
 #[test]
 fn cli_runs_flowsom_with_debug_artifacts() {
-    let directory = create_temp_dir("cytiq-cli-flowsom");
+    let directory = create_temp_dir("cytiq-engine-flowsom");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.flowsom.csv");
     let debug_dir = directory.join("debug");
@@ -67,7 +67,7 @@ fn cli_runs_flowsom_with_debug_artifacts() {
 
 #[test]
 fn cli_runs_flowsom_with_compact_channels_deterministically() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-deterministic");
+    let directory = create_temp_dir("cytiq-engine-flowsom-deterministic");
     let input = directory.join("sample.fcs");
     let first_output = directory.join("first.flowsom.csv");
     let second_output = directory.join("second.flowsom.csv");
@@ -103,7 +103,7 @@ fn cli_runs_flowsom_with_compact_channels_deterministically() {
 
 #[test]
 fn cli_fails_when_flowsom_channel_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-missing-channel");
+    let directory = create_temp_dir("cytiq-engine-flowsom-missing-channel");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
 
@@ -127,7 +127,7 @@ fn cli_fails_when_flowsom_channel_is_missing() {
 
 #[test]
 fn cli_fails_when_flowsom_input_file_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-missing-input");
+    let directory = create_temp_dir("cytiq-engine-flowsom-missing-input");
     let input = directory.join("missing.fcs");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -150,7 +150,7 @@ fn cli_fails_when_flowsom_input_file_is_missing() {
 
 #[test]
 fn cli_requires_flowsom_input() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-requires-input");
+    let directory = create_temp_dir("cytiq-engine-flowsom-requires-input");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -170,7 +170,7 @@ fn cli_requires_flowsom_input() {
 
 #[test]
 fn cli_requires_flowsom_output() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-requires-output");
+    let directory = create_temp_dir("cytiq-engine-flowsom-requires-output");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
 
@@ -186,7 +186,7 @@ fn cli_requires_flowsom_output() {
 
 #[test]
 fn cli_requires_flowsom_channels() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-empty-channels");
+    let directory = create_temp_dir("cytiq-engine-flowsom-empty-channels");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
 
@@ -208,7 +208,7 @@ fn cli_requires_flowsom_channels() {
 
 #[test]
 fn cli_rejects_zero_threads_for_flowsom() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-zero-threads");
+    let directory = create_temp_dir("cytiq-engine-flowsom-zero-threads");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
 
@@ -234,7 +234,7 @@ fn cli_rejects_zero_threads_for_flowsom() {
 
 #[test]
 fn cli_clusters_only_events_kept_by_the_mask() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-mask");
+    let directory = create_temp_dir("cytiq-engine-flowsom-mask");
     let input = directory.join("sample.fcs");
     let mask_path = directory.join("mask.parquet");
     let output_path = directory.join("sample.flowsom.csv");
@@ -309,7 +309,7 @@ fn run_flowsom(input: &Path, output: &Path, extra: &[&str]) -> std::process::Out
 
 #[test]
 fn cli_trains_on_a_subsample_and_assigns_every_event() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-subsample");
+    let directory = create_temp_dir("cytiq-engine-flowsom-subsample");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
     let first = directory.join("first.csv");
@@ -353,7 +353,7 @@ fn cli_trains_on_a_subsample_and_assigns_every_event() {
 
 #[test]
 fn cli_rejects_more_metaclusters_than_nodes() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-metaclusters");
+    let directory = create_temp_dir("cytiq-engine-flowsom-metaclusters");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
 
@@ -406,7 +406,7 @@ fn utf8(path: &Path) -> &str {
 
 #[test]
 fn fails_when_mask_belongs_to_another_file() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-foreign-mask");
+    let directory = create_temp_dir("cytiq-engine-flowsom-foreign-mask");
     let input = directory.join("sample.fcs");
     let mask_path = directory.join("mask.parquet");
     let output_path = directory.join("sample.flowsom.csv");
@@ -438,7 +438,7 @@ fn fails_when_mask_belongs_to_another_file() {
 
 #[test]
 fn cli_rejects_log_amplified_flowsom_input() {
-    let directory = create_temp_dir("cytiq-cli-flowsom-log");
+    let directory = create_temp_dir("cytiq-engine-flowsom-log");
     let input = directory.join("sample.fcs");
     write_flowsom_fixture_fcs(&input);
     common::set_log_amplified(&input, "FL1-A");

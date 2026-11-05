@@ -19,7 +19,7 @@ WORKDIR /app
 FROM chef AS planner
 
 # The whole workspace is needed: every member listed in Cargo.toml must exist
-# for `--locked` to resolve, even when only cytiq-cli is built.
+# for `--locked` to resolve, even when only cytiq-engine is built.
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 
@@ -35,7 +35,7 @@ FROM chef AS builder
 # step is reused for as long as recipe.json is unchanged. Any Cargo.lock
 # dependency change rebuilds it.
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook -p cytiq-cli --release --locked --recipe-path recipe.json
+RUN cargo chef cook -p cytiq-engine --release --locked --recipe-path recipe.json
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
@@ -47,7 +47,7 @@ ARG CYTIQ_BUILD_COMMIT=unknown
 
 # This layer is never reused, since every source change invalidates it.
 # Removing target/ keeps it small in the mode=max registry cache.
-RUN cargo build -p cytiq-cli --release --locked \
+RUN cargo build -p cytiq-engine --release --locked \
     && install -D -m 0755 target/release/cytiq /out/cytiq \
     && rm -rf target
 

@@ -69,7 +69,7 @@ fn tube(name: &str) -> PathBuf {
 
 #[test]
 fn flags_the_injected_spillover_errors() {
-    let directory = create_temp_dir("cytiq-cli-spillqc");
+    let directory = create_temp_dir("cytiq-engine-spillqc");
     let output = directory.join("qc");
     run(&[
         "spillqc",
@@ -115,7 +115,7 @@ fn flags_the_injected_spillover_errors() {
 
 #[test]
 fn the_true_matrix_clears_the_injected_pairs() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-truth");
+    let directory = create_temp_dir("cytiq-engine-spillqc-truth");
     let output = directory.join("qc");
     let matrix = fixture().join("truth/spillover.csv");
     run(&[
@@ -137,7 +137,7 @@ fn the_true_matrix_clears_the_injected_pairs() {
 
 #[test]
 fn errors_shared_by_a_batch_recur() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-batch");
+    let directory = create_temp_dir("cytiq-engine-spillqc-batch");
     let output = directory.join("qc");
     run(&[
         "spillqc",
@@ -170,7 +170,7 @@ fn errors_shared_by_a_batch_recur() {
 
 #[test]
 fn skips_files_without_a_spillover_matrix() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-skip");
+    let directory = create_temp_dir("cytiq-engine-spillqc-skip");
     let plain = directory.join("plain.fcs");
     without_spillover(&tube("tube_2"), &plain);
     let output = directory.join("qc");
@@ -203,7 +203,7 @@ fn skips_files_without_a_spillover_matrix() {
 
 #[test]
 fn refuses_input_already_compensated_by_cytiq() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-compensated");
+    let directory = create_temp_dir("cytiq-engine-spillqc-compensated");
     let compensated = directory.join("compensated.fcs");
     run(&[
         "compensate",
@@ -227,7 +227,7 @@ fn refuses_input_already_compensated_by_cytiq() {
 
 #[test]
 fn assesses_stored_values_with_preprocessed() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-preprocessed");
+    let directory = create_temp_dir("cytiq-engine-spillqc-preprocessed");
     let compensated = directory.join("compensated.fcs");
     let transformed = directory.join("transformed.fcs");
     run(&[
@@ -267,7 +267,7 @@ fn assesses_stored_values_with_preprocessed() {
 
 #[test]
 fn fail_on_flag_exits_with_one_after_writing_outputs() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-fail");
+    let directory = create_temp_dir("cytiq-engine-spillqc-fail");
     let output = directory.join("qc");
     let result = cytiq(&[
         "spillqc",
@@ -285,7 +285,7 @@ fn fail_on_flag_exits_with_one_after_writing_outputs() {
 
 #[test]
 fn refuses_to_overwrite_an_earlier_run() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-overwrite");
+    let directory = create_temp_dir("cytiq-engine-spillqc-overwrite");
     let output = directory.join("qc");
     let input = tube("tube_1");
     let args = [
@@ -304,7 +304,7 @@ fn refuses_to_overwrite_an_earlier_run() {
 
 #[test]
 fn a_failed_overwrite_keeps_the_earlier_run() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-failed-overwrite");
+    let directory = create_temp_dir("cytiq-engine-spillqc-failed-overwrite");
     let output = directory.join("qc");
     let first = tube("tube_1");
     run(&[
@@ -356,7 +356,7 @@ fn a_failed_overwrite_keeps_the_earlier_run() {
 
 #[test]
 fn fails_when_input_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-missing");
+    let directory = create_temp_dir("cytiq-engine-spillqc-missing");
     let output = cytiq(&[
         "spillqc",
         "--input",
@@ -370,7 +370,7 @@ fn fails_when_input_is_missing() {
 
 #[test]
 fn rejects_invalid_flags() {
-    let directory = create_temp_dir("cytiq-cli-spillqc-flags");
+    let directory = create_temp_dir("cytiq-engine-spillqc-flags");
     let input = tube("tube_1");
     let output = directory.join("qc");
     for extra in [

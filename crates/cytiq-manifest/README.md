@@ -80,5 +80,5 @@ is the only way they learn about processing done elsewhere.
 
 ```bash
 cargo test -p cytiq-manifest
-cargo test -p cytiq-cli --test preflight_cli
+cargo test -p cytiq-engine --test preflight_cli
 ```

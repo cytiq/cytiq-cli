@@ -633,41 +633,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cytiq-cli"
-version = "0.3.1"
-dependencies = [
- "arrow-array",
- "clap",
- "csv",
- "cytiq-autospectral",
- "cytiq-autospill",
- "cytiq-classify",
- "cytiq-clean",
- "cytiq-compensate",
- "cytiq-cytonorm",
- "cytiq-cytoscan",
- "cytiq-fcs",
- "cytiq-flowsom",
- "cytiq-gating",
- "cytiq-mask",
- "cytiq-meta",
- "cytiq-peacoqc",
- "cytiq-plot",
- "cytiq-preflight",
- "cytiq-provenance",
- "cytiq-qc",
- "cytiq-spillqc",
- "cytiq-stats",
- "cytiq-transform",
- "log",
- "parquet",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
-]
-
-[[package]]
 name = "cytiq-compensate"
 version = "0.3.1"
 dependencies = [
@@ -724,6 +689,41 @@ dependencies = [
 [[package]]
 name = "cytiq-density"
 version = "0.3.1"
+
+[[package]]
+name = "cytiq-engine"
+version = "0.3.1"
+dependencies = [
+ "arrow-array",
+ "clap",
+ "csv",
+ "cytiq-autospectral",
+ "cytiq-autospill",
+ "cytiq-classify",
+ "cytiq-clean",
+ "cytiq-compensate",
+ "cytiq-cytonorm",
+ "cytiq-cytoscan",
+ "cytiq-fcs",
+ "cytiq-flowsom",
+ "cytiq-gating",
+ "cytiq-mask",
+ "cytiq-meta",
+ "cytiq-peacoqc",
+ "cytiq-plot",
+ "cytiq-preflight",
+ "cytiq-provenance",
+ "cytiq-qc",
+ "cytiq-spillqc",
+ "cytiq-stats",
+ "cytiq-transform",
+ "log",
+ "parquet",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
 
 [[package]]
 name = "cytiq-fcs"

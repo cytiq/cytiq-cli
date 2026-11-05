@@ -1,7 +1,7 @@
 name: Continuous Delivery
 
 # An RC tag (X.Y.Z-rcN) opens the changelog PR and publishes
-# ghcr.io/cytiq/cytiq-cli:X.Y.Z-rcN; merging that PR tags X.Y.Z, creates the
+# ghcr.io/cytiq/cytiq-engine:X.Y.Z-rcN; merging that PR tags X.Y.Z, creates the
 # GitHub Release and publishes :X.Y.Z and :latest. Images are built for
 # linux/amd64 and linux/arm64 (each on a native runner) and carry SBOM and
 # provenance attestations; deployments pin the digest the merge job reports.
@@ -90,7 +90,7 @@ jobs:
     needs: resolve-version
     uses: cytiq/cytiq-ci/.github/workflows/docker-publish.yml@2d72f3d33c423f5ae35e1d0694303da8b706ce5e # 0.2.0
     with:
-      image: cytiq-cli
+      image: cytiq-engine
       dockerfile: docker/Dockerfile
       version: ${{ needs.resolve-version.outputs.version }}
       latest: ${{ needs.resolve-version.outputs.latest == 'true' }}

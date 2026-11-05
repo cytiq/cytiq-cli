@@ -93,8 +93,8 @@ let result = MetaRunner::run(&MetaConfig {
 
 ## Tests
 
-End-to-end behaviour is covered by `crates/cytiq-cli/tests/meta_cli.rs`:
+End-to-end behaviour is covered by `crates/cytiq-engine/tests/meta_cli.rs`:
 
 ```bash
-cargo test -p cytiq-cli --test meta_cli
+cargo test -p cytiq-engine --test meta_cli
 ```

@@ -143,5 +143,5 @@ PE,256,262144,4.418539922,0,-100
 
 ```bash
 cargo test -p cytiq-autospill
-cargo test -p cytiq-cli --test autospill_cli
+cargo test -p cytiq-engine --test autospill_cli
 ```

@@ -98,7 +98,7 @@ let xml = to_gatingml(&strategy)?;
 
 ```bash
 cargo test -p cytiq-gating
-cargo test -p cytiq-cli --test gate_cli
+cargo test -p cytiq-engine --test gate_cli
 ```
 
 `tests/flowkit_parity.rs` compares per-event membership for every gate against

@@ -55,7 +55,7 @@ this crate.
 ## Where changes belong
 
 - FCS reading/writing and keyword handling → `cytiq-fcs`.
-- Flags and `--help` text → `crates/cytiq-cli/src/commands/autospectral.rs`.
+- Flags and `--help` text → `crates/cytiq-engine/src/commands/autospectral.rs`.
 - A shared KDE scatter gate (the parity report suggests reusing the
   `cytiq-autospill` gate) → `cytiq-density`, not a copy in this crate.
 - Fixture changes → `data/fixtures/autospectral/` and its README.
@@ -64,11 +64,11 @@ this crate.
 
 ```bash
 cargo test -p cytiq-autospectral
-cargo test -p cytiq-cli --test autospectral_cli
+cargo test -p cytiq-engine --test autospectral_cli
 ```
 
 Unit tests live in `src/manifest.rs` (manifest validation, column aliases) and
 `src/runner.rs` (reference matrix layout, OLS recovery, detector inference,
 `parallel_try_map` ordering). `tests/support.rs` is also compiled into
-`crates/cytiq-cli/tests/autospectral_cli.rs` via `#[path]`; keep its helpers
+`crates/cytiq-engine/tests/autospectral_cli.rs` via `#[path]`; keep its helpers
 generic. Parity scripts live in `parity/` (`run_all.sh`, `compare.py`).

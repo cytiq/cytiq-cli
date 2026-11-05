@@ -11,7 +11,7 @@ use cytiq_fcs::FcsReader;
 #[test]
 #[allow(clippy::too_many_lines)]
 fn cli_runs_autospectral() {
-    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral");
+    let directory = support::copy_autospectral_fixture_set("cytiq-engine-autospectral");
     let output_dir = directory.join("out");
     let debug_dir = directory.join("debug");
 
@@ -123,7 +123,7 @@ fn cli_runs_autospectral() {
 
 #[test]
 fn cli_fails_when_autospectral_manifest_has_no_autofluorescence() {
-    let directory = support::create_temp_dir("cytiq-cli-autospectral-no-af");
+    let directory = support::create_temp_dir("cytiq-engine-autospectral-no-af");
     fs::write(
         directory.join("controls.csv"),
         "filename,dye\nfitc.fcs,FITC\n",
@@ -154,7 +154,7 @@ fn cli_fails_when_autospectral_manifest_has_no_autofluorescence() {
 
 #[test]
 fn cli_rejects_zero_threads_for_autospectral() {
-    let directory = support::create_temp_dir("cytiq-cli-autospectral-zero-threads");
+    let directory = support::create_temp_dir("cytiq-engine-autospectral-zero-threads");
     fs::write(
         directory.join("controls.csv"),
         "filename,dye\nfitc.fcs,FITC\n",
@@ -187,7 +187,7 @@ fn cli_rejects_zero_threads_for_autospectral() {
 
 #[test]
 fn preserves_large_original_ids_exactly() {
-    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-original-id");
+    let directory = support::copy_autospectral_fixture_set("cytiq-engine-autospectral-original-id");
     let sample = directory.join("sample.fcs");
     let source = directory.join("source.fcs");
     fs::rename(&sample, &source).expect("fixture should move");
@@ -243,7 +243,7 @@ fn preserves_large_original_ids_exactly() {
 
 #[test]
 fn cli_rejects_processed_autospectral_controls() {
-    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-processed");
+    let directory = support::copy_autospectral_fixture_set("cytiq-engine-autospectral-processed");
     common::add_keyword(
         &directory.join("fitc.fcs"),
         cytiq_fcs::TRANSFORM_KEYWORD,
@@ -281,7 +281,7 @@ fn utf8(path: &Path) -> &str {
 fn cleaning_controls_by_default_reports_a_degenerate_scatter_gate() {
     // The fixture controls hold 80 events, too few for the KDE scatter gate
     // that cleans controls by default; `--clean-controls` asks for it too.
-    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-clean");
+    let directory = support::copy_autospectral_fixture_set("cytiq-engine-autospectral-clean");
     for flags in [&[][..], &["--clean-controls"][..]] {
         let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
             .args([
@@ -328,7 +328,7 @@ fn cleaning_controls_by_default_reports_a_degenerate_scatter_gate() {
 
 #[test]
 fn cli_rejects_log_amplified_autospectral_controls() {
-    let directory = support::copy_autospectral_fixture_set("cytiq-cli-autospectral-log");
+    let directory = support::copy_autospectral_fixture_set("cytiq-engine-autospectral-log");
     common::set_log_amplified(&directory.join("fitc.fcs"), "FITC");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))

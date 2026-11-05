@@ -102,5 +102,5 @@ println!("kept {}", result.summary.metrics.events_after);
 
 ```bash
 cargo test -p cytiq-peacoqc
-cargo test -p cytiq-cli --test peacoqc_cli
+cargo test -p cytiq-engine --test peacoqc_cli
 ```

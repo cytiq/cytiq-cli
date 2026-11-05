@@ -9,7 +9,7 @@ use cytiq_fcs::{FcsWriteOptions, FcsWriteParameter};
 
 #[test]
 fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-outlier");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-outlier");
     let input_dir = directory.join("test");
     let output_dir = directory.join("out");
     let debug_dir = directory.join("debug");
@@ -90,7 +90,7 @@ fn cli_runs_cytoscan_outlier_with_debug_artifacts() {
 
 #[test]
 fn cli_runs_cytoscan_novelty_with_reference() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-novelty");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-novelty");
     let input_dir = directory.join("test");
     let reference_dir = directory.join("reference");
     let output_dir = directory.join("out");
@@ -169,7 +169,7 @@ fn cli_runs_cytoscan_novelty_with_reference() {
 
 #[test]
 fn cli_requires_reference_for_cytoscan_novelty() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-reference-required");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-reference-required");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
 
@@ -195,7 +195,7 @@ fn cli_requires_reference_for_cytoscan_novelty() {
 
 #[test]
 fn cli_cytoscan_channels_and_repeated_channel_are_equivalent() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-channel-equivalence");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-channel-equivalence");
     let input_dir = directory.join("test");
     let first_output = directory.join("first");
     let second_output = directory.join("second");
@@ -258,7 +258,7 @@ fn cli_cytoscan_channels_and_repeated_channel_are_equivalent() {
 
 #[test]
 fn cli_runs_cytoscan_all_feature_methods() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-methods");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-methods");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 6.0, 12.0, 260.0]);
 
@@ -293,7 +293,7 @@ fn cli_runs_cytoscan_all_feature_methods() {
 
 #[test]
 fn cli_fails_when_cytoscan_channel_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-missing-channel");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-missing-channel");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
 
@@ -317,7 +317,7 @@ fn cli_fails_when_cytoscan_channel_is_missing() {
 
 #[test]
 fn cli_rejects_transformed_cytoscan_input() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-transformed");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-transformed");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
     let transformed = input_dir.join("sample_01.fcs");
@@ -359,7 +359,7 @@ fn cli_rejects_transformed_cytoscan_input() {
 
 #[test]
 fn cli_rejects_compensated_cytoscan_input() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-compensated");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-compensated");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
     // A `cytiq compensate` output: no spillover left, linear values.
@@ -424,7 +424,7 @@ fn strip_spillover(path: &Path) {
 
 #[test]
 fn cli_strict_rejects_files_without_spillover() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-strict");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-strict");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0, 10.0]);
     strip_spillover(&input_dir.join("sample_01.fcs"));
@@ -532,7 +532,7 @@ fn utf8(path: &Path) -> &str {
 
 #[test]
 fn cli_rejects_log_amplified_cytoscan_input() {
-    let directory = create_temp_dir("cytiq-cli-cytoscan-log");
+    let directory = create_temp_dir("cytiq-engine-cytoscan-log");
     let input_dir = directory.join("test");
     write_cytoscan_fixture_set(&input_dir, &[0.0, 5.0]);
     common::set_log_amplified(&input_dir.join("sample_01.fcs"), "FL1-A");

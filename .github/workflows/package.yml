@@ -60,7 +60,7 @@ jobs:
       # is unchanged; this job never writes the cache.
       - name: Build the image
         env:
-          CACHE_REF: ghcr.io/cytiq/cytiq-cli:cache-linux-amd64
+          CACHE_REF: ghcr.io/cytiq/cytiq-engine:cache-linux-amd64
         run: >-
           docker buildx build --load -f docker/Dockerfile -t cytiq:ci
           --cache-from "type=registry,ref=$CACHE_REF" .

@@ -3,7 +3,7 @@
 
 ### 🐛 Bug Fixes
 
-- Pin release workflows to the commit of cytiq-ci 0.2.0 to avoid annotated-tag resolution failures.
+- *(ci)* Pin release workflows to the 0.2.0 commit ([#176](https://github.com/cytiq/cytiq-cli/issues/176)) - ([fe09ce3](https://github.com/cytiq/cytiq-cli/commit/fe09ce3f2afdf8d32815b587724c021dca2674ac))
 
 ### 🚜 Refactor
 
@@ -11,6 +11,7 @@
 
 ### ⚙️ Miscellaneous Tasks
 
+- *(release)* Update changelog for 0.3.1 ([#175](https://github.com/cytiq/cytiq-cli/issues/175)) - ([a4a9685](https://github.com/cytiq/cytiq-cli/commit/a4a96858e9e95222bffefd2f39f939f7352b4b6b))
 - Report workspace CRAP risk against a reviewed baseline ([#173](https://github.com/cytiq/cytiq-cli/issues/173)) - ([2972489](https://github.com/cytiq/cytiq-cli/commit/29724893121999052611695e7b3911361d0ea974))
 ## [0.3.0](https://github.com/cytiq/cytiq-cli/compare/0.2.1..0.3.0) - 2026-11-04
 

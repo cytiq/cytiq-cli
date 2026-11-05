@@ -46,12 +46,14 @@ Releases go through `.github/workflows/cd.yml`, which calls the reusable workflo
 
 Images record that commit in `CYTIQ_BUILD_COMMIT` and carry SBOM and provenance attestations. The release jobs need the `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`, `GPG_FINGERPRINT` and `GH_TOKEN` secrets.
 
-Docker publication opts into the platform-specific registry layer cache in `cytiq-ci` 0.2.0. Cache export failures
+Docker publication opts into the platform-specific registry layer cache in `cytiq-ci` 0.4.0. Cache export failures
 do not hide build failures or block a successful publication. `docker/Dockerfile` compiles the dependencies with
 cargo-chef in a layer of their own, keyed by a recipe of the manifests and lockfile with the workspace version masked.
 Source changes and release version bumps reuse that layer; any dependency change in `Cargo.lock` rebuilds it. The
 workspace crates and the fat-LTO link of `cytiq` always rebuild. The `package.yml` job reads the amd64 release cache
 and never writes it. Keep the reusable workflow pinned to a released tag after rollout validation.
+The release/changelog and Docker calls use `cytiq-ci@0.4.0`, which includes the workspace-version fix from
+`cytiq-ci#24`.
 If GitHub cannot resolve an annotated release tag, pin its peeled commit SHA
 and retain the version in a comment; this keeps the same reviewed workflow
 code without rewriting the upstream release tag.
@@ -83,14 +85,11 @@ version and local builds the path. Each such version must equal the workspace
 version; `just package-check` and the `quality` job reject a mismatch, a crate
 without `description` or `license`, and an internal dependency missing from
 `[workspace.dependencies]`. The `cytiq-ci` release job pinned in `cd.yml`
-bumps only `[workspace.package]`, so until it also bumps those requirements,
-update them in the changelog PR (the `quality` job fails until you do):
-
-```sh
-# GNU sed; on macOS use sed -i '' -E
-sed -i -E '/path = "crates\//s/version = "[^"]+"/version = "X.Y.Z"/' Cargo.toml
-cargo update --workspace
-```
+bumps `[workspace.package]` and path-dependency requirements on the previous
+version together, before running `cargo update --workspace`. The changelog PR
+includes the modified manifests and lockfile; external dependency versions stay
+locked. This order also supports minor and major releases: a `0.3.1` requirement
+cannot resolve a workspace crate after it moves to `0.4.0`.
 
 `.github/scripts/publish_crates.py` checks the versions against the tag, skips
 versions already on crates.io and runs one `cargo publish --workspace`, which

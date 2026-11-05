@@ -1,4 +1,13 @@
 # Changelog
+## [0.3.2](https://github.com/cytiq/cytiq-cli/compare/0.3.1..0.3.2) - 2026-11-05
+
+### ⛰️  Features
+
+- *(release)* Publish all crates to crates.io on release ([#180](https://github.com/cytiq/cytiq-cli/issues/180)) - ([dfc8b66](https://github.com/cytiq/cytiq-cli/commit/dfc8b6667254e1cbfa7bb97cb09351a875382e99))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(skills)* Add Pierre trees and diffs for Codex and Claude ([#179](https://github.com/cytiq/cytiq-cli/issues/179)) - ([bb2327c](https://github.com/cytiq/cytiq-cli/commit/bb2327c42398debe8404aaaad1190cb913ca52ee))
 ## [0.3.1](https://github.com/cytiq/cytiq-cli/compare/0.3.0..0.3.1) - 2026-11-05
 
 ### 🐛 Bug Fixes
@@ -11,6 +20,7 @@
 
 ### ⚙️ Miscellaneous Tasks
 
+- *(release)* Update changelog for 0.3.1 ([#178](https://github.com/cytiq/cytiq-cli/issues/178)) - ([3c9040e](https://github.com/cytiq/cytiq-cli/commit/3c9040e0e0294d7d4ab82be47669c6a060d7761d))
 - *(release)* Update changelog for 0.3.1 ([#175](https://github.com/cytiq/cytiq-cli/issues/175)) - ([a4a9685](https://github.com/cytiq/cytiq-cli/commit/a4a96858e9e95222bffefd2f39f939f7352b4b6b))
 - Report workspace CRAP risk against a reviewed baseline ([#173](https://github.com/cytiq/cytiq-cli/issues/173)) - ([2972489](https://github.com/cytiq/cytiq-cli/commit/29724893121999052611695e7b3911361d0ea974))
 ## [0.3.0](https://github.com/cytiq/cytiq-cli/compare/0.2.1..0.3.0) - 2026-11-04

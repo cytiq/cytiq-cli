@@ -33,14 +33,14 @@ this crate.
 
 - Changes to FCS parsing or to what `FcsDataset` exposes belong in
   `cytiq-fcs`, not here.
-- CLI flags and argument parsing belong in `crates/cytiq-cli/src/commands/meta.rs`.
+- CLI flags and argument parsing belong in `crates/cytiq-engine/src/commands/meta.rs`.
   Keep this crate free of `clap`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-meta
-cargo test -p cytiq-cli --test meta_cli
+cargo test -p cytiq-engine --test meta_cli
 ```
 
 The crate has no unit tests yet; the CLI tests build small FCS fixtures in a

@@ -1,7 +1,7 @@
 # Pipeline Fixture
 
 Golden data for the end-to-end test of the whole cytiq chain
-(`crates/cytiq-cli/tests/pipeline_cli.rs`). Every event's truth is known.
+(`crates/cytiq-engine/tests/pipeline_cli.rs`). Every event's truth is known.
 
 - `sample.fcs`: 15,000 raw events over `FSC-A/H/W`, `SSC-A`, `FL1-A`…`FL6-A`
   (CD3, CD4, CD8, CD19, CD56, Live/Dead) and `Time`, with `$SPILLOVER` (6×6),

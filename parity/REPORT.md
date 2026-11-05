@@ -77,11 +77,11 @@ are pinned by unit tests against reference values produced by R.
    for §2.10) turns the results into pass/fail rules, each with its reason;
    `compare.py` exits with 1 on any violation or on a rule that matches no
    metric, so `parity/run_all.sh` fails. The same chain also runs in CI on a
-   15,000-event golden fixture (`crates/cytiq-cli/tests/pipeline_cli.rs`,
+   15,000-event golden fixture (`crates/cytiq-engine/tests/pipeline_cli.rs`,
    thresholds in `data/fixtures/pipeline/thresholds.json`), and a smoke test
    checks autospill, AutoSpectral, PeacoQC and CytoScan against R outputs
    committed with small synthetic datasets (`data/fixtures/parity`,
-   `crates/cytiq-cli/tests/parity_smoke.rs`), with no R in CI.
+   `crates/cytiq-engine/tests/parity_smoke.rs`), with no R in CI.
 
 Environment (`parity/versions.txt`): R 4.5.3, flowCore 2.22.1, flowWorkspace
 4.22.1, FlowSOM 2.18.0, PeacoQC 1.20.0, autospill 0.2.0 (`1e60e86`),
@@ -731,7 +731,7 @@ flagged `under`, and the SSI moves less (median 0.09 at −0.05 against 1.2 at
 - `crates/cytiq-flowsom/src/{runner,lib}.rs`
 - `crates/cytiq-cytoscan/src/{runner,novelty,lib,error}.rs`, `Cargo.toml`
   (`linfa`, `linfa-clustering`, `ndarray`, `rand`, `rand_distr`,
-  `rand_xoshiro`); `crates/cytiq-cli/tests/cytoscan_cli.rs`;
+  `rand_xoshiro`); `crates/cytiq-engine/tests/cytoscan_cli.rs`;
   `data/fixtures/cytoscan/reference.rs`
 - `crates/cytiq-fcs/src/writer.rs` (buffered output), `data.rs`, `text.rs`
   (Rust 1.99 clippy lints)
@@ -739,7 +739,7 @@ flagged `under`, and the SSI moves less (median 0.09 at −0.05 against 1.2 at
   - `data/fixtures/peacoqc/{density,smooth_spline}_reference.rs`;
   - `data/fixtures/transform/flowcore_reference.rs`;
   - regenerated `data/fixtures/autospread/expected_spread.csv`;
-  - `crates/cytiq-cli/tests/peacoqc_cli.rs`.
+  - `crates/cytiq-engine/tests/peacoqc_cli.rs`.
 - `README.md`: transform semantics, AutoSpectral, Algorithm Notes.
 - 2026-10-25: `crates/cytiq-cytoscan/src/mixture.rs` (new; `linfa`,
   `linfa-clustering`, `ndarray`, `rand_xoshiro` dropped),

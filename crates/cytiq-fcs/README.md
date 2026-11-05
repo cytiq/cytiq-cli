@@ -6,7 +6,7 @@ spillover / compensation helpers. It has no command of its own: every other
 
 Used by `cytiq-autospill`, `cytiq-autospectral`, `cytiq-clean`,
 `cytiq-cytoscan`, `cytiq-flowsom`, `cytiq-gating`, `cytiq-meta`,
-`cytiq-peacoqc`, `cytiq-transform` and `cytiq-cli`.
+`cytiq-peacoqc`, `cytiq-transform` and `cytiq-engine`.
 
 ## What it does
 

@@ -32,7 +32,7 @@ Every stage that writes FCS records the raw acquisition hash in
 `CYTIQ_ACQUISITION`. A file without that keyword is raw, and its own SHA-256
 is its acquisition identity.
 
-See the [pipeline guide](../cytiq-cli/PIPELINE.md#conventional-chain) for a
+See the [pipeline guide](../cytiq-engine/PIPELINE.md#conventional-chain) for a
 complete chain that combines margin, PeacoQC and cleaning masks.
 
 ## Usage
@@ -100,5 +100,5 @@ let keep: Vec<bool> = analysis.keep_for(&dataset, &acquisition)?; // one entry p
 
 ```bash
 cargo test -p cytiq-mask
-cargo test -p cytiq-cli --test mask_cli
+cargo test -p cytiq-engine --test mask_cli
 ```

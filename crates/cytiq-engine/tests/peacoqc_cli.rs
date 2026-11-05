@@ -13,7 +13,7 @@ const PEACOQC_FIXTURE_EVENTS: &str = "sample_events.csv";
 
 #[test]
 fn cli_runs_peacoqc_with_debug_artifacts() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc");
+    let directory = create_temp_dir("cytiq-engine-peacoqc");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.peacoqc.fcs");
     let debug_dir = directory.join("debug");
@@ -63,7 +63,7 @@ fn cli_runs_peacoqc_with_debug_artifacts() {
 
 #[test]
 fn cli_fails_when_peacoqc_channel_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-missing-channel");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-missing-channel");
     let input = directory.join("sample.fcs");
     write_peacoqc_fixture_fcs(&input);
 
@@ -87,7 +87,7 @@ fn cli_fails_when_peacoqc_channel_is_missing() {
 
 #[test]
 fn cli_rejects_non_fcs_peacoqc_output() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-output-format");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-output-format");
     let input = directory.join("sample.fcs");
     write_peacoqc_fixture_fcs(&input);
 
@@ -111,7 +111,7 @@ fn cli_rejects_non_fcs_peacoqc_output() {
 
 #[test]
 fn cli_peacoqc_output_preserves_source_metadata() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-metadata");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-metadata");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.peacoqc.fcs");
     write_margin_fixture_fcs(&input);
@@ -147,7 +147,7 @@ fn cli_peacoqc_output_preserves_source_metadata() {
 
 #[test]
 fn cli_margins_on_transformed_input_match_raw_margins() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-transformed-margins");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-transformed-margins");
     let raw = directory.join("sample.fcs");
     let transformed = directory.join("sample.transformed.fcs");
     write_margin_fixture_fcs(&raw);
@@ -203,7 +203,7 @@ fn cli_margins_on_transformed_input_match_raw_margins() {
 
 #[test]
 fn cli_writes_exact_original_ids_above_f32_precision() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-original-id");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-original-id");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.peacoqc.fcs");
     write_margin_fixture_fcs(&input);
@@ -302,7 +302,7 @@ fn cli_writes_exact_original_ids_above_f32_precision() {
 
 #[test]
 fn cli_publishes_no_fcs_when_its_mask_cannot_be_written() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-blocked-mask");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-blocked-mask");
     let input = directory.join("sample.fcs");
     let output = directory.join("sample.peacoqc.fcs");
     write_peacoqc_fixture_fcs(&input);
@@ -396,7 +396,7 @@ const PEACOQC_FIXTURE_REPEATS: u16 = 50;
 
 #[test]
 fn warns_on_untransformed_input() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-untransformed");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-untransformed");
     let input = directory.join("sample.fcs");
     let debug_dir = directory.join("debug");
     write_peacoqc_fixture_fcs(&input);
@@ -539,7 +539,7 @@ fn utf8(path: &Path) -> &str {
 /// The cleaned FCS would declare `$PnE=0,0` over log channel numbers.
 #[test]
 fn cli_rejects_log_amplified_peacoqc_input() {
-    let directory = create_temp_dir("cytiq-cli-peacoqc-log");
+    let directory = create_temp_dir("cytiq-engine-peacoqc-log");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.peacoqc.fcs");
     write_peacoqc_fixture_fcs(&input);

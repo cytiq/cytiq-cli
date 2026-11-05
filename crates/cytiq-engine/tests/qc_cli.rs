@@ -107,7 +107,7 @@ fn failed(report: &Value) -> Vec<String> {
 
 #[test]
 fn passes_a_mask_within_the_policy() {
-    let directory = create_temp_dir("cytiq-cli-qc-pass");
+    let directory = create_temp_dir("cytiq-engine-qc-pass");
     let manifest = write_manifest(
         &directory,
         "  qc:\n    min_events: 5000\n    max_removed_fraction: 0.5\n    filters:\n      peacoqc_pass: { required: true, max_removed_fraction: 0.3 }\n",
@@ -140,7 +140,7 @@ fn passes_a_mask_within_the_policy() {
 
 #[test]
 fn fails_when_peacoqc_removes_too_much() {
-    let directory = create_temp_dir("cytiq-cli-qc-peacoqc");
+    let directory = create_temp_dir("cytiq-engine-qc-peacoqc");
     let manifest = write_manifest(
         &directory,
         "  qc:\n    filters:\n      peacoqc_pass: { max_removed_fraction: 0.3 }\n",
@@ -169,7 +169,7 @@ fn fails_when_peacoqc_removes_too_much() {
 
 #[test]
 fn fails_when_a_required_filter_was_not_assessed() {
-    let directory = create_temp_dir("cytiq-cli-qc-required");
+    let directory = create_temp_dir("cytiq-engine-qc-required");
     let manifest = write_manifest(
         &directory,
         "  qc:\n    filters:\n      live: { required: true }\n      singlets: { required: true, severity: warn }\n",
@@ -193,7 +193,7 @@ fn fails_when_a_required_filter_was_not_assessed() {
 
 #[test]
 fn fails_when_a_required_filter_assessed_few_events() {
-    let directory = create_temp_dir("cytiq-cli-qc-assessed");
+    let directory = create_temp_dir("cytiq-engine-qc-assessed");
     let manifest = write_manifest(
         &directory,
         "  qc:\n    filters:\n      live: { required: true, min_assessed_fraction: 0.95 }\n",
@@ -226,7 +226,7 @@ fn fails_when_a_required_filter_assessed_few_events() {
 
 #[test]
 fn counts_a_later_filter_against_the_events_left_to_it() {
-    let directory = create_temp_dir("cytiq-cli-qc-eligible");
+    let directory = create_temp_dir("cytiq-engine-qc-eligible");
     let rule = |of: &str| {
         format!(
             "  qc:\n    filters:\n      peacoqc_pass: {{ min_assessed_fraction: 0.99, assessed_of: {of} }}\n"
@@ -270,7 +270,7 @@ fn counts_a_later_filter_against_the_events_left_to_it() {
 
 #[test]
 fn fails_when_the_mask_has_rows_beyond_the_raw_file() {
-    let directory = create_temp_dir("cytiq-cli-qc-extra-rows");
+    let directory = create_temp_dir("cytiq-engine-qc-extra-rows");
     let manifest = write_manifest(
         &directory,
         "  qc:\n    filters:\n      live: { max_removed_fraction: 0.3 }\n",
@@ -307,7 +307,7 @@ fn fails_when_the_mask_has_rows_beyond_the_raw_file() {
 
 #[test]
 fn fails_when_the_mask_belongs_to_another_sample() {
-    let directory = create_temp_dir("cytiq-cli-qc-acquisition");
+    let directory = create_temp_dir("cytiq-engine-qc-acquisition");
     let manifest = write_manifest(&directory, "");
     let mask = write_mask(
         &directory,
@@ -325,7 +325,7 @@ fn fails_when_the_mask_belongs_to_another_sample() {
 
 #[test]
 fn warns_without_a_policy_unless_one_is_required() {
-    let directory = create_temp_dir("cytiq-cli-qc-no-policy");
+    let directory = create_temp_dir("cytiq-engine-qc-no-policy");
     let manifest = write_manifest(&directory, "");
     let mask = write_mask(
         &directory,
@@ -351,7 +351,7 @@ fn warns_without_a_policy_unless_one_is_required() {
 
 #[test]
 fn rejects_an_unknown_sample() {
-    let directory = create_temp_dir("cytiq-cli-qc-unknown-sample");
+    let directory = create_temp_dir("cytiq-engine-qc-unknown-sample");
     let manifest = write_manifest(&directory, "");
     let mask = write_mask(
         &directory,

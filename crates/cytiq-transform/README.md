@@ -116,5 +116,5 @@ let y = logicle.scale(1_000.0); // [0, 1] Gating-ML scale
 
 ```bash
 cargo test -p cytiq-transform
-cargo test -p cytiq-cli --test transform_cli
+cargo test -p cytiq-engine --test transform_cli
 ```

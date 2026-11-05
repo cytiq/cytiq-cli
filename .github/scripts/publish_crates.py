@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 INDEX = "https://index.crates.io"
-USER_AGENT = "cytiq-cli-publish (+https://github.com/cytiq/cytiq-cli)"
+USER_AGENT = "cytiq-engine-publish (+https://github.com/cytiq/cytiq-engine)"
 RATE_LIMIT_FALLBACK_SECONDS = 10 * 60 + 30
 RATE_LIMIT_MARGIN_SECONDS = 15
 

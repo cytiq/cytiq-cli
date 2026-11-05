@@ -8,7 +8,7 @@ use std::process::{Command, Output};
 
 #[test]
 fn cli_writes_csv_tsv_and_parquet_outputs() {
-    let directory = support::copy_autospill_fixture_set("cytiq-cli-success");
+    let directory = support::copy_autospill_fixture_set("cytiq-engine-success");
     let manifest_path = directory.join("controls.csv");
 
     let csv_path = directory.join("matrix.csv");
@@ -35,7 +35,7 @@ fn cli_writes_csv_tsv_and_parquet_outputs() {
 
 #[test]
 fn cli_fails_when_manifest_references_missing_control() {
-    let directory = support::create_temp_dir("cytiq-cli-missing-file");
+    let directory = support::create_temp_dir("cytiq-engine-missing-file");
     let manifest_path = directory.join("controls.csv");
     support::write_text(&manifest_path, "filename,dye\nmissing.fcs,FITC\n");
 
@@ -59,7 +59,7 @@ fn cli_fails_when_manifest_references_missing_control() {
 
 #[test]
 fn cli_fails_on_duplicate_inferred_primary_channel() {
-    let directory = support::create_temp_dir("cytiq-cli-duplicate-channel");
+    let directory = support::create_temp_dir("cytiq-engine-duplicate-channel");
     support::write_control_file(
         &directory,
         "control_fitc.fcs",
@@ -101,7 +101,7 @@ fn cli_fails_on_duplicate_inferred_primary_channel() {
 
 #[test]
 fn cli_supports_detectors_transform_file_and_debug_dir() {
-    let directory = support::create_temp_dir("cytiq-cli-rectangular");
+    let directory = support::create_temp_dir("cytiq-engine-rectangular");
     let debug_dir = directory.join("debug");
     let (manifest_path, detectors_path) = support::write_rectangular_autospill_fixture(&directory);
     let transform_path = support::write_transform_manifest(&directory, &["FITC", "PE"]);
@@ -146,7 +146,7 @@ fn cli_supports_detectors_transform_file_and_debug_dir() {
 
 #[test]
 fn cli_runs_autospread() {
-    let directory = support::copy_autospread_fixture_set("cytiq-cli-autospread");
+    let directory = support::copy_autospread_fixture_set("cytiq-engine-autospread");
     let debug_dir = directory.join("debug");
     let manifest_path = directory.join("controls.csv");
     let detectors_path = directory.join("detectors.csv");
@@ -186,7 +186,7 @@ fn cli_runs_autospread() {
 
 #[test]
 fn cli_writes_autospread_csv_tsv_and_parquet_outputs() {
-    let directory = support::copy_autospread_fixture_set("cytiq-cli-autospread-formats");
+    let directory = support::copy_autospread_fixture_set("cytiq-engine-autospread-formats");
     let manifest_path = directory.join("controls.csv");
     let detectors_path = directory.join("detectors.csv");
 
@@ -211,7 +211,7 @@ fn cli_writes_autospread_csv_tsv_and_parquet_outputs() {
 
 #[test]
 fn cli_rejects_processed_controls() {
-    let directory = support::copy_autospill_fixture_set("cytiq-cli-processed-control");
+    let directory = support::copy_autospill_fixture_set("cytiq-engine-processed-control");
     common::add_keyword(
         &directory.join("control_a.fcs"),
         cytiq_fcs::TRANSFORM_KEYWORD,
@@ -286,7 +286,7 @@ fn run_autospread_success(
 
 #[test]
 fn cli_rejects_zero_threads_for_autospill_and_autospread() {
-    let directory = support::create_temp_dir("cytiq-cli-zero-threads");
+    let directory = support::create_temp_dir("cytiq-engine-zero-threads");
     let manifest_path = support::write_manifest_rows(&directory, &[("missing.fcs", "FITC")]);
     let detectors_path = directory.join("detectors.csv");
     support::write_text(
@@ -349,7 +349,7 @@ fn run_output(args: &[&str]) -> Output {
 
 #[test]
 fn cli_rejects_log_amplified_controls() {
-    let directory = support::copy_autospill_fixture_set("cytiq-cli-log-control");
+    let directory = support::copy_autospill_fixture_set("cytiq-engine-log-control");
     common::set_log_amplified(&directory.join("control_a.fcs"), "FL1-A");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))

@@ -145,7 +145,7 @@ fn accuracy(mask: &[Option<bool>], classes: &[u8], removed_class: u8) -> f64 {
 
 #[test]
 fn cli_writes_clean_outputs() {
-    let output = create_temp_dir("cytiq-cli-clean-outputs");
+    let output = create_temp_dir("cytiq-engine-clean-outputs");
 
     run_clean("sample.fcs", &output, &[]);
 
@@ -184,7 +184,7 @@ fn cli_writes_clean_outputs() {
 
 #[test]
 fn emits_source_event_ids_from_original_id() {
-    let directory = create_temp_dir("cytiq-cli-clean-original-id");
+    let directory = create_temp_dir("cytiq-engine-clean-original-id");
     let input = directory.join("sample.fcs");
     let output = directory.join("clean");
     // The fixture as if an earlier stage had kept every other raw event.
@@ -233,7 +233,7 @@ fn emits_source_event_ids_from_original_id() {
 
 #[test]
 fn recovers_known_debris_doublets_and_dead_cells() {
-    let output = create_temp_dir("cytiq-cli-clean-truth");
+    let output = create_temp_dir("cytiq-engine-clean-truth");
 
     run_clean("sample.fcs", &output, &[]);
 
@@ -268,7 +268,7 @@ fn recovers_known_debris_doublets_and_dead_cells() {
 
 #[test]
 fn marks_viability_not_assessed_without_dye() {
-    let output = create_temp_dir("cytiq-cli-clean-no-viability");
+    let output = create_temp_dir("cytiq-engine-clean-no-viability");
 
     run_clean("no_viability.fcs", &output, &[]);
 
@@ -292,7 +292,7 @@ fn marks_viability_not_assessed_without_dye() {
 
 #[test]
 fn reports_viability_disabled_on_request() {
-    let output = create_temp_dir("cytiq-cli-clean-disabled");
+    let output = create_temp_dir("cytiq-engine-clean-disabled");
 
     run_clean("sample.fcs", &output, &["--no-viability"]);
 
@@ -304,7 +304,7 @@ fn reports_viability_disabled_on_request() {
 
 #[test]
 fn reports_debris_disabled_with_debris_mode_off() {
-    let output = create_temp_dir("cytiq-cli-clean-debris-off");
+    let output = create_temp_dir("cytiq-engine-clean-debris-off");
 
     run_clean("sample.fcs", &output, &["--debris-mode", "off"]);
 
@@ -323,7 +323,7 @@ fn reports_debris_disabled_with_debris_mode_off() {
 
 #[test]
 fn rejects_debris_mode_off_with_required_debris_or_gates() {
-    let directory = create_temp_dir("cytiq-cli-clean-debris-off-conflicts");
+    let directory = create_temp_dir("cytiq-engine-clean-debris-off-conflicts");
     let input = fixture("sample.fcs");
     let gates = directory.join("gates.gatingml.xml");
     fs::write(&gates, "").unwrap();
@@ -359,7 +359,7 @@ fn rejects_debris_mode_off_with_required_debris_or_gates() {
 
 #[test]
 fn exported_gates_reproduce_masks() {
-    let output = create_temp_dir("cytiq-cli-clean-gates");
+    let output = create_temp_dir("cytiq-engine-clean-gates");
     run_clean("sample.fcs", &output, &[]);
     let counts = output.join("counts.csv");
     let sample = fixture("sample.fcs");
@@ -406,7 +406,7 @@ fn exported_gates_reproduce_masks() {
 
 #[test]
 fn reapplies_edited_gates() {
-    let fitted = create_temp_dir("cytiq-cli-clean-fitted");
+    let fitted = create_temp_dir("cytiq-engine-clean-fitted");
     run_clean("sample.fcs", &fitted, &[]);
     let fitted_metrics = metrics(&fitted);
     // Hand-edit: move the live/dead threshold to the very top of the scale,
@@ -422,7 +422,7 @@ fn reapplies_edited_gates() {
         );
     let edited = fitted.join("edited.xml");
     fs::write(&edited, xml).unwrap();
-    let reapplied = create_temp_dir("cytiq-cli-clean-reapplied");
+    let reapplied = create_temp_dir("cytiq-engine-clean-reapplied");
 
     run_clean("sample.fcs", &reapplied, &["--gates", utf8(&edited)]);
 
@@ -442,7 +442,7 @@ fn reapplies_edited_gates() {
 
 #[test]
 fn uses_viability_control_threshold() {
-    let output = create_temp_dir("cytiq-cli-clean-control");
+    let output = create_temp_dir("cytiq-engine-clean-control");
     let control = fixture("control.fcs");
 
     run_clean(
@@ -463,7 +463,7 @@ fn uses_viability_control_threshold() {
 
 #[test]
 fn falls_back_to_fsc_width_without_fsc_height() {
-    let output = create_temp_dir("cytiq-cli-clean-width");
+    let output = create_temp_dir("cytiq-engine-clean-width");
 
     run_clean("sample.fcs", &output, &["--fsc-h", "missing"]);
 
@@ -474,7 +474,7 @@ fn falls_back_to_fsc_width_without_fsc_height() {
 
 #[test]
 fn fails_when_fixed_debris_has_no_thresholds() {
-    let output = create_temp_dir("cytiq-cli-clean-fixed");
+    let output = create_temp_dir("cytiq-engine-clean-fixed");
     let input = fixture("sample.fcs");
 
     let result = Command::new(env!("CARGO_BIN_EXE_cytiq"))
@@ -496,7 +496,7 @@ fn fails_when_fixed_debris_has_no_thresholds() {
 
 #[test]
 fn restricts_keep_and_fitting_to_the_input_mask() {
-    let directory = create_temp_dir("cytiq-cli-clean-mask");
+    let directory = create_temp_dir("cytiq-engine-clean-mask");
     let output = directory.join("clean");
     let mask_path = directory.join("mask.parquet");
     let input_mask = (0..10_000).map(|row| row % 2 == 0).collect::<Vec<_>>();
@@ -561,7 +561,7 @@ fn write_zero_mad_fixture(path: &Path) -> Vec<f64> {
 
 #[test]
 fn singlets_survive_a_zero_mad() {
-    let directory = create_temp_dir("cytiq-cli-clean-zero-mad");
+    let directory = create_temp_dir("cytiq-engine-clean-zero-mad");
     let input = directory.join("discrete.fcs");
     let output = directory.join("clean");
     let ratios = write_zero_mad_fixture(&input);
@@ -593,7 +593,7 @@ fn singlets_survive_a_zero_mad() {
 
 #[test]
 fn require_fails_without_writing_outputs() {
-    let directory = create_temp_dir("cytiq-cli-clean-require");
+    let directory = create_temp_dir("cytiq-engine-clean-require");
     let output = directory.join("clean");
     let input = fixture("no_viability.fcs");
 
@@ -621,7 +621,7 @@ fn require_fails_without_writing_outputs() {
 
 #[test]
 fn rejects_a_transformed_viability_channel_early() {
-    let directory = create_temp_dir("cytiq-cli-clean-transformed");
+    let directory = create_temp_dir("cytiq-engine-clean-transformed");
     let transformed = directory.join("sample.t.fcs");
     run(&[
         "transform",
@@ -658,7 +658,7 @@ fn rejects_a_transformed_viability_channel_early() {
 
 #[test]
 fn fails_when_mask_belongs_to_another_file() {
-    let directory = create_temp_dir("cytiq-cli-clean-foreign-mask");
+    let directory = create_temp_dir("cytiq-engine-clean-foreign-mask");
     let output = directory.join("clean");
     let mask_path = directory.join("mask.parquet");
     // The viability control has its own acquisition.
@@ -691,7 +691,7 @@ fn fails_when_mask_belongs_to_another_file() {
 
 #[test]
 fn rejects_transformed_scatter() {
-    let directory = create_temp_dir("cytiq-cli-clean-transformed-scatter");
+    let directory = create_temp_dir("cytiq-engine-clean-transformed-scatter");
     let input = directory.join("sample.fcs");
     fs::copy(fixture("sample.fcs"), &input).expect("fixture should copy");
     common::add_keyword(

@@ -128,7 +128,7 @@ for row in &result.summary_rows { /* per-file flags and scores */ }
 
 ```bash
 cargo test -p cytiq-cytoscan
-cargo test -p cytiq-cli --test cytoscan_cli
+cargo test -p cytiq-engine --test cytoscan_cli
 ```
 
 Unit tests in `src/runner.rs`, `src/mixture.rs` and `src/novelty.rs` pin

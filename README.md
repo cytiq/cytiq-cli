@@ -1,4 +1,4 @@
-# cytiq
+# cytiq-engine
 
 Rust workspace for flow-cytometry tooling: FCS I/O, compensation and spectral
 unmixing, event filtering, quality control, batch normalization, gating, clustering,
@@ -87,12 +87,12 @@ flowchart TB
     analysis -.->|"gates, clusters, classes"| plot
 ```
 
-See the [pipeline guide](crates/cytiq-cli/PIPELINE.md) for a complete command
+See the [pipeline guide](crates/cytiq-engine/PIPELINE.md) for a complete command
 chain and signal-state checks.
 
 ## Repository layout
 
-- [`crates/cytiq-cli/`](crates/cytiq-cli/README.md) — the `cytiq` binary; argument parsing and command dispatch.
+- [`crates/cytiq-engine/`](crates/cytiq-engine/README.md) — the `cytiq` binary; argument parsing and command dispatch.
 - [`crates/cytiq-*/`](crates/) — library crates with reusable algorithms and workflows.
 - [`data/fixtures/`](data/fixtures/) — synthetic test data and reference outputs; dataset READMEs describe their contents and generation.
 - [`parity/`](parity/) — validation against upstream R/Python tools.
@@ -104,8 +104,8 @@ under `crates/`.
 
 ## Documentation
 
-- [CLI commands and shared conventions](crates/cytiq-cli/README.md)
-- [Pipeline, stage order and signal-state checks](crates/cytiq-cli/PIPELINE.md)
+- [CLI commands and shared conventions](crates/cytiq-engine/README.md)
+- [Pipeline, stage order and signal-state checks](crates/cytiq-engine/PIPELINE.md)
 - [Papers and upstream implementations](CITATIONS.md)
 - [Contributor guidelines](CONTRIBUTING.md)
 
@@ -156,10 +156,13 @@ intentional generator, dataset or upstream-version changes; see
 
 ## Install with Cargo
 
-Releases are published to crates.io as `cytiq-cli`, which installs the `cytiq`
-binary; [`crates/cytiq-cli`](crates/cytiq-cli/README.md#build-and-distribute)
+Releases use the crates.io package `cytiq-engine`, which installs the `cytiq`
+binary; [`crates/cytiq-engine`](crates/cytiq-engine/README.md#build-and-distribute)
 gives the `cargo install --locked` command that builds it with the release
 profile of the Docker image.
+
+The package and container were renamed from `cytiq-cli`. Before using the new
+registry names, complete the [registry migration](docs/rename-to-cytiq-engine.md).
 
 ## Docker
 
@@ -173,7 +176,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" cytiq:dev autospill \
 The image runs as an unprivileged user (UID 10001), with `/data` as its working
 directory. `--user` makes outputs in the mounted directory belong to you.
 
-Releases are published as `ghcr.io/cytiq/cytiq-cli:<version>` (and `:latest`)
+Releases are published as `ghcr.io/cytiq/cytiq-engine:<version>` (and `:latest`)
 for `linux/amd64` and `linux/arm64`, with SBOM and provenance attestations, so
 `docker pull` gets a native image on Apple silicon too. Pin the digest when you
 deploy, e.g. in `cytiq-argo`'s WorkflowTemplates. Pushing an `X.Y.Z-rcN` tag

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate data/fixtures/parity: small synthetic datasets and what the
-# upstream R tools compute on them. crates/cytiq-cli/tests/parity_smoke.rs
+# upstream R tools compute on them. crates/cytiq-engine/tests/parity_smoke.rs
 # checks cytiq against these outputs in CI, where R is not installed.
 #
 # Usage: parity/make_smoke.sh (also `just parity-smoke-fixture`)

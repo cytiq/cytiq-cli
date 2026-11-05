@@ -36,7 +36,7 @@ case "${1:-}" in
         cargo test --workspace --locked
         python3 -m unittest discover -s performance -p 'test_*.py'
         python3 -m unittest discover -s .github/scripts -p 'test_*.py'
-        cargo test -p cytiq-cli --example performance_support --locked
+        cargo test -p cytiq-engine --example performance_support --locked
         cargo llvm-cov report --lcov --output-path "$report_dir/lcov.info"
         # This marker is written only after every test and coverage export passed.
         python3 "$helper" record "$report_dir"

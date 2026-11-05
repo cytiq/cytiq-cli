@@ -9,7 +9,7 @@ use cytiq_fcs::{ColumnData, FcsReader, FcsWriteOptions, FcsWriteParameter};
 
 #[test]
 fn cli_runs_transform_default_arcsinh_with_metadata() {
-    let directory = create_temp_dir("cytiq-cli-transform-default");
+    let directory = create_temp_dir("cytiq-engine-transform-default");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     let metadata_path = directory.join("metadata.json");
@@ -66,7 +66,7 @@ fn cli_runs_transform_default_arcsinh_with_metadata() {
 
 #[test]
 fn cli_transforms_repeated_inputs_to_output_directory() {
-    let directory = create_temp_dir("cytiq-cli-transform-repeated");
+    let directory = create_temp_dir("cytiq-engine-transform-repeated");
     let input_a = directory.join("sample-a.fcs");
     let input_b = directory.join("sample-b.fcs");
     let output_dir = directory.join("out");
@@ -99,7 +99,7 @@ fn cli_transforms_repeated_inputs_to_output_directory() {
 
 #[test]
 fn cli_transforms_glob_inputs_to_output_directory() {
-    let directory = create_temp_dir("cytiq-cli-transform-glob");
+    let directory = create_temp_dir("cytiq-engine-transform-glob");
     write_transform_fixture_fcs(&directory.join("sample-1.fcs"), 0.0);
     write_transform_fixture_fcs(&directory.join("sample-2.fcs"), 10.0);
     fs::write(directory.join("notes.txt"), "ignored").expect("notes should write");
@@ -130,7 +130,7 @@ fn cli_transforms_glob_inputs_to_output_directory() {
 
 #[test]
 fn cli_applies_channels_and_exclude_channels() {
-    let directory = create_temp_dir("cytiq-cli-transform-channels");
+    let directory = create_temp_dir("cytiq-engine-transform-channels");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     write_transform_fixture_fcs(&input, 0.0);
@@ -173,7 +173,7 @@ fn cli_applies_channels_and_exclude_channels() {
 #[test]
 fn cli_runs_logicle_biexponential_and_hyperlog_methods() {
     for method in ["logicle", "biexponential", "hyperlog"] {
-        let directory = create_temp_dir(&format!("cytiq-cli-transform-{method}"));
+        let directory = create_temp_dir(&format!("cytiq-engine-transform-{method}"));
         let input = directory.join("sample.fcs");
         let output_path = directory.join(format!("sample.{method}.fcs"));
         write_transform_fixture_fcs(&input, 0.0);
@@ -213,7 +213,7 @@ fn cli_runs_logicle_biexponential_and_hyperlog_methods() {
 
 #[test]
 fn cli_dry_run_writes_no_outputs() {
-    let directory = create_temp_dir("cytiq-cli-transform-dry-run");
+    let directory = create_temp_dir("cytiq-engine-transform-dry-run");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     let metadata_path = directory.join("metadata.json");
@@ -247,7 +247,7 @@ fn cli_dry_run_writes_no_outputs() {
 
 #[test]
 fn cli_rejects_existing_transform_output_without_overwrite() {
-    let directory = create_temp_dir("cytiq-cli-transform-output-exists");
+    let directory = create_temp_dir("cytiq-engine-transform-output-exists");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     write_transform_fixture_fcs(&input, 0.0);
@@ -271,7 +271,7 @@ fn cli_rejects_existing_transform_output_without_overwrite() {
 
 #[test]
 fn cli_rejects_existing_metadata_before_writing_transform_output() {
-    let directory = create_temp_dir("cytiq-cli-transform-metadata-exists");
+    let directory = create_temp_dir("cytiq-engine-transform-metadata-exists");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     let metadata_path = directory.join("metadata.json");
@@ -299,7 +299,7 @@ fn cli_rejects_existing_metadata_before_writing_transform_output() {
 
 #[test]
 fn cli_requires_transform_input() {
-    let directory = create_temp_dir("cytiq-cli-transform-requires-input");
+    let directory = create_temp_dir("cytiq-engine-transform-requires-input");
 
     let output = Command::new(env!("CARGO_BIN_EXE_cytiq"))
         .args([
@@ -317,7 +317,7 @@ fn cli_requires_transform_input() {
 
 #[test]
 fn cli_rejects_unsupported_transform_format() {
-    let directory = create_temp_dir("cytiq-cli-transform-format");
+    let directory = create_temp_dir("cytiq-engine-transform-format");
     let input = directory.join("sample.fcs");
     write_transform_fixture_fcs(&input, 0.0);
 
@@ -341,7 +341,7 @@ fn cli_rejects_unsupported_transform_format() {
 
 #[test]
 fn cli_transform_carries_metadata_and_moves_spillover() {
-    let directory = create_temp_dir("cytiq-cli-transform-metadata");
+    let directory = create_temp_dir("cytiq-engine-transform-metadata");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     let parameters = vec![
@@ -402,7 +402,7 @@ fn cli_transform_carries_metadata_and_moves_spillover() {
 
 #[test]
 fn cli_rejects_already_transformed_input() {
-    let directory = create_temp_dir("cytiq-cli-transform-twice");
+    let directory = create_temp_dir("cytiq-engine-transform-twice");
     let input = directory.join("sample.fcs");
     let once = directory.join("once.fcs");
     let twice = directory.join("twice.fcs");
@@ -427,7 +427,7 @@ fn cli_rejects_already_transformed_input() {
 
 #[test]
 fn cli_accepts_negative_logicle_a() {
-    let directory = create_temp_dir("cytiq-cli-transform-negative-a");
+    let directory = create_temp_dir("cytiq-engine-transform-negative-a");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     write_transform_fixture_fcs(&input, 0.0);
@@ -483,7 +483,7 @@ fn write_lineage_fixture_fcs(path: &Path) -> Vec<f64> {
 #[test]
 #[allow(clippy::cast_possible_truncation)]
 fn transform_leaves_original_id_exact() {
-    let directory = create_temp_dir("cytiq-cli-transform-original-id");
+    let directory = create_temp_dir("cytiq-engine-transform-original-id");
     let input = directory.join("sample.peacoqc.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     let ids = write_lineage_fixture_fcs(&input);
@@ -521,7 +521,7 @@ fn transform_leaves_original_id_exact() {
 
 #[test]
 fn rejects_transforming_original_id() {
-    let directory = create_temp_dir("cytiq-cli-transform-reserved");
+    let directory = create_temp_dir("cytiq-engine-transform-reserved");
     let input = directory.join("sample.peacoqc.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     write_lineage_fixture_fcs(&input);
@@ -542,7 +542,7 @@ fn rejects_transforming_original_id() {
 
 #[test]
 fn in_place_transform_records_the_original_input_hash() {
-    let directory = create_temp_dir("cytiq-cli-transform-in-place");
+    let directory = create_temp_dir("cytiq-engine-transform-in-place");
     let file = directory.join("sample.fcs");
     write_transform_fixture_fcs(&file, 0.0);
     let before = common::sha256_hex(&file);
@@ -569,7 +569,7 @@ fn in_place_transform_records_the_original_input_hash() {
 
 #[test]
 fn transform_requires_compensation_first() {
-    let directory = create_temp_dir("cytiq-cli-transform-uncompensated");
+    let directory = create_temp_dir("cytiq-engine-transform-uncompensated");
     let raw =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/gating/sample.fcs");
     let output_path = directory.join("sample.t.fcs");
@@ -654,7 +654,7 @@ fn assert_f32_column_close(column: Option<&ColumnData>, expected: &[f64]) {
 /// counted as scatter, so gates and plots saw asinh scatter.
 #[test]
 fn transform_leaves_instrument_scatter_channels_linear() {
-    let directory = create_temp_dir("cytiq-cli-transform-navios");
+    let directory = create_temp_dir("cytiq-engine-transform-navios");
     let raw =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/fixtures/flowcyt/Case12_P.fcs");
     let compensated = directory.join("case12.comp.fcs");
@@ -724,7 +724,7 @@ fn utf8(path: &Path) -> &str {
 
 #[test]
 fn cli_rejects_log_amplified_input() {
-    let directory = create_temp_dir("cytiq-cli-transform-log");
+    let directory = create_temp_dir("cytiq-engine-transform-log");
     let input = directory.join("sample.fcs");
     let output_path = directory.join("sample.transformed.fcs");
     write_transform_fixture_fcs(&input, 0.0);

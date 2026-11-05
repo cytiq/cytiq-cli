@@ -16,13 +16,13 @@ The workspace release profile includes overflow checks; leave them enabled.
 
 ```bash
 # On clean main, before applying the optimisation:
-cargo build --release --locked -p cytiq-cli
+cargo build --release --locked -p cytiq-engine
 mkdir -p target/performance/baseline
 cp target/release/cytiq target/performance/baseline/cytiq
 
 # After applying the optimisation:
-cargo build --release --locked -p cytiq-cli
-cargo build --release --locked -p cytiq-cli --example performance_support
+cargo build --release --locked -p cytiq-engine
+cargo build --release --locked -p cytiq-engine --example performance_support
 
 just performance \
   --baseline-bin target/performance/baseline/cytiq \

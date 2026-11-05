@@ -31,11 +31,11 @@ this crate.
 - Spillover parsing, matrix inversion, linearisation and margin bounds live in
   `cytiq-fcs`.
 - The mask format lives in `cytiq-mask`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/compensate.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-engine/src/commands/compensate.rs`. Keep this crate free of `clap`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-compensate
-cargo test -p cytiq-cli --test compensate_cli
+cargo test -p cytiq-engine --test compensate_cli
 ```

@@ -156,5 +156,5 @@ and embeds them in SVG as PNG, and the export needs Chromium.
 
 ```bash
 cargo test -p cytiq-plot
-cargo test -p cytiq-cli --test plot_cli
+cargo test -p cytiq-engine --test plot_cli
 ```

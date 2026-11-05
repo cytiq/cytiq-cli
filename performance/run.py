@@ -254,7 +254,7 @@ def run(args):
         helper = args.helper_bin
         if not helper.is_file():
             raise RuntimeError("build the helper first: cargo build --release --locked "
-                               "-p cytiq-cli --example performance_support")
+                               "-p cytiq-engine --example performance_support")
         report["helper_sha256"] = sha256(helper)
         cases = prepare(args, helper)
         if args.case:

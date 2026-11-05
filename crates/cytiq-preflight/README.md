@@ -67,5 +67,5 @@ compensate --matrix` reads them), `serde` / `serde_json`.
 ## Tests
 
 ```bash
-cargo test -p cytiq-cli --test preflight_cli
+cargo test -p cytiq-engine --test preflight_cli
 ```

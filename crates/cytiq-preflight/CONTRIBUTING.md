@@ -25,5 +25,5 @@ this crate.
 ## Testing
 
 ```bash
-cargo test -p cytiq-cli --test preflight_cli
+cargo test -p cytiq-engine --test preflight_cli
 ```

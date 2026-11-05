@@ -3,7 +3,7 @@
 
 [remote.github]
 owner = "cytiq"
-repo = "cytiq-cli"
+repo = "cytiq-engine"
 
 [changelog]
 # A Tera template to be rendered as the changelog's header.
@@ -60,7 +60,7 @@ trim = true
 # An array of regex based postprocessors to modify the changelog.
 postprocessors = [
   # Replace the placeholder `<REPO>` with a URL.
-  { pattern = '<REPO>', replace = "https://github.com/cytiq/cytiq-cli" }, # replace repository URL
+  { pattern = '<REPO>', replace = "https://github.com/cytiq/cytiq-engine" }, # replace repository URL
 ]
 
 [git]

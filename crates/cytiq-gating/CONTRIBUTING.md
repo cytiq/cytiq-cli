@@ -49,14 +49,14 @@ this crate.
 - FCS parsing and `$SPILLOVER` decoding belong in `cytiq-fcs`.
 - Gate estimation from data does not belong here; fitted gates live in
   consumers such as `cytiq-clean`.
-- CLI flags belong in `crates/cytiq-cli/src/commands/gate.rs`. Keep this crate free of `clap`.
+- CLI flags belong in `crates/cytiq-engine/src/commands/gate.rs`. Keep this crate free of `clap`.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-gating
 cargo test -p cytiq-gating --test flowkit_parity
-cargo test -p cytiq-cli --test gate_cli
+cargo test -p cytiq-engine --test gate_cli
 ```
 
 Unit tests sit next to the code in `geometry.rs`, `parse.rs`, `transforms.rs`

@@ -58,7 +58,7 @@ The built executable runs without Python, runtime environment variables or a
 separate ONNX Runtime installation. Moving `cytiq` alone is sufficient on the
 supported macOS Apple Silicon and Linux x86_64/aarch64 targets; standard OS
 libraries remain required. Test using `cargo test -p cytiq-classify` and
-`cargo test -p cytiq-cli --test classify_cli`.
+`cargo test -p cytiq-engine --test classify_cli`.
 
 ## Vocabulary-aware bundle v2
 
@@ -109,7 +109,7 @@ rejects them. Fixtures under `data/fixtures/classify/cytof` come from
 
 `ClassifyRunner` retains one ONNX environment for the process, allowing repeated
 or concurrent library calls. Test both v1 and v2 with `cargo test -p cytiq-classify`
-and `cargo test -p cytiq-cli --test classify_cli`.
+and `cargo test -p cytiq-engine --test classify_cli`.
 
 ## Normalization-aware bundle v3
 

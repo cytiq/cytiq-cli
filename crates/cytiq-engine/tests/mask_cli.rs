@@ -42,7 +42,7 @@ fn run(args: &[&str]) -> std::process::Output {
 
 #[test]
 fn combines_peacoqc_and_clean_masks_by_source_event() {
-    let directory = create_temp_dir("cytiq-cli-mask-combine");
+    let directory = create_temp_dir("cytiq-engine-mask-combine");
     let raw = fixture("sample.fcs");
     let peacoqc = directory.join("sample.peacoqc.fcs");
     let clean = directory.join("clean");
@@ -128,7 +128,7 @@ fn combines_peacoqc_and_clean_masks_by_source_event() {
 
 #[test]
 fn refuses_to_replace_combined_mask_without_overwrite() {
-    let directory = create_temp_dir("cytiq-cli-mask-overwrite");
+    let directory = create_temp_dir("cytiq-engine-mask-overwrite");
     let mask = directory.join("mask.parquet");
     EventMask::new(
         common::acquisition_of(&fixture("sample.fcs")),
@@ -173,7 +173,7 @@ fn combine_error(masks: &[&Path], output: &Path) -> String {
 
 #[test]
 fn fails_to_combine_masks_from_different_files() {
-    let directory = create_temp_dir("cytiq-cli-mask-acquisitions");
+    let directory = create_temp_dir("cytiq-engine-mask-acquisitions");
     let sample = directory.join("sample.parquet");
     let control = directory.join("control.parquet");
     // Same rows, different raw files: only the acquisition tells them apart.
@@ -205,7 +205,7 @@ fn rejects_a_mask_without_acquisition() {
 
     use arrow_array::{ArrayRef, BooleanArray, RecordBatch, UInt64Array};
 
-    let directory = create_temp_dir("cytiq-cli-mask-legacy");
+    let directory = create_temp_dir("cytiq-engine-mask-legacy");
     let legacy = directory.join("legacy.parquet");
     let batch = RecordBatch::try_from_iter([
         (

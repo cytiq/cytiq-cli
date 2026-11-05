@@ -76,7 +76,7 @@ fn compensate(input: &Path, output: &Path, extra: &[&str]) {
 
 #[test]
 fn compensates_with_the_file_spillover() {
-    let directory = create_temp_dir("cytiq-cli-compensate-fcs");
+    let directory = create_temp_dir("cytiq-engine-compensate-fcs");
     let input = fixture("gating", "sample.fcs");
     let output = directory.join("sample.comp.fcs");
 
@@ -124,7 +124,7 @@ fn compensates_with_the_file_spillover() {
 
 #[test]
 fn matrix_files_match_the_file_spillover() {
-    let directory = create_temp_dir("cytiq-cli-compensate-matrix");
+    let directory = create_temp_dir("cytiq-engine-compensate-matrix");
     let input = fixture("gating", "sample.fcs");
     let raw = read(&input);
     let spillover = cytiq_fcs::Spillover::from_dataset(&raw).unwrap().unwrap();
@@ -201,7 +201,7 @@ fn matrix_files_match_the_file_spillover() {
 
 #[test]
 fn refuses_to_compensate_twice() {
-    let directory = create_temp_dir("cytiq-cli-compensate-twice");
+    let directory = create_temp_dir("cytiq-engine-compensate-twice");
     let once = directory.join("once.fcs");
     compensate(&fixture("gating", "sample.fcs"), &once, &[]);
 
@@ -234,7 +234,7 @@ fn refuses_to_compensate_twice() {
 
 #[test]
 fn requires_matrix_kind_with_matrix() {
-    let directory = create_temp_dir("cytiq-cli-compensate-kind");
+    let directory = create_temp_dir("cytiq-engine-compensate-kind");
     let output = cytiq(&[
         "compensate",
         "--input",
@@ -250,7 +250,7 @@ fn requires_matrix_kind_with_matrix() {
 
 #[test]
 fn fails_when_compensate_input_is_missing() {
-    let directory = create_temp_dir("cytiq-cli-compensate-missing");
+    let directory = create_temp_dir("cytiq-engine-compensate-missing");
     let output = cytiq(&[
         "compensate",
         "--input",
@@ -266,7 +266,7 @@ fn fails_when_compensate_input_is_missing() {
 /// as `uncompensated` dimensions of the `cytiq compensate` output.
 #[test]
 fn gating_compensated_output_matches_gating_raw_with_fcs_compensation() {
-    let directory = create_temp_dir("cytiq-cli-compensate-gate");
+    let directory = create_temp_dir("cytiq-engine-compensate-gate");
     let raw = fixture("gating", "sample.fcs");
     let compensated = directory.join("sample.comp.fcs");
     compensate(&raw, &compensated, &[]);
@@ -357,7 +357,7 @@ fn gating_compensated_output_matches_gating_raw_with_fcs_compensation() {
 /// matrix channel (a `FlowCyt` bone-marrow case had 29% of its events there).
 #[test]
 fn flags_saturated_scatter_as_a_margin() {
-    let directory = create_temp_dir("cytiq-cli-compensate-scatter-margin");
+    let directory = create_temp_dir("cytiq-engine-compensate-scatter-margin");
     let source = fixture("gating", "sample.fcs");
     let input = directory.join("saturated.fcs");
     let dataset = read(&source);
@@ -412,7 +412,7 @@ fn flags_saturated_scatter_as_a_margin() {
 
 #[test]
 fn preserves_large_original_ids_exactly() {
-    let directory = create_temp_dir("cytiq-cli-compensate-original-id");
+    let directory = create_temp_dir("cytiq-engine-compensate-original-id");
     let source = fixture("gating", "sample.fcs");
     let input = directory.join("sample.peacoqc.fcs");
     let ids = common::write_with_large_original_ids(&source, &input);
@@ -445,7 +445,7 @@ fn preserves_large_original_ids_exactly() {
 
 #[test]
 fn non_finite_output_publishes_neither_fcs_mask_nor_provenance() {
-    let directory = create_temp_dir("cytiq-cli-compensate-nonfinite");
+    let directory = create_temp_dir("cytiq-engine-compensate-nonfinite");
     let input = directory.join("input.fcs");
     fs::copy(fixture("gating", "sample.fcs"), &input).unwrap();
     let dataset = read(&input);
@@ -471,7 +471,7 @@ fn non_finite_output_publishes_neither_fcs_mask_nor_provenance() {
 
 #[test]
 fn refuses_to_compensate_unmixed_input() {
-    let directory = create_temp_dir("cytiq-cli-compensate-unmixed");
+    let directory = create_temp_dir("cytiq-engine-compensate-unmixed");
     let input = directory.join("sample.unmixed.fcs");
     fs::copy(fixture("gating", "sample.fcs"), &input).expect("fixture should copy");
     common::add_keyword(
@@ -500,7 +500,7 @@ fn refuses_to_compensate_unmixed_input() {
 /// the stages that refuse log-amplified input run on its output.
 #[test]
 fn linearises_log_amplified_input_for_later_stages() {
-    let directory = create_temp_dir("cytiq-cli-compensate-log");
+    let directory = create_temp_dir("cytiq-engine-compensate-log");
     let input = directory.join("sample.fcs");
     let output = directory.join("sample.comp.fcs");
     fs::copy(fixture("gating", "sample.fcs"), &input).expect("fixture should copy");

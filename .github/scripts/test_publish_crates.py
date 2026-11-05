@@ -34,7 +34,7 @@ class WorkspacePackagesTests(unittest.TestCase):
     def test_keeps_path_dependencies_on_members_and_skips_unpublished_packages(self):
         packages = [
             metadata_package("cytiq-fcs", dependencies=[("serde", "^1", False)], description=None),
-            metadata_package("cytiq-cli", dependencies=[("cytiq-fcs", "^0.3.1", True)]),
+            metadata_package("cytiq-engine", dependencies=[("cytiq-fcs", "^0.3.1", True)]),
             metadata_package("cytiq-internal", publish=[]),
             # Same name as a member but from the registry: not a workspace dependency.
             metadata_package("outside", dependencies=[("cytiq-fcs", "^0.2", False)]),
@@ -43,7 +43,7 @@ class WorkspacePackagesTests(unittest.TestCase):
         self.assertEqual(
             workspace_packages(metadata),
             [
-                Package("cytiq-cli", "0.3.1", (("cytiq-fcs", "^0.3.1"),)),
+                Package("cytiq-engine", "0.3.1", (("cytiq-fcs", "^0.3.1"),)),
                 Package("cytiq-fcs", "0.3.1", (), ("description",)),
             ],
         )
@@ -53,7 +53,7 @@ class ReleaseErrorsTests(unittest.TestCase):
     fcs = Package("cytiq-fcs", "0.3.2")
 
     def test_accepts_one_version_matching_the_release(self):
-        cli = Package("cytiq-cli", "0.3.2", (("cytiq-fcs", "^0.3.2"),))
+        cli = Package("cytiq-engine", "0.3.2", (("cytiq-fcs", "^0.3.2"),))
         self.assertEqual(release_errors([cli, self.fcs], "0.3.2"), [])
         self.assertEqual(release_errors([cli, self.fcs], None), [])
 
@@ -61,12 +61,12 @@ class ReleaseErrorsTests(unittest.TestCase):
         self.assertRegex(release_errors([self.fcs], "0.3.3")[0], "does not match the release 0.3.3")
 
     def test_rejects_packages_with_different_versions(self):
-        errors = release_errors([self.fcs, Package("cytiq-cli", "0.3.1")], None)
+        errors = release_errors([self.fcs, Package("cytiq-engine", "0.3.1")], None)
         self.assertEqual(errors, ["workspace packages disagree on the version: 0.3.1, 0.3.2"])
 
     def test_rejects_a_stale_or_missing_internal_requirement(self):
         for requirement in ["^0.3.1", "*", "=0.3.2"]:
-            cli = Package("cytiq-cli", "0.3.2", (("cytiq-fcs", requirement),))
+            cli = Package("cytiq-engine", "0.3.2", (("cytiq-fcs", requirement),))
             with self.subTest(requirement=requirement):
                 self.assertRegex(release_errors([cli, self.fcs], None)[0], "workspace.dependencies")
 
@@ -78,7 +78,7 @@ class ReleaseErrorsTests(unittest.TestCase):
         )
 
     def test_rejects_a_dependency_on_an_unpublished_member(self):
-        cli = Package("cytiq-cli", "0.3.2", (("cytiq-internal", "^0.3.2"),))
+        cli = Package("cytiq-engine", "0.3.2", (("cytiq-internal", "^0.3.2"),))
         self.assertRegex(release_errors([cli], None)[0], "cytiq-internal, which is not published")
 
 

@@ -2,7 +2,7 @@
 # 27.1.0's StructField generator bypasses regex filters. Also restrict files;
 # mutants_selection.py rejects anything outside the function selection.
 examine_globs = [
-    "crates/cytiq-cli/src/logging.rs",
+    "crates/cytiq-engine/src/logging.rs",
     "crates/cytiq-clean/src/debris.rs",
     "crates/cytiq-flowsom/src/model.rs",
     "crates/cytiq-peacoqc/src/runner.rs",
@@ -17,7 +17,7 @@ examine_globs = [
     "crates/cytiq-classify/src/lib.rs",
 ]
 examine_re = [
-    'crates/cytiq-cli/src/logging.rs:.*\bparse_log_level_token\b',
+    'crates/cytiq-engine/src/logging.rs:.*\bparse_log_level_token\b',
     'crates/cytiq-clean/src/debris.rs:.*\bfit_population\b',
     'crates/cytiq-flowsom/src/model.rs:.*\bpopulations\b',
     'crates/cytiq-peacoqc/src/runner.rs:.*\b(isolation_tree_good_bins|isolation_children)\b',

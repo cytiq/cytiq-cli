@@ -2,7 +2,7 @@
 
 Small synthetic datasets and what the upstream R tools computed on them, so
 CI can check cytiq against upstream without installing R
-(`crates/cytiq-cli/tests/parity_smoke.rs`, run by `cargo test`). The full
+(`crates/cytiq-engine/tests/parity_smoke.rs`, run by `cargo test`). The full
 suites (`just parity`, `just parity-real`) stay local; this set covers the
 results that are exact or deterministic on both sides, with the bounds of
 `parity/tolerances.json`.

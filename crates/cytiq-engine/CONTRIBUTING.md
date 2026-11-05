@@ -1,4 +1,4 @@
-# Contributing to cytiq-cli
+# Contributing to cytiq-engine
 
 Workspace-wide rules (commands, style, commits, PRs) live in the root
 [CONTRIBUTING.md](../../CONTRIBUTING.md). This file covers what is specific to
@@ -24,7 +24,7 @@ this crate.
 - `tests/<command>_cli.rs` — integration tests per subcommand, running the
   `cytiq` binary.
 
-The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
+The package is `cytiq-engine`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
 
 ## Invariants
 
@@ -99,8 +99,8 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
 ## Testing
 
 ```bash
-cargo test -p cytiq-cli
-cargo test -p cytiq-cli --test <command>_cli
+cargo test -p cytiq-engine
+cargo test -p cytiq-engine --test <command>_cli
 ```
 
 Test files: `autospill_cli.rs`, `autospectral_cli.rs`, `clean_cli.rs`,

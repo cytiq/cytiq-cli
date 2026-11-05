@@ -82,8 +82,8 @@ this crate.
 ## Where changes belong
 
 - New flags, `--help` text and log lines go in
-  `crates/cytiq-cli/src/commands/plot.rs`. Value parsers go in
-  `crates/cytiq-cli/src/parsers.rs`. Keep this crate free of `clap`.
+  `crates/cytiq-engine/src/commands/plot.rs`. Value parsers go in
+  `crates/cytiq-engine/src/parsers.rs`. Keep this crate free of `clap`.
 - A new plot option goes in three places: a `PlotRequest` field with its
   default, `PlotRequest::validate`, and the batch schema in `batch.rs` (both
   `PlotDefaults` and `PlotEntry`). Then document it in the README.
@@ -94,7 +94,7 @@ this crate.
 
 ```bash
 cargo test -p cytiq-plot
-cargo test -p cytiq-cli --test plot_cli
+cargo test -p cytiq-engine --test plot_cli
 ```
 
 Unit tests sit next to the code:
@@ -111,7 +111,7 @@ Unit tests sit next to the code:
 - `batch.rs`: schema errors.
 - `compose.rs`: mask/gating equivalence.
 
-`crates/cytiq-cli/tests/plot_cli.rs` runs the binary on the clean, gating and
+`crates/cytiq-engine/tests/plot_cli.rs` runs the binary on the clean, gating and
 pipeline fixtures. It covers every plot type, masks, gates (checked against
 `cytiq gate`), populations, FlowSOM and classify classes, batch output in both
 formats, byte-identical reruns, `--overwrite`, and input and flag errors.

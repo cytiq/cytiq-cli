@@ -1,4 +1,13 @@
 # Changelog
+## [0.3.1](https://github.com/cytiq/cytiq-cli/compare/0.3.0..0.3.1) - 2026-11-05
+
+### 🚜 Refactor
+
+- Reduce CRAP risk and add targeted mutation tests ([#174](https://github.com/cytiq/cytiq-cli/issues/174)) - ([78bf649](https://github.com/cytiq/cytiq-cli/commit/78bf649570a92381b10e9e880f6b414a70276236))
+
+### ⚙️ Miscellaneous Tasks
+
+- Report workspace CRAP risk against a reviewed baseline ([#173](https://github.com/cytiq/cytiq-cli/issues/173)) - ([2972489](https://github.com/cytiq/cytiq-cli/commit/29724893121999052611695e7b3911361d0ea974))
 ## [0.3.0](https://github.com/cytiq/cytiq-cli/compare/0.2.1..0.3.0) - 2026-11-04
 
 ### ⛰️  Features
@@ -12,6 +21,10 @@
 ### ⚡ Performance
 
 - Reduce transform and compensation allocations ([#170](https://github.com/cytiq/cytiq-cli/issues/170)) - ([422b175](https://github.com/cytiq/cytiq-cli/commit/422b175c7c295a88ade618eb95a688c5d46d74c4))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Update changelog for 0.3.0 ([#172](https://github.com/cytiq/cytiq-cli/issues/172)) - ([807d922](https://github.com/cytiq/cytiq-cli/commit/807d92226cc8bf02853440f0ef50572f027bace3))
 ## [0.2.1](https://github.com/cytiq/cytiq-cli/compare/0.2.0..0.2.1) - 2026-11-04
 
 ### 🐛 Bug Fixes

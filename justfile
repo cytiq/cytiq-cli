@@ -149,6 +149,11 @@ fmt:
 lint:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+# ---- Check crates.io metadata and internal versions, and package every crate (uploads nothing)
+[group('quality')]
+package-check:
+    python3 .github/scripts/publish_crates.py --check --allow-dirty
+
 # ---- Run the standard local quality gate
 [group('quality')]
 verify:
@@ -158,6 +163,7 @@ verify:
     just test
     just performance-check
     just crap-check
+    just package-check
 
 # ---- Start Docker
 [group('ci-cd')]
@@ -176,6 +182,12 @@ docker-down:
     else \
         sudo systemctl stop docker; \
     fi
+
+# ---- First crates.io publication of crates not on crates.io yet (`cargo login` first; see CONTRIBUTING.md)
+[group('ci-cd')]
+publish-crates-first:
+    python3 .github/scripts/publish_crates.py --allow-new --dry-run
+    python3 .github/scripts/publish_crates.py --allow-new --no-verify --wait-on-rate-limit 30
 
 # ---- Build the Docker image
 [group('docker')]

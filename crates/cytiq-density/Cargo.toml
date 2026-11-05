@@ -2,6 +2,11 @@
 name = "cytiq-density"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Density estimation and scatter auto-gating primitives for flow cytometry"
 
 [dependencies]
 

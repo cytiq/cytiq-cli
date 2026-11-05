@@ -2,13 +2,18 @@
 name = "cytiq-gating"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Gating-ML 2.0 gating strategy evaluation on FCS events"
 
 [dependencies]
 csv = "1.3.1"
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-publish = { path = "../cytiq-publish" }
-cytiq-transform = { path = "../cytiq-transform" }
+cytiq-fcs.workspace = true
+cytiq-mask.workspace = true
+cytiq-publish.workspace = true
+cytiq-transform.workspace = true
 log = "0.4.30"
 rayon = "1.10.0"
 roxmltree = "0.21.1"

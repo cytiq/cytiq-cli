@@ -2,16 +2,21 @@
 name = "cytiq-cytonorm"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Panel-specific population-based batch normalization of cytometry data (CytoNorm)"
 
 [dependencies]
 arrow-array = "60.1.0"
 arrow-schema = "60.1.0"
-cytiq-density = { path = "../cytiq-density" }
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-flowsom = { path = "../cytiq-flowsom" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-provenance = { path = "../cytiq-provenance" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-density.workspace = true
+cytiq-fcs.workspace = true
+cytiq-flowsom.workspace = true
+cytiq-mask.workspace = true
+cytiq-provenance.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 parquet = { version = "60.1.0", default-features = false, features = ["arrow"] }
 plotly = "0.14.1"
@@ -26,4 +31,4 @@ thiserror = "2"
 workspace = true
 
 [dev-dependencies]
-cytiq-transform = { path = "../cytiq-transform" }
+cytiq-transform.workspace = true

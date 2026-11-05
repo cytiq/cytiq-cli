@@ -2,15 +2,20 @@
 name = "cytiq-spillqc"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Spillover matrix quality control of stained samples with the CompensAID Secondary Stain Index"
 
 [dependencies]
 csv = "1.3.1"
-cytiq-compensate = { path = "../cytiq-compensate" }
-cytiq-density = { path = "../cytiq-density" }
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-peacoqc = { path = "../cytiq-peacoqc" }
-cytiq-publish = { path = "../cytiq-publish" }
-cytiq-transform = { path = "../cytiq-transform" }
+cytiq-compensate.workspace = true
+cytiq-density.workspace = true
+cytiq-fcs.workspace = true
+cytiq-peacoqc.workspace = true
+cytiq-publish.workspace = true
+cytiq-transform.workspace = true
 log = "0.4.30"
 plotly = "0.14.1"
 rayon = "1.10.0"

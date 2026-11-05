@@ -2,14 +2,19 @@
 name = "cytiq-classify"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Panel-specific supervised classification of FCS events with ONNX Runtime model bundles"
 
 [dependencies]
 arrow-array = "60.1.0"
 arrow-schema = "60.1.0"
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-provenance = { path = "../cytiq-provenance" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-fcs.workspace = true
+cytiq-mask.workspace = true
+cytiq-provenance.workspace = true
+cytiq-publish.workspace = true
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "api-27"] }
 parquet = { version = "60.1.0", default-features = false, features = ["arrow", "zstd"] }
 serde = { version = "1.0.228", features = ["derive"] }

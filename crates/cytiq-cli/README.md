@@ -47,6 +47,24 @@ runtime during the build. The executable needs no Python, runtime environment
 variables or companion `lib/` directory. See the
 [classify documentation](../cytiq-classify/README.md) for supported targets.
 
+Releases are also published to crates.io, from source:
+
+```bash
+cargo install --locked cytiq-cli \
+  --config 'profile.release.overflow-checks=true' \
+  --config 'profile.release.lto="fat"' \
+  --config 'profile.release.codegen-units=1' \
+  --config 'profile.release.panic="abort"'
+```
+
+`--locked` uses the dependency versions the release was tested with. A
+published crate does not carry the workspace's release profile, so the
+`--config` flags restore it: without them integer overflow wraps silently
+instead of aborting the run, and the binary is built without fat LTO. The build
+downloads ONNX Runtime like any other, so it needs network access and a
+supported target. Provenance records the release commit that cargo stored in
+the package.
+
 ## Shared flag conventions
 
 - `--threads N` caps worker threads; omitted means all logical CPUs, `0` is

@@ -38,9 +38,10 @@ port is validated against. Inputs are hashed before the command runs, so a
 command that replaces its own input still records what it read; each input
 carries its `role`. Debug directories are not listed.
 
-`build.git_commit` is resolved with `git rev-parse HEAD` at build time, or
-`CYTIQ_BUILD_COMMIT` when `.git` is absent (as in Docker); it does not detect
-uncommitted changes. Following each record's inputs back to earlier outputs
+`build.git_commit` is `CYTIQ_BUILD_COMMIT` when set at build time (as in
+Docker), else the commit cargo recorded when packaging the crate (a crates.io
+install; `-dirty` marks uncommitted changes), else `git rev-parse HEAD`, which
+does not detect uncommitted changes. Following each record's inputs back to earlier outputs
 reconstructs the chain from the raw FCS files.
 
 Schema version 2 added `build`, `platform`, `config`, `constants`,

@@ -28,9 +28,11 @@ The package is `cytiq-cli`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`).
 
 ## Invariants
 
-- `build.rs` sets `CYTIQ_GIT_COMMIT` (git, or the `CYTIQ_BUILD_COMMIT`
-  environment variable), `CYTIQ_RUSTC_VERSION`, `CYTIQ_TARGET` and
-  `CYTIQ_PROFILE` for provenance records.
+- `build.rs` sets `CYTIQ_GIT_COMMIT` (the `CYTIQ_BUILD_COMMIT` environment
+  variable, else `.cargo_vcs_info.json` in a packaged crate, else git),
+  `CYTIQ_RUSTC_VERSION`, `CYTIQ_TARGET` and `CYTIQ_PROFILE` for provenance
+  records. A packaged crate never asks git: its unpacked source may sit inside
+  an unrelated repository.
 
 - Keep the CLI thin. A command arm only reads manifests, maps flags into the
   library config, calls `<Crate>Runner::run` and logs. No algorithm, file

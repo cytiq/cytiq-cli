@@ -2,11 +2,16 @@
 name = "cytiq-meta"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Exports the metadata of an FCS file as a single JSON document"
 
 [dependencies]
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-provenance = { path = "../cytiq-provenance" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-fcs.workspace = true
+cytiq-provenance.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"

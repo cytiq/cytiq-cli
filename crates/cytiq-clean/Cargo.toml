@@ -2,13 +2,18 @@
 name = "cytiq-clean"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Debris, doublet and dead-cell removal from FCS files as per-event masks"
 
 [dependencies]
-cytiq-density = { path = "../cytiq-density" }
-cytiq-fcs = { path = "../cytiq-fcs" }
-cytiq-gating = { path = "../cytiq-gating" }
-cytiq-mask = { path = "../cytiq-mask" }
-cytiq-publish = { path = "../cytiq-publish" }
+cytiq-density.workspace = true
+cytiq-fcs.workspace = true
+cytiq-gating.workspace = true
+cytiq-mask.workspace = true
+cytiq-publish.workspace = true
 log = "0.4.30"
 plotly = "0.14.1"
 rayon = "1.10.0"

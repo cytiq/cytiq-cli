@@ -8,7 +8,8 @@ if [[ "$(cargo mutants --version)" != 'cargo-mutants 27.1.0' ]]; then
 fi
 
 crates=(cytiq-engine cytiq-clean cytiq-flowsom cytiq-peacoqc cytiq-cytoscan
-        cytiq-spillqc cytiq-gating cytiq-fcs cytiq-cytonorm cytiq-classify)
+        cytiq-spillqc cytiq-gating cytiq-fcs cytiq-cytonorm cytiq-classify
+        cytiq-population cytiq-specimen)
 if [[ "${1:-all}" != all ]]; then
     selected="$1"
     found=false

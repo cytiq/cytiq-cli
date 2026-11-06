@@ -92,6 +92,7 @@ reconciliation:
       source: {panel: P2, source: gates}
       reference: {panel: P1, source: gates}
       anchor: {kind: population, id: leukocytes, scope: leukocytes}
+      anchor_limits: {min_events: 400, max_scale: 4, max_frequency_ratio: 1.5}
 consistency:
   - target: {kind: population, id: t_cells, scope: leukocytes}
     max_abs_fraction_difference: 0.05
@@ -101,9 +102,28 @@ consistency:
 `independent` retains all source estimates. `prefer_reference` names a
 `reference: {panel, source}` and selects its count/fraction without fallback.
 `reference_ratio` computes source count × reference anchor / source anchor.
-Both anchors must be positive, measured and compatible. It emits a separate
-experimental `estimated_count`; all originals remain in `observations`.
-Its method references the three contributing observation identities.
+Both anchors must be positive and measured. Compatibility is enforced when the
+layout and plan are validated: different panels of one specimen plan, the same
+tree and context, an anchor scope equal to the target's, and the anchor bound
+in both sources. It emits a separate experimental `estimated_count` (method
+version 2); all originals remain in `observations`. Its method references the
+three contributing observation identities.
+
+`anchor_limits` is required and has no defaults: derive each limit from the
+assay's validation data, not from these examples.
+
+| Limit | Check | Effect |
+| --- | --- | --- |
+| `min_events` (≥ 1) | `reference_ratio_anchor_events`: each anchor's count, with its Poisson CV `1/√n` | Fail; the estimate becomes `qc_rejected` with reason `anchor_below_min_events` |
+| `max_scale` (optional, ≥ 1) | `reference_ratio_scale`: `s = reference anchor / source anchor` must satisfy `max(s, 1/s) ≤ max_scale` | Fail; reason `anchor_scale_out_of_bounds` |
+| `max_frequency_ratio` (optional, ≥ 1) | `reference_ratio_anchor_frequency`: the anchor's frequency (count / assessed events) in the two panels, larger over smaller | Warn only |
+
+A count equal to `min_events` and a value equal to either bound pass. The
+scale and frequency checks are reported only when both anchors are measured
+and positive. The `reference_ratio_anchor` check also states the estimate's
+Poisson CV, `√(1/population + 1/source anchor + 1/reference anchor)`, which
+ignores population-recognition error. A rejection affects only the derived
+estimate: measured counts and fractions are never changed.
 
 Technical failures make observations `qc_rejected`, with supporting counts.
 Consistency policies compare fractions only when target/denominator scopes agree;

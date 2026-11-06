@@ -616,3 +616,58 @@ fn spectral_unmixing_membership_reaches_a_specimen_without_fcm_classification() 
     );
     verify_package(&result).unwrap();
 }
+
+#[test]
+fn reference_ratio_requires_validated_anchor_limits() {
+    let temporary = tempfile::tempdir().unwrap();
+    let directory = temporary.path();
+    let manifest = directory.join("run.json");
+    let raw = fixture("pipeline/sample.fcs");
+    write_json(&manifest,&json!({"schema_version":2,"cytometry":"conventional","panels":[
+        {"name":"P1","markers":[{"marker":"CD3"}],"qc":{"min_events":1}},
+        {"name":"P2","markers":[{"marker":"CD3"}],"qc":{"min_events":1}}],
+        "samples":[{"id":"A01","file":raw,"panel":"P1","specimen":"S01"},{"id":"A02","file":raw,"panel":"P2","specimen":"S01"}]})).unwrap();
+    let validate = |name: &str, strategy: Value| {
+        let layout = directory.join(name);
+        write_json(&layout,&json!({"schema_version":1,"protocol_id":"ratio","panels":{"P1":gate_panel("P1"),"P2":gate_panel("P2")},
+            "reconciliation":[{"target":target("t_cells"),"strategy":strategy}]})).unwrap();
+        outcome(
+            &[
+                "specimen",
+                "validate",
+                "--manifest",
+                text(&manifest),
+                "--layout",
+                text(&layout),
+                "--specimen",
+                "S01",
+            ],
+            if name == "valid.json" { 0 } else { 2 },
+        )
+    };
+    let strategy = |limits: Option<Value>| {
+        let mut strategy = json!({"kind":"reference_ratio","source":{"panel":"P2","source":"gates"},
+            "reference":{"panel":"P1","source":"gates"},"anchor":target("cells")});
+        if let Some(limits) = limits {
+            strategy["anchor_limits"] = limits;
+        }
+        strategy
+    };
+    let missing = validate("missing.json", strategy(None));
+    assert_eq!(missing["reason"], "invalid_configuration");
+    assert!(
+        missing["message"]
+            .as_str()
+            .unwrap()
+            .contains("anchor_limits"),
+        "{missing}"
+    );
+    let zero = validate("zero.json", strategy(Some(json!({"min_events":0}))));
+    assert_eq!(zero["reason"], "invalid_configuration");
+    validate(
+        "valid.json",
+        strategy(Some(
+            json!({"min_events":50,"max_scale":4.0,"max_frequency_ratio":1.5}),
+        )),
+    );
+}

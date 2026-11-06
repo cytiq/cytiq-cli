@@ -100,27 +100,42 @@ parity-ci-fixture:
 parity-smoke-fixture:
     parity/make_smoke.sh
 
-# ---- Fuzz read_fcs (seeded from fixtures and $CYTIQ_REAL_DATA) or spillover_keyword on the pinned nightly
-# Saved regressions seed both targets. Seeds are named after their path, so
+# ---- Fuzz one target of crates/<crate>/fuzz on the pinned nightly
+# Targets: cytiq-fcs read_fcs|spillover_keyword, cytiq-population
+# document_json|document_yaml|observations_parquet, cytiq-specimen
+# specimen_documents. Saved regressions seed every target; read_fcs also takes
+# the FCS fixtures and $CYTIQ_REAL_DATA, the document targets the JSON
+# fixtures and vendored contracts. Seeds are named after their path, so
 # fixtures that share a file name do not overwrite each other.
 [group('validation')]
-fuzz-fcs target="read_fcs" seconds="300":
-    mkdir -p crates/cytiq-fcs/fuzz/corpus/{{ target }}
-    for seed in crates/cytiq-fcs/tests/fuzz_regressions/{{ target }}/*; do \
-      cp "$seed" "crates/cytiq-fcs/fuzz/corpus/{{ target }}/regression-$(basename "$seed")"; \
+fuzz crate target seconds="300":
+    test -f "crates/{{ crate }}/fuzz/Cargo.toml" || { echo "no fuzz targets in crates/{{ crate }}" >&2; exit 2; }
+    mkdir -p crates/{{ crate }}/fuzz/corpus/{{ target }}
+    for seed in crates/{{ crate }}/tests/fuzz_regressions/{{ target }}/*; do \
+      cp "$seed" "crates/{{ crate }}/fuzz/corpus/{{ target }}/regression-$(basename "$seed")"; \
     done
-    if [[ "{{ target }}" == read_fcs ]]; then \
-      find data/fixtures "${CYTIQ_REAL_DATA:-data/fixtures}" -name '*.fcs' -size -4M -print0 | \
+    case "{{ target }}" in \
+      read_fcs) seeds=(data/fixtures "${CYTIQ_REAL_DATA:-data/fixtures}"); pattern='*.fcs' ;; \
+      document_json|document_yaml) seeds=(data/fixtures/specimen crates/cytiq-population/contracts); pattern='*.json' ;; \
+      *) seeds=() ;; \
+    esac; \
+    if (( ${#seeds[@]} )); then \
+      find "${seeds[@]}" -name "$pattern" -size -4M -print0 | \
         while IFS= read -r -d '' seed; do \
-          cp "$seed" "crates/cytiq-fcs/fuzz/corpus/read_fcs/seed-$(printf '%s' "$seed" | tr '/' '_')"; \
+          cp "$seed" "crates/{{ crate }}/fuzz/corpus/{{ target }}/seed-$(printf '%s' "$seed" | tr '/' '_')"; \
         done; \
     fi
-    rustup toolchain install "$CYTIQ_FUZZ_TOOLCHAIN" --profile minimal --no-self-update
+    rustup run "$CYTIQ_FUZZ_TOOLCHAIN" rustc --version >/dev/null 2>&1 || \
+      rustup toolchain install "$CYTIQ_FUZZ_TOOLCHAIN" --profile minimal --no-self-update
     # cargo-fuzz otherwise builds for the triple it was built for, which is
     # musl (no sanitizers) for prebuilt Linux binaries.
-    export RUSTUP_TOOLCHAIN="$CYTIQ_FUZZ_TOOLCHAIN" && cd crates/cytiq-fcs && \
+    export RUSTUP_TOOLCHAIN="$CYTIQ_FUZZ_TOOLCHAIN" && cd crates/{{ crate }} && \
       cargo fuzz run {{ target }} --target "$(rustc -vV | sed -n 's/^host: //p')" \
       -- -max_total_time={{ seconds }} -timeout=10
+
+# ---- Fuzz read_fcs or spillover_keyword: `just fuzz cytiq-fcs <target>`
+[group('validation')]
+fuzz-fcs target="read_fcs" seconds="300": (fuzz "cytiq-fcs" target seconds)
 
 # ---- Run the application
 [group('build')]
@@ -166,6 +181,12 @@ crap:
 [group('quality')]
 crap-check:
     python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
+# ---- Check the vendored cytiq-tree schemas and cytiq-ml fixture pins against sibling checkouts
+# ($CYTIQ_TREE_DIR, $CYTIQ_ML_DIR; default ../cytiq-tree and ../cytiq-ml). Run when bumping a pin.
+[group('validation')]
+contracts-upstream:
+    python3 .github/scripts/check_contracts.py
 
 # ---- Mutation tests for the CRAP remediation functions (optionally one crate)
 [group('quality')]

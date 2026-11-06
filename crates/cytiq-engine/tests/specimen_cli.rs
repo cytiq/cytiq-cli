@@ -392,7 +392,7 @@ fn conventional_and_cytof_classifiers_reach_specimen_results_with_their_target_k
                 "--output",
                 text(&qc),
             ],
-            i32::from(qc_failure),
+            if qc_failure { 3 } else { 0 },
         );
         let classified = directory.join("classified");
         let mut args = vec![

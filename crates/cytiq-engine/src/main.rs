@@ -2,6 +2,7 @@
 
 mod cli;
 mod commands;
+mod error;
 mod logging;
 mod parsers;
 mod provenance;
@@ -11,6 +12,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use cytiq_provenance::RunRecorder;
+use cytiq_provenance::outcome::CommandOutcome;
 
 use crate::cli::{Cli, Commands, command_name};
 use crate::logging::init_logging;
@@ -21,31 +23,53 @@ fn main() -> ExitCode {
         eprintln!("failed to initialize logging: {error}");
     }
 
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(
-                error
-                    .downcast_ref::<commands::specimen::OutcomeExit>()
-                    .map_or(1, |e| e.0.exit_code),
-            )
+    // Usage errors exit here with clap's code 2 and write no outcome.
+    let Cli { outcome, command } = Cli::parse();
+    let name = format!("cytiq {}", command_name(&command));
+    let result = match run(command, &name) {
+        Ok(Some(result)) => {
+            if result.exit_code != 0 {
+                eprintln!("{:?}: {}", result.reason, result.message);
+            }
+            result
+        }
+        Ok(None) => error::success(&name),
+        Err(failure) => {
+            eprintln!("{failure}");
+            error::failure(&name, failure.as_ref())
+        }
+    };
+    if let Some(path) = outcome {
+        // A failed outcome write must not turn a published result into a
+        // failure that a retry would then trip over.
+        if let Err(write_error) = result.write(&path) {
+            eprintln!(
+                "failed to write outcome `{}`: {write_error}",
+                path.display()
+            );
         }
     }
+    ExitCode::from(result.exit_code)
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
+/// `Some` for command families that build their own outcome; `None` when a
+/// command succeeded without one.
+fn run(
+    command: Commands,
+    name: &str,
+) -> Result<Option<CommandOutcome>, Box<dyn std::error::Error>> {
     let mut recorder = RunRecorder::start(
-        format!("cytiq {}", command_name(&cli.command)),
+        name,
         env!("CARGO_PKG_VERSION"),
         env::args().skip(1).collect(),
     )
     .with_build(build_info());
-    recorder.set_config(&cli.command);
-    match cli.command {
-        Commands::Population(command) => commands::population::run(command, recorder),
-        Commands::Specimen(command) => commands::specimen::run(command, recorder),
+    recorder.set_config(&command);
+    match command {
+        Commands::Population(command) => {
+            return commands::population::run(command, recorder).map(Some);
+        }
+        Commands::Specimen(command) => return commands::specimen::run(command, recorder).map(Some),
         Commands::Autospill(args) => commands::autospill::run(args, recorder),
         Commands::Autospread(args) => commands::autospread::run(args, recorder),
         Commands::Autospectral(args) => commands::autospectral::run(args, recorder),
@@ -66,4 +90,5 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Flowsom(args) => commands::flowsom::run(args, recorder),
         Commands::Cytonorm(command) => commands::cytonorm::run(command, recorder),
     }
+    .map(|()| None)
 }

@@ -45,7 +45,7 @@ cytiq plot       --input sample.t.fcs --color-by flowsom.csv --type scatter \
 `plot` needs only an FCS file and, optionally, masks, Gating-ML and class
 labels. It never fails because a QC check failed: a mask that removes every
 event renders an annotated plot. Workflows should therefore run it after
-`mask combine` whatever `qc`'s exit status, because a failed sample is the one
+`mask combine` even when `qc` exits with `3` (checks failed), because a failed sample is the one
 most worth inspecting. `--config plots.yaml` renders a panel's plots of one
 sample in one run (see [cytiq-plot](../cytiq-plot/README.md#batch-file)).
 

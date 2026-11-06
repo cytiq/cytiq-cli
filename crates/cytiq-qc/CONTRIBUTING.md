@@ -26,7 +26,7 @@ this crate.
   says why and holds no metrics. Filter metrics count mask rows, so they are
   raw-event counts only under that rule.
 - The report is written even when checks fail; the CLI turns failures into
-  exit code 1 through `ensure_passed`.
+  exit code 3 (`checks_failed`) through `ensure_passed` and `QcError::Failed`.
 - Never modifies inputs.
 
 ## Testing

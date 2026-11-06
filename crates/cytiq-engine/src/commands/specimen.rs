@@ -137,19 +137,12 @@ impl From<ReportArgs> for ReportConfig {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct OutcomeExit(pub CommandOutcome);
-impl std::fmt::Display for OutcomeExit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {}", self.0.reason, self.0.message)
-    }
-}
-impl std::error::Error for OutcomeExit {}
-
+/// Print the outcome as one JSON line on stdout and hand it to `main`, which
+/// exits with its code.
 pub(crate) fn finish(
     command: &str,
     result: cytiq_specimen::Result<CommandOutcome>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<CommandOutcome, Box<dyn std::error::Error>> {
     let outcome = match result {
         Ok(outcome) => outcome,
         Err(error) => CommandOutcome::new(
@@ -160,17 +153,13 @@ pub(crate) fn finish(
         ),
     };
     println!("{}", serde_json::to_string(&outcome)?);
-    if outcome.exit_code == 0 {
-        Ok(())
-    } else {
-        Err(Box::new(OutcomeExit(outcome)))
-    }
+    Ok(outcome)
 }
 
 pub(crate) fn run(
     command: SpecimenCommand,
     recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<CommandOutcome, Box<dyn std::error::Error>> {
     match command {
         SpecimenCommand::Validate(args) => finish(
             "cytiq specimen validate",

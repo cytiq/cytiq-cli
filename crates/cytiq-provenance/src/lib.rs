@@ -48,6 +48,20 @@ pub enum ProvenanceError {
     },
 }
 
+impl ProvenanceError {
+    /// Where the error falls in the exit contract: hashing and writing follow
+    /// their I/O kind; an input changing under the command is a runtime error.
+    #[must_use]
+    pub fn outcome_reason(&self) -> outcome::OutcomeReason {
+        match self {
+            Self::Hash { source, .. } | Self::Write { source, .. } => {
+                outcome::OutcomeReason::of_io(source)
+            }
+            Self::InputChanged { .. } => outcome::OutcomeReason::RuntimeError,
+        }
+    }
+}
+
 /// Size and SHA-256 of one file.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRecord {

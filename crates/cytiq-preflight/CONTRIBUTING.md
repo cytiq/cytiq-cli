@@ -18,7 +18,8 @@ this crate.
   on; never drop a finding silently. The check table in this crate's README is
   the contract: update it with every new or changed check.
 - The report is written even when checks fail; the CLI turns failures into
-  exit code 1 through `ensure_passed`.
+  exit code 3 (`checks_failed`) through `ensure_passed` and
+  `PreflightError::Failed`.
 - Reuse `cytiq-fcs` for parsing, signal state and spillover handling instead
   of re-implementing them here.
 

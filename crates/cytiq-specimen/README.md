@@ -143,8 +143,10 @@ After argument parsing the new command families emit one JSON outcome on stdout:
 
 `completed` distinguishes published partial/check-failed results from execution
 errors. Argument syntax errors use clap's usual code 2 and need not have JSON.
-Existing commands retain their previous exit codes. This contract is usable by
-the API/compute facade and Prefect without either becoming a runtime dependency.
+Every other `cytiq` command uses the same codes and writes the same JSON with
+`--outcome <PATH>` (see [cytiq-engine](../cytiq-engine/README.md#exit-codes)).
+This contract is usable by the API/compute facade and Prefect without either
+becoming a runtime dependency.
 
 ## Comparing native results
 

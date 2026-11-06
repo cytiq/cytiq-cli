@@ -8,6 +8,11 @@ this crate.
 
 - `src/lib.rs` — `RunRecorder`, `RunRecord`, `FileRecord`, record paths,
   `files_under`, `hash_file`; unit tests.
+- `src/outcome.rs` — `OutcomeReason` (the 0–4 exit contract and its
+  type-independent rules for I/O and publication errors) and
+  `CommandOutcome`. Library-specific classification lives in
+  `cytiq-engine/src/error`, never here: this crate must not depend on the
+  domain crates.
 
 ## Invariants
 

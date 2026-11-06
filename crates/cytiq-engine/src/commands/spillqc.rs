@@ -61,7 +61,7 @@ pub(crate) struct SpillqcArgs {
     /// Share of those files that must flag a pair in one direction.
     #[arg(long, default_value_t = DEFAULT_BATCH_MIN_FRACTION, value_parser = parse_fraction)]
     batch_min_fraction: f64,
-    /// Exit with 1 when any pair is flagged (after writing every output).
+    /// Exit with 3 when any pair is flagged (after writing every output).
     #[arg(long)]
     fail_on_flag: bool,
     /// Worker thread limit; defaults to all available logical CPUs.
@@ -152,13 +152,8 @@ pub(crate) fn run(
         &result.outputs,
         &record_path_for_dir(&config.output),
     )?;
-    if args.fail_on_flag && counts.flagged_pairs > 0 {
-        return Err(io::Error::other(format!(
-            "spillqc flagged {} pair(s); review {}",
-            counts.flagged_pairs,
-            config.output.join(cytiq_spillqc::REPORT_FILE).display()
-        ))
-        .into());
+    if args.fail_on_flag {
+        counts.ensure_unflagged(&config.output)?;
     }
     Ok(())
 }

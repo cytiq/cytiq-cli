@@ -7,7 +7,7 @@ Checks a run manifest and its FCS files before any computation. Backs
 cytiq preflight --manifest run.yaml --output preflight.json
 ```
 
-The report is always written. The command exits with `1` when any check
+The report is always written. The command exits with `3` when any check
 fails; failures and warnings are also logged.
 
 Manifest v2 also accepts `cytometry: cytof`. These panels require raw ion counts

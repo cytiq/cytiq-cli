@@ -131,6 +131,22 @@ pub struct SpillQcCounts {
     pub recurrent_pairs: usize,
 }
 
+impl SpillQcCounts {
+    /// For `--fail-on-flag`: fail once the outputs are written when any pair
+    /// was flagged, pointing at the report under `output`.
+    /// # Errors
+    /// [`SpillQcError::Flagged`] when `flagged_pairs > 0`.
+    pub fn ensure_unflagged(&self, output: &Path) -> Result<(), SpillQcError> {
+        if self.flagged_pairs == 0 {
+            return Ok(());
+        }
+        Err(SpillQcError::Flagged {
+            pairs: self.flagged_pairs,
+            report: output.join(REPORT_FILE),
+        })
+    }
+}
+
 /// `summary.json`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct SpillQcSummary {
@@ -663,6 +679,28 @@ fn with_thread_pool<T: Send>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ensure_unflagged_fails_only_when_pairs_are_flagged() {
+        let mut counts = SpillQcCounts {
+            files: 2,
+            assessed: 2,
+            skipped: 0,
+            flagged_pairs: 0,
+            recurrent_pairs: 0,
+        };
+        assert!(counts.ensure_unflagged(Path::new("out")).is_ok());
+        counts.flagged_pairs = 1;
+        let error = counts.ensure_unflagged(Path::new("out")).unwrap_err();
+        assert!(matches!(error, SpillQcError::Flagged { pairs: 1, .. }));
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "spillqc flagged 1 pair(s); review {}",
+                Path::new("out").join(REPORT_FILE).display()
+            )
+        );
+    }
     use super::*;
 
     #[test]

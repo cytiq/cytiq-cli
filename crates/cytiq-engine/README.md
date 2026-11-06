@@ -96,7 +96,9 @@ the SHA-256 of the command's input and output files; see
 ## Logging and output streams
 
 - Logs go to stderr as `[LEVEL] module::path: message`; stdout is reserved for
-  command output (`meta` JSON, `transform --dry-run` listing).
+  command output (`meta` JSON, `transform --dry-run` listing, the
+  `population`/`specimen` outcome line). `--outcome <PATH>` writes the outcome
+  of any command to a file instead (see [Exit codes](#exit-codes)).
 - The level comes from `CYTIQ_LOG`, then `RUST_LOG` (`off`, `error`, `warn`,
   `info`, `debug`, `trace`; for `RUST_LOG`-style lists the last valid token
   wins, `target=` prefixes are ignored).
@@ -105,13 +107,33 @@ the SHA-256 of the command's input and output files; see
 
 ## Exit codes
 
-`population` and `specimen` emit JSON outcomes and use codes 0–4 as documented
-in [the specimen contract](../cytiq-specimen/README.md#packages-and-orchestration-contract).
-The existing commands retain:
+Every command exits with one of five codes; the error, if any, is the last
+line on stderr.
 
-- `0` on success.
-- `1` when a command fails; the error is printed to stderr.
-- Argument errors are reported by `clap` with its own exit code (`2`).
+| Code | Reason | Meaning | Orchestrator action |
+| --- | --- | --- | --- |
+| 0 | `success` | Completed; warnings remain visible in reports and logs | Continue |
+| 1 | `runtime_error` | Internal or environmental failure (permissions, full disk, thread pool, ONNX Runtime) | Retry by policy |
+| 2 | `invalid_configuration` | Invalid flags or configuration, corrupt or unsupported data, a deterministic algorithm failure on that input | Fail; do not retry |
+| 3 | `checks_failed` | Completed and wrote its report, but checks failed (`qc`, `preflight`, `spillqc --fail-on-flag`, `specimen` checks) | Send to review |
+| 4 | `output_conflict` / `incomplete` | An output already exists (pass `--overwrite`), a required input is missing, or a specimen result is incomplete | Inspect artifacts and run state |
+
+Only `1` is worth retrying. Argument syntax errors are reported by `clap`
+with code `2` before any command runs.
+
+`--outcome <PATH>` (accepted before or after the subcommand) also writes the
+outcome as JSON: `schema_version`, `command`, `completed` (true for `0` and
+`3`, and for published incomplete specimen packages), `reason`, `exit_code`,
+`message` and `artifacts` (always `[]` except for `population`/`specimen`
+packages). The file is replaced atomically; it is not written for argument
+errors, and failing to write it is reported on stderr without changing the
+exit code. `population` and `specimen` additionally print the same JSON as one
+line on stdout (see [the specimen contract](../cytiq-specimen/README.md#packages-and-orchestration-contract)).
+
+Before 0.5, every failure exited with `1`: `qc`, `preflight` and
+`spillqc --fail-on-flag` now exit with `3`, invalid input with `2`, and a
+missing input or existing output with `4`. Scripts that tested for `1` should
+test for a non-zero code or the specific code they handle.
 
 ## Tests
 

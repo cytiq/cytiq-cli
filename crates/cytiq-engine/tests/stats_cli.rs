@@ -185,9 +185,9 @@ fn stats_refuse_to_overwrite_and_reject_bad_bins() {
         "--overwrite",
     ]);
 
-    assert_eq!(again.status.code(), Some(1));
+    assert_eq!(again.status.code(), Some(4));
     assert!(String::from_utf8_lossy(&again.stderr).contains("--overwrite"));
-    assert_eq!(bins.status.code(), Some(1));
+    assert_eq!(bins.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&bins.stderr).contains("--bins"));
     assert!(replaced.status.success());
 }
@@ -205,7 +205,7 @@ fn stats_report_an_unreadable_input() {
         utf8(&directory.path().join("s.json")),
     ]);
 
-    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(result.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&result.stderr).contains("failed to read FCS input"));
     assert!(!directory.path().join("s.json").exists());
 }

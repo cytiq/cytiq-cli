@@ -136,8 +136,8 @@ Unreadable files, input already compensated or transformed by cytiq (without
 output directory needs `--overwrite`, which replaces only what the run writes.
 Every output is staged and published together once the run succeeds,
 `summary.json` last; a failed run leaves the previous outputs untouched.
-`cytiq spillqc --fail-on-flag` exits with 1 after writing every output when a
-pair is flagged.
+`cytiq spillqc --fail-on-flag` exits with 3 (`checks_failed`) after writing
+every output when a pair is flagged.
 
 ## Public API
 
@@ -150,6 +150,7 @@ pair is flagged.
 | `DEFAULT_SEGMENTS`, `DEFAULT_MIN_EVENTS`, `FLAG_THRESHOLD`, `DEFAULT_BATCH_*` | CompensAID and batch defaults |
 | `*_FILE` | Output file names |
 | `UPSTREAM` | CompensAID, flowDensity, flowCore and PeacoQC versions the crate is validated against, recorded in provenance |
+| `SpillQcCounts::ensure_unflagged` | `--fail-on-flag`: `SpillQcError::Flagged` when a pair was flagged |
 | `SpillQcError` | Error type |
 
 ## Parity

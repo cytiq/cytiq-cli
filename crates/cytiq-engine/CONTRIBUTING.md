@@ -7,14 +7,18 @@ this crate.
 ## Layout
 
 - `src/main.rs` — `main` and the `run()` dispatcher: parse the command line,
-  start the provenance recorder, hand each `Commands` variant to its module.
+  start the provenance recorder, hand each `Commands` variant to its module,
+  then exit with the outcome's code and write `--outcome`.
+- `src/error.rs` — the 0–4 exit contract: `classify` walks an error's
+  `source()` chain; `src/error/libraries.rs` holds one exhaustive match per
+  library error enum.
 - `src/cli.rs` — `Cli`, `Commands` (one newtype variant per command, holding
   its `*Args`), `command_name`, and the `Cli*` value enums with `From` impls
   into library types.
 - `src/commands/<name>.rs` — one module per command: its `#[derive(Args)]`
   struct and `run(args, recorder)`, plus its subcommand enum when it has one
   (`MaskCommand`, `FlowSomCommand`, `CytoNormCommand`).
-- `src/parsers.rs` — shared argument parsers (`parse_threads`,
+- `src/parsers.rs` — shared argument parsers (`parse_outcome_path`, `parse_threads`,
   `parse_positive_f64`, `parse_finite_f64`, `parse_non_negative_f64`, and
   `parse_channels` for every `--channels` + `--channel` pair, built on
   `cytiq_fcs::parse_channel_list`).
@@ -53,13 +57,22 @@ The package is `cytiq-engine`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`)
   `*Args` structs carry no doc comment: the variant's doc comment is the
   command's `--help` about text.
 - Errors propagate as `Box<dyn Error>` from `run()`; `main` prints the error
-  and exits with code `1`. Channel-list errors are wrapped as
-  `io::ErrorKind::InvalidInput`. Do not `panic!` or call `process::exit` in a
-  command arm.
+  and exits with the code `error::classify` assigns (0–4, see the README).
+  Channel-list errors are wrapped as `io::ErrorKind::InvalidInput` (code 2).
+  Failed checks are a library error variant returned after the report and
+  provenance are written (`QcError::Failed`, `PreflightError::Failed`,
+  `SpillQcError::Flagged`), which classifies as `3`. Do not `panic!` or call
+  `process::exit` in a command arm.
+- `src/error/libraries.rs` matches every variant of every library error
+  without a `_` arm, so a new variant does not compile until it is
+  classified. When a variant mixes cases that need different codes, split it
+  in the library rather than guessing here. Libraries never depend on the
+  exit contract; `cytiq-provenance` owns only the type-independent rules
+  (`OutcomeReason::of_io`, `of_publish`).
 
-- The new `population`/`specimen` families wrap their typed outcome in
-  `OutcomeExit`, which `main` maps to 0–4. They print one JSON outcome after
-  argument parsing. Existing commands keep their exit behavior. Package layout,
+- The `population`/`specimen` families build their own typed outcome
+  (`cytiq_specimen::runner::error_reason`), print it as one JSON line after
+  argument parsing and return it to `main`, which exits with its code. Package layout,
   validation and publication stay in `cytiq-specimen::runner` and
   `cytiq-population::artifact`.
 - `--overwrite` is passed through to the library, which enforces it
@@ -88,9 +101,11 @@ The package is `cytiq-engine`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`)
    command to `command_name`. The `<Name>Args` fields become the record's
    `config` (`Commands` derives `Serialize`), so new `Cli*` value enums
    derive it too.
-5. Add `tests/<name>_cli.rs` covering success, a missing input and at least
-   one invalid flag.
-6. Document the command in its library crate's `README.md` and in the command
+5. Classify every variant of the new error enum in `src/error/libraries.rs`
+   and register the type in `known`.
+6. Add `tests/<name>_cli.rs` covering success, a missing input and at least
+   one invalid flag, asserting their exit codes.
+7. Document the command in its library crate's `README.md` and in the command
    table of this crate's README. Update the pipeline diagram in the root
    `README.md` and `PIPELINE.md` when stage order or signal-state checks change.
 
@@ -110,7 +125,8 @@ cargo test -p cytiq-engine --test <command>_cli
 ```
 
 Test files: `autospill_cli.rs`, `autospectral_cli.rs`, `clean_cli.rs`,
-`compensate_cli.rs`, `cytoscan_cli.rs`, `flowsom_cli.rs`, `gate_cli.rs`,
+`compensate_cli.rs`, `cytoscan_cli.rs`, `exit_codes_cli.rs` (the 0–4 contract
+and `--outcome` across command families), `flowsom_cli.rs`, `gate_cli.rs`,
 `mask_cli.rs`, `meta_cli.rs`, `parity_smoke.rs` (autospill, AutoSpectral,
 PeacoQC, CytoScan and CompensAID against the R outputs in
 `data/fixtures/parity`), `peacoqc_cli.rs`, `pipeline_cli.rs` (the whole chain

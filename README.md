@@ -123,14 +123,19 @@ under `crates/`.
 
 ## Development
 
-Requires stable Rust (edition 2024), Cargo, `rustfmt`, Clippy and `just`.
-Linux builds also need a C++ toolchain such as `g++`. The first build needs
+Requires `just`, `curl` and a C/C++ toolchain (Xcode Command Line Tools, or
+`g++` on Linux). `just mise` installs [mise](https://mise.jdx.dev) and the
+tools that [`mise.toml`](mise.toml) pins: Rust 1.99.1 with `rustfmt` and Clippy,
+Python, uv and the coverage, mutation and fuzzing tools. Every recipe runs with
+those versions; shell activation is optional. Docker and, for parity, R 4.5.3
+are installed separately. The first build needs
 HTTPS access to download ONNX Runtime; it is linked statically into `cytiq`.
 See [classification build details](crates/cytiq-classify/README.md).
 Classification accepts legacy binary bundles and v2–v4 vocabulary-aware multiclass
 bundles, including a profile for stored FlowCyt author exports.
 
 ```bash
+just mise               # once, and after mise.toml changes: pinned tools
 just build              # debug workspace build
 just run --help         # run the CLI from source
 just build-release      # optimized binary: target/release/cytiq

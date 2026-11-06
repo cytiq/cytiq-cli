@@ -15,6 +15,14 @@ export BIOC_VERSION="${BIOC_VERSION:-3.22}"
 export PARITY_CRAN="${PARITY_CRAN:-https://cloud.r-project.org}"
 mkdir -p "$R_LIBS_USER"
 
+# mise.toml pins R, which mise cannot install (see CONTRIBUTING.md).
+r_expected="${CYTIQ_R_VERSION:?run through just parity-setup, which sets the R version from mise.toml}"
+r_found="$(Rscript -e 'cat(as.character(getRversion()))')"
+if [[ "$r_found" != "$r_expected" ]]; then
+  echo "parity needs R $r_expected (mise.toml); found R $r_found" >&2
+  exit 1
+fi
+
 Rscript - <<'R'
 lib <- Sys.getenv("R_LIBS_USER")
 .libPaths(c(lib, .libPaths()))
@@ -60,7 +68,8 @@ R
   R CMD INSTALL --library="$R_LIBS_USER" "$src"
 done
 
-uv venv -q --allow-existing "$ENV_DIR/py" --python 3.12
+# The Python that mise.toml pins, which `just` puts first on PATH.
+uv venv -q --allow-existing "$ENV_DIR/py" --python "$(command -v python3)"
 VIRTUAL_ENV="$ENV_DIR/py" uv pip install -q -r "$ROOT/parity/requirements.txt"
 
 {

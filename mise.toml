@@ -1,0 +1,31 @@
+# Development and CI tools, installed by `just mise` (see CONTRIBUTING.md).
+# Versions are exact; mise.lock records the download and checksum of each one.
+# Change a version here, then run `"$(just --evaluate MISE)" lock` and commit both files.
+
+# The mise release `just mise` installs; older releases refuse this file.
+min_version = "2026.11.2"
+
+[settings]
+lockfile = true
+lockfile_platforms = ["linux-x64", "linux-arm64", "macos-x64", "macos-arm64"]
+
+[tools]
+just = "1.49.0"
+rust = { version = "1.99.1", profile = "minimal", components = "rustfmt,clippy,llvm-tools" }
+# Repository scripts, the benchmark runner and the parity venv (parity/.env/py).
+python = "3.12.12"
+uv = "0.13.7"
+# Coverage, CRAP and mutation tests; .github/scripts check the same versions.
+"github:taiki-e/cargo-llvm-cov" = "0.9.1"
+"github:minikin/cargo-crap" = "0.9.0"
+# No prebuilt arm64 binaries: built from crates.io.
+"cargo:cargo-mutants" = "27.1.0"
+"cargo:cargo-fuzz" = "0.13.2"
+
+[env]
+# Fuzzing needs a nightly toolchain; `just fuzz-fcs` installs this one through
+# rustup on first use, so builds and CI jobs without fuzzing never download it.
+CYTIQ_FUZZ_TOOLCHAIN = "nightly-2026-11-02"
+# Parity compiles Bioconductor and git packages against the system R, which
+# mise cannot provide; `just parity-setup` checks that it is this release.
+CYTIQ_R_VERSION = "4.5.3"

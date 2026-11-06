@@ -18,6 +18,21 @@ The repository should consist of crates only. Do not add a root-level `src/`; ne
 
 Use `just` as the primary command runner. The recipes wrap the same Cargo commands used in CI.
 
+`mise.toml` pins every development tool and `mise.lock` records the download and
+checksum of each. `just mise` installs the mise release that `min_version` names
+outside `PATH`, under `~/.local/share/cytiq/mise/`, then those tools; it needs only
+`just`, `bash` and `curl`, and is safe to rerun. Every other recipe runs through
+that mise's `mise exec`, so it uses the pinned versions without shell activation
+and ignores another mise on `PATH`; until `just mise` has run, recipes fail with
+“could not find the shell `mise-cytiq`”. To change a version, edit `mise.toml`, run
+`"$(just --evaluate MISE)" lock` (the pinned mise) and commit both files; CI installs the same versions through
+`cytiq-ci`'s mise action, and each job enables only the tools it needs.
+Docker, a C/C++ toolchain and, for parity, R are prerequisites: parity compiles
+Bioconductor and git packages against the system R, which mise cannot provide,
+so `just parity-setup` checks it against `CYTIQ_R_VERSION`. Fuzzing uses the
+nightly in `CYTIQ_FUZZ_TOOLCHAIN`, which `just fuzz-fcs` installs on first use.
+
+- `just mise` installs mise and the pinned tools; run it first.
 - `just run` starts the `cytiq` binary from the `cytiq-engine` package.
 - `just build` builds the workspace in debug mode.
 - `just build-release` builds an optimized release binary.
@@ -122,12 +137,11 @@ workflow itself rejects RC tags); required reviewers are optional. No registry s
 
 ## Coverage and CRAP
 
-Install the same versions used by CI:
+`just mise` installs the versions CI uses (`mise.toml`), including the
+toolchain's `llvm-tools`:
 
 ```sh
-rustup component add llvm-tools-preview
-cargo install cargo-llvm-cov --version 0.9.1 --locked
-cargo install cargo-crap --version 0.9.0 --locked
+just mise
 just coverage
 just crap
 ```
@@ -176,10 +190,10 @@ use it in the Linux CI preparation commit, then restore `report` before merge.
 
 ## Mutation testing
 
-Install the version pinned in the standalone mutation workflow:
+`just mise` installs the version the mutation workflow uses (`mise.toml`):
 
 ```sh
-cargo install cargo-mutants --version 27.1.0 --locked
+just mise
 just mutants
 just mutants cytiq-gating
 ```

@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- Toolchain ---------------------------------------------------------------
-FROM rust:1.99-slim-trixie AS chef
+# Rust as mise.toml pins it.
+FROM rust:1.99.1-slim-trixie AS chef
 
 # Static ONNX Runtime linking needs the C++ standard library development files.
 RUN apt-get update && apt-get install -y --no-install-recommends g++ \

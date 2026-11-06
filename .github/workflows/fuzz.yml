@@ -42,19 +42,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
-
-      - name: Install just and cargo-fuzz
-        uses: taiki-e/install-action@v2
+      # just fuzz-fcs installs the nightly that mise.toml pins (CYTIQ_FUZZ_TOOLCHAIN).
+      - name: Install Rust and cargo-fuzz
+        uses: cytiq/cytiq-ci/.github/actions/mise@d3b2e37fff491e128e5aea9478460ebc46d4d17d # feat/mise (cytiq-ci#26)
         with:
-          tool: just,cargo-fuzz
+          tools: rust,cargo:cargo-fuzz
 
       - name: Cache fuzz build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates/cytiq-fcs/fuzz -> target
           save-if: ${{ github.event_name != 'pull_request' }}
+          # The stable toolchain mise selects names the cache; the nightly builds.
+          key: ${{ env.CYTIQ_FUZZ_TOOLCHAIN }}
+          cache-bin: false
 
       # Runs restore the latest corpus. Scheduled and manual runs save theirs
       # under a new key, even after a crash; pull requests only read it, as

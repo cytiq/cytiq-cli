@@ -41,10 +41,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # No tool cache: nothing another workflow wrote runs before the token exists.
+      - name: Install Rust and Python
+        uses: cytiq/cytiq-ci/.github/actions/mise@9cdadc1e6a8f76bcd50360569fd309760b645922 # feat/mise (cytiq-ci#26)
         with:
-          toolchain: stable
+          tools: rust,python
+          cache: false
 
       # Builds each package from its .crate archive, as `cargo install` will.
       # Nothing is uploaded, and no token exists yet.

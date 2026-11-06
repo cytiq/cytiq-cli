@@ -105,7 +105,8 @@ just verify
   workspace. What they check lives in `fuzz/checks.rs`: `read_fcs` also reads
   every input with tight `FcsReadLimits` and requires the same dataset, the
   same error or `LimitExceeded`. Run `just fuzz-fcs [target] [seconds]`
-  (nightly + cargo-fuzz). CI fuzzes each target weekly for 10 minutes, on
+  (the nightly that `mise.toml` pins, installed on first use, and cargo-fuzz
+  from `just mise`). CI fuzzes each target weekly for 10 minutes, on
   demand, and for one minute on pull requests that change this crate
   (`.github/workflows/fuzz.yml`).
 - `tests/fuzz_regressions.rs` — includes `fuzz/checks.rs` and replays every

@@ -4,3 +4,8 @@
 `cytiq-ml/scripts/generate_classify_fixture.py` using its locked boosting extra.
 Contains raw FCS, expected Python feature/probability values and two ONNX bundles.
 Native models are included to make converter regressions inspectable.
+
+`cytiq-ml.lock.json` pins every fixture here (except READMEs) by sha256, and
+`crates/cytiq-classify/tests/fixture_lock.rs` checks it. Regenerating a fixture
+means updating its digest, and setting `revision` to the cytiq-ml commit that
+produced the fixtures.

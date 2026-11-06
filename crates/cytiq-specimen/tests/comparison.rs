@@ -11,6 +11,32 @@ use cytiq_specimen::{
 };
 
 #[test]
+fn a_failed_check_alone_fails_an_otherwise_equal_comparison() {
+    let mut a = result(3);
+    a.checks.push(SpecimenCheck {
+        category: "technical".into(),
+        scope: "P1".into(),
+        check: "existing_failure".into(),
+        status: CheckStatus::Fail,
+        message: "already failed".into(),
+    });
+    a.status = CheckStatus::Fail;
+    let mut b = a.clone();
+    b.checks.push(SpecimenCheck {
+        category: "technical".into(),
+        scope: "P1".into(),
+        check: "acquisition_qc".into(),
+        status: CheckStatus::Fail,
+        message: "failed".into(),
+    });
+    b.status = CheckStatus::Fail;
+    let diff = compare(&a, &b, &ComparisonPolicy::default()).unwrap();
+    assert_eq!(diff.summary.failed_rows, 0);
+    assert!(diff.summary.failed_checks > 0);
+    assert_eq!(diff.outcome_reason(), OutcomeReason::ChecksFailed);
+}
+
+#[test]
 fn counts_above_float_precision_use_exact_deltas_and_inclusive_limits() {
     let a = result((1 << 53) + 1);
     let b = result((1 << 53) + 2);
@@ -106,6 +132,12 @@ fn incompatible_trees_denominators_and_statuses_have_no_numeric_delta() {
         let diff = compare(&a, &b, &ComparisonPolicy::default()).unwrap();
         assert_eq!(diff.outcome_reason(), OutcomeReason::ChecksFailed);
         assert!(diff.rows.iter().all(|r| r.delta.is_none()));
+        let expected = if field == "status" {
+            RowVerdict::StatusChanged
+        } else {
+            RowVerdict::Incompatible
+        };
+        assert!(diff.rows.iter().all(|r| r.verdict == expected));
     }
     let mut absent = a;
     for row in absent.observations.iter_mut().chain(&mut absent.results) {

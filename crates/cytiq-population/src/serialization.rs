@@ -63,47 +63,82 @@ pub fn resolve(directory: &Path, stem: &str) -> Result<PathBuf, PopulationError>
     }
 }
 
+/// How a document is encoded: `.json` files are JSON, everything else YAML.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DocumentFormat {
+    Json,
+    Yaml,
+}
+
+impl DocumentFormat {
+    #[must_use]
+    pub fn of(path: &Path) -> Self {
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            Self::Json
+        } else {
+            Self::Yaml
+        }
+    }
+}
+
 /// Read a bounded JSON-compatible mapping.
 /// # Errors
 /// Rejects unsupported types, duplicate keys and excessive input.
 pub fn read(path: &Path) -> Result<Value, PopulationError> {
     use std::io::Read as _;
     let file = std::fs::File::open(path)?;
-    let mut text = String::new();
-    file.take(MAX_DOCUMENT_BYTES + 1)
-        .read_to_string(&mut text)?;
-    if text.len() as u64 > MAX_DOCUMENT_BYTES {
+    let mut bytes = Vec::new();
+    file.take(MAX_DOCUMENT_BYTES + 1).read_to_end(&mut bytes)?;
+    parse_document(&bytes, DocumentFormat::of(path), &path.display())
+}
+
+/// [`read`] for bytes already in memory, with the same limits and checks.
+/// # Errors
+/// Rejects non-UTF-8 input, unsupported types, duplicate keys and excessive input.
+pub fn parse(bytes: &[u8], format: DocumentFormat) -> Result<Value, PopulationError> {
+    parse_document(bytes, format, &"document")
+}
+
+fn parse_document(
+    bytes: &[u8],
+    format: DocumentFormat,
+    origin: &dyn std::fmt::Display,
+) -> Result<Value, PopulationError> {
+    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
         return Err(invalid("document exceeds 16 MiB"));
     }
-    let payload: Value = if path
-        .extension()
-        .is_some_and(|extension| extension == "json")
-    {
-        serde_json::from_str::<unique::UniqueValue>(&text)?.0
-    } else {
-        // Preflight explicit tags before type-erasing into JSON; binary and dates
-        // must not quietly turn into strings in one language but not the other.
-        for event in serde_saphyr::granit_parser::Parser::new_from_str(&text) {
-            let (event, _) = event.map_err(|error| invalid(error.to_string()))?;
-            if event.tag().is_some_and(|tag| tag.core_suffix().is_none()) {
-                return Err(invalid("unsupported YAML tag"));
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    let payload: Value = match format {
+        DocumentFormat::Json => serde_json::from_str::<unique::UniqueValue>(text)?.0,
+        DocumentFormat::Yaml => {
+            // Preflight explicit tags before type-erasing into JSON; binary and dates
+            // must not quietly turn into strings in one language but not the other.
+            for event in serde_saphyr::granit_parser::Parser::new_from_str(text) {
+                let (event, _) = event.map_err(|error| invalid(error.to_string()))?;
+                if event.tag().is_some_and(|tag| tag.core_suffix().is_none()) {
+                    return Err(invalid("unsupported YAML tag"));
+                }
             }
+            let options = serde_saphyr::options! {
+                budget: serde_saphyr::budget! {
+                    max_depth: 64,
+                    max_nodes: 1_000_000,
+                    max_total_scalar_bytes: 16 * 1024 * 1024,
+                    max_documents: 1,
+                },
+                strict_booleans: true,
+                no_schema: true,
+                reject_unsupported_tags: true,
+                merge_keys: serde_saphyr::MergeKeyPolicy::Error,
+                non_finite_float_policy: serde_saphyr::NonFiniteFloatPolicy::Reject,
+            };
+            serde_saphyr::from_str_with_options(text, options)
+                .map_err(|error| invalid(format!("invalid YAML {origin}: {error}")))?
         }
-        let options = serde_saphyr::options! {
-            budget: serde_saphyr::budget! {
-                max_depth: 64,
-                max_nodes: 1_000_000,
-                max_total_scalar_bytes: 16 * 1024 * 1024,
-                max_documents: 1,
-            },
-            strict_booleans: true,
-            no_schema: true,
-            reject_unsupported_tags: true,
-            merge_keys: serde_saphyr::MergeKeyPolicy::Error,
-            non_finite_float_policy: serde_saphyr::NonFiniteFloatPolicy::Reject,
-        };
-        serde_saphyr::from_str_with_options(&text, options)
-            .map_err(|error| invalid(format!("invalid YAML {}: {error}", path.display())))?
     };
     if !payload.is_object() {
         return Err(invalid("expected an object/mapping"));
@@ -245,6 +280,51 @@ fn python_float(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structural_budgets_accept_the_boundary_and_reject_larger_documents() {
+        let check = |value: &Value| bounded(value, 0, &mut 0, &mut 0);
+        let mut nested = Value::Null;
+        for _ in 0..64 {
+            nested = Value::Array(vec![nested]);
+        }
+        assert!(check(&nested).is_ok());
+        nested = Value::Array(vec![nested]);
+        assert!(check(&nested).is_err());
+        nested = Value::Array(vec![nested]);
+        assert!(check(&nested).is_err());
+        for (nodes, valid) in [
+            (MAX_VALUES - 1, true),
+            (MAX_VALUES, false),
+            (MAX_VALUES + 1, false),
+        ] {
+            assert_eq!(
+                check(&Value::Array(vec![Value::Null; nodes])).is_ok(),
+                valid
+            );
+        }
+        for (bytes, valid) in [
+            (16 * 1024 * 1024, true),
+            (16 * 1024 * 1024 + 1, false),
+            (16 * 1024 * 1024 + 2, false),
+        ] {
+            assert_eq!(check(&Value::String("x".repeat(bytes))).is_ok(), valid);
+            let mut map = serde_json::Map::new();
+            map.insert("x".repeat(bytes), Value::Null);
+            assert_eq!(check(&Value::Object(map)).is_ok(), valid);
+        }
+    }
+
+    #[test]
+    fn byte_budget_counts_whitespace_and_accepts_exactly_16_mib() {
+        let mut bytes = b"{}".to_vec();
+        bytes.resize(usize::try_from(MAX_DOCUMENT_BYTES).unwrap(), b' ');
+        assert!(parse(&bytes, DocumentFormat::Json).is_ok());
+        for _ in 0..2 {
+            bytes.push(b' ');
+            assert!(parse(&bytes, DocumentFormat::Json).is_err());
+        }
+    }
 
     #[test]
     fn yaml_rejects_ambiguous_mappings_and_non_json_types() {

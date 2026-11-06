@@ -552,3 +552,253 @@ fn optional_anchor_limits_are_omitted_from_the_layout_digest() {
     let rule = serde_json::to_value(ratio_rule(&plan, limits(5, None, None))).unwrap();
     assert_eq!(rule["strategy"]["anchor_limits"], json!({"min_events": 5}));
 }
+
+#[test]
+fn layout_identity_and_policy_fields_are_checked_individually() {
+    let base = plan().layout;
+    for (pointer, replacement) in [
+        ("/schema_version", json!(2)),
+        ("/protocol_id", json!(" ")),
+        ("/panels", json!({})),
+        ("/panels/P1/sources", json!({})),
+    ] {
+        let mut value = serde_json::to_value(&base).unwrap();
+        *value.pointer_mut(pointer).unwrap() = replacement;
+        let mut layout: SpecimenLayout = serde_json::from_value(value).unwrap();
+        assert!(layout.validate().is_err(), "accepted {pointer}");
+    }
+    let mut layout = base.clone();
+    let panel = layout.panels.remove("P1").unwrap();
+    layout.panels.insert(String::new(), panel);
+    assert!(layout.validate().is_err());
+    let target = base.panels["P1"].sources["gates"].bindings[1]
+        .target
+        .clone();
+    for (threshold, severity, valid) in [
+        (0.0, CheckStatus::Warn, true),
+        (1.0, CheckStatus::Fail, true),
+        (-0.1, CheckStatus::Fail, false),
+        (1.1, CheckStatus::Fail, false),
+        (f64::NAN, CheckStatus::Fail, false),
+        (0.1, CheckStatus::Pass, false),
+    ] {
+        let mut layout = base.clone();
+        layout
+            .consistency
+            .push(cytiq_specimen::layout::ConsistencyPolicy {
+                target: target.clone(),
+                max_abs_fraction_difference: threshold,
+                severity,
+            });
+        assert_eq!(layout.validate().is_ok(), valid, "{threshold}/{severity:?}");
+    }
+    let mut p = plan();
+    let mut r = ratio_rule(&p, limits(1, None, None));
+    if let Strategy::ReferenceRatio {
+        source, reference, ..
+    } = &mut r.strategy
+    {
+        source.panel.clone_from(&reference.panel);
+    }
+    p.layout.reconciliation = vec![r];
+    assert!(p.layout.validate().is_err());
+    let mut p = plan();
+    let mut r = ratio_rule(&p, limits(1, None, None));
+    if let Strategy::ReferenceRatio { anchor, .. } = &mut r.strategy {
+        anchor.scope = "other".into();
+    }
+    p.layout.reconciliation = vec![r];
+    assert!(p.layout.validate().is_err());
+    let mut p = plan();
+    p.layout.reconciliation = vec![rule(&p, Strategy::Independent)];
+    p.layout.validate().unwrap();
+    p.layout.reconciliation[0].target.id = "unknown".into();
+    assert!(p.layout.validate().is_err());
+}
+
+#[test]
+fn result_identity_and_source_references_are_checked_independently() {
+    let p = plan();
+    let valid = reconcile(&p, &[source(&p, "P1", 30, 100)]).unwrap();
+    valid.validate().unwrap();
+    let mut bad = valid.clone();
+    bad.schema_version = 2;
+    assert!(bad.validate().is_err());
+    let mut bad = valid.clone();
+    bad.specimen_id.clear();
+    bad.observations.clear();
+    bad.results.clear();
+    assert!(bad.validate().is_err());
+    for original in [true, false] {
+        let mut bad = valid.clone();
+        let rows = if original {
+            &mut bad.observations
+        } else {
+            &mut bad.results
+        };
+        rows[0].specimen_id = "other".into();
+        rows[0].seal().unwrap();
+        assert!(bad.validate().is_err());
+    }
+    let mut bad = valid;
+    bad.results[0]
+        .method
+        .source_observation_ids
+        .push("f".repeat(64));
+    bad.results[0].seal().unwrap();
+    assert!(bad.validate().is_err());
+}
+
+#[test]
+fn annotation_descriptor_bounds_are_independent() {
+    let p = plan();
+    for field in ["version", "unknown", "assessed"] {
+        let mut s = source(&p, "P1", 30, 100);
+        match field {
+            "version" => s.annotations.schema_version = 2,
+            "unknown" => s.annotations.unknown_events = s.annotations.assessed_events + 1,
+            _ => s.annotations.assessed_events = s.annotations.context.raw_events + 1,
+        }
+        assert!(reconcile(&p, &[s]).is_err(), "{field}");
+    }
+}
+
+#[test]
+fn source_denominators_and_fractions_must_match_their_counts() {
+    let p = plan();
+    for field in [
+        "scope",
+        "target",
+        "count",
+        "fraction_status",
+        "fraction_value",
+    ] {
+        let mut s = source(&p, "P1", 30, 100);
+        let row = &mut s.observations[3];
+        match field {
+            "scope" => row.denominator.as_mut().unwrap().scope = "other".into(),
+            "target" => row.denominator.as_mut().unwrap().target = None,
+            "count" => row.denominator.as_mut().unwrap().observed_count = 101,
+            "fraction_status" => row.status = ObservationStatus::Estimated,
+            _ => row.value_f64 = Some(0.2),
+        }
+        row.seal().unwrap();
+        assert!(reconcile(&p, &[s]).is_err(), "{field}");
+    }
+    let mut s = source(&p, "P1", 30, 100);
+    s.annotations.technical_status = "fail".into();
+    for row in &mut s.observations {
+        row.supporting_count = row.value_u64;
+        row.value_u64 = None;
+        row.value_f64 = None;
+        row.status = ObservationStatus::QcRejected;
+        row.reason = Some("technical_qc_failed".into());
+        row.seal().unwrap();
+    }
+    let result = reconcile(&p, &[s]).unwrap();
+    assert_eq!(result.status, CheckStatus::Fail);
+    let mut empty = source(&p, "P1", 0, 0);
+    empty.annotations.assessed_events = 0;
+    for row in &mut empty.observations {
+        row.n_events = 0;
+        row.denominator.as_mut().unwrap().observed_count = 0;
+        row.value_u64 = None;
+        row.value_f64 = None;
+        row.status = ObservationStatus::NotMeasured;
+        row.reason = Some("no_assessed_events".into());
+        row.seal().unwrap();
+    }
+    reconcile(&p, &[empty]).unwrap();
+    let mut p = plan();
+    p.layout
+        .panels
+        .get_mut("P1")
+        .unwrap()
+        .sources
+        .get_mut("gates")
+        .unwrap()
+        .format = cytiq_population::annotations::AnnotationFormat::ClassifyPredictions;
+    let mut s = source(&p, "P1", 30, 100);
+    for row in &mut s.observations {
+        row.method.name = "classify".into();
+        row.seal().unwrap();
+    }
+    assert!(
+        reconcile(&p, &[s]).is_err(),
+        "classification counts must cover assessed events"
+    );
+}
+
+#[test]
+fn consistency_limits_are_inclusive_and_require_comparable_measured_fractions() {
+    let mut p = plan();
+    let target = p.layout.panels["P1"].sources["gates"].bindings[1]
+        .target
+        .clone();
+    p.layout
+        .consistency
+        .push(cytiq_specimen::layout::ConsistencyPolicy {
+            target,
+            max_abs_fraction_difference: 0.25,
+            severity: CheckStatus::Fail,
+        });
+    for (p1, p2, expected) in [
+        (0, 0, CheckStatus::Pass),
+        (25, 50, CheckStatus::Pass),
+        (25, 51, CheckStatus::Fail),
+    ] {
+        let result =
+            reconcile(&p, &[source(&p, "P1", p1, 100), source(&p, "P2", p2, 100)]).unwrap();
+        assert_eq!(
+            check(&result, "fraction_agreement").unwrap().status,
+            expected
+        );
+    }
+    let result = reconcile(&p, &[source(&p, "P1", 25, 100)]).unwrap();
+    assert_eq!(
+        check(&result, "fraction_agreement").unwrap().status,
+        CheckStatus::Warn
+    );
+    // Both panels can validly choose different denominator definitions.
+    // Such fractions cannot establish biological agreement.
+    p.layout
+        .panels
+        .get_mut("P2")
+        .unwrap()
+        .sources
+        .get_mut("gates")
+        .unwrap()
+        .bindings[1]
+        .denominator = None;
+    let mut other = source(&p, "P2", 50, 100);
+    for row in &mut other.observations {
+        if row.target.id == "t_cells" {
+            row.denominator.as_mut().unwrap().target = None;
+            row.denominator.as_mut().unwrap().observed_count = 20000;
+            if row.measure == Measure::Fraction {
+                row.value_f64 = Some(50.0 / 20000.0);
+            }
+            row.seal().unwrap();
+        }
+    }
+    let result = reconcile(&p, &[source(&p, "P1", 25, 100), other]).unwrap();
+    assert_eq!(
+        check(&result, "fraction_agreement").unwrap().status,
+        CheckStatus::Warn
+    );
+}
+
+#[test]
+fn zero_reference_anchor_is_reported_as_unavailable() {
+    let result = ratio(limits(1, None, None), (0, 0), (20, 100));
+    assert_eq!(
+        estimate(&result).reason.as_deref(),
+        Some("invalid_or_unavailable_anchor")
+    );
+    assert!(
+        check(&result, "reference_ratio_anchor_events")
+            .unwrap()
+            .message
+            .contains("unavailable")
+    );
+}

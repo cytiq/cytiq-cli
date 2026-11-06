@@ -1,0 +1,28 @@
+# Fuzz target for specimen result comparison. Excluded from the workspace:
+# it needs cargo-fuzz and a nightly toolchain
+# (`just fuzz cytiq-specimen specimen_documents`).
+[package]
+name = "cytiq-specimen-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+cytiq-population = { path = "../../cytiq-population" }
+cytiq-specimen = { path = ".." }
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+[[bin]]
+name = "specimen_documents"
+path = "fuzz_targets/specimen_documents.rs"
+test = false
+doc = false
+bench = false
+
+# Not part of the parent workspace.
+[workspace]
+members = ["."]

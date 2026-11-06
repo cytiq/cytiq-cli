@@ -56,7 +56,39 @@ pub enum Strategy {
         source: SourceRef,
         reference: SourceRef,
         anchor: Target,
+        /// Required: the limits come from assay validation, never a default.
+        anchor_limits: AnchorLimits,
     },
+}
+
+/// Reliability limits of a `reference_ratio` anchor. A count below
+/// `min_events` or a rescaling beyond `max_scale` rejects the derived
+/// estimate; diverging anchor frequencies only warn. Measured observations
+/// are never changed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnchorLimits {
+    /// Fewest anchor events accepted in either panel (Poisson CV `1/√n`).
+    pub min_events: u64,
+    /// Largest accepted `max(s, 1/s)`, `s = reference anchor / source anchor`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_scale: Option<f64>,
+    /// Largest ratio between the anchor's frequencies (count / assessed
+    /// events) in the two panels before a warning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_frequency_ratio: Option<f64>,
+}
+
+impl AnchorLimits {
+    /// # Errors
+    /// Rejects a zero minimum and bounds that are not finite or below one.
+    pub fn validate(&self) -> Result<()> {
+        let bound = |limit: Option<f64>| limit.is_none_or(|v| v.is_finite() && v >= 1.0);
+        require(
+            self.min_events >= 1 && bound(self.max_scale) && bound(self.max_frequency_ratio),
+            "invalid reference_ratio anchor limits",
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -159,8 +191,10 @@ impl SpecimenLayout {
                     source,
                     reference,
                     anchor,
+                    anchor_limits,
                 } => {
                     anchor.validate()?;
+                    anchor_limits.validate()?;
                     require(
                         source.panel != reference.panel && anchor.scope == rule.target.scope,
                         "reference ratio requires different panels and compatible scopes",

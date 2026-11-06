@@ -2,9 +2,10 @@ use cytiq_population::{
     ArtifactRef, EventAnnotations, Measure, ObservationStatus, PopulationObservation,
     annotations::KnowledgeRef, knowledge::KnowledgeArtifact,
 };
+use cytiq_qc::CheckStatus;
 use cytiq_specimen::{
-    SpecimenLayout, SpecimenPlan,
-    layout::{ReconciliationRule, SourceRef, Strategy},
+    SpecimenLayout, SpecimenPlan, SpecimenResult,
+    layout::{AnchorLimits, ReconciliationRule, SourceRef, Strategy},
     plan::{Acquisition, PanelSelection},
     reconcile::{SourceObservations, reconcile},
 };
@@ -128,11 +129,22 @@ fn rule(plan: &SpecimenPlan, strategy: Strategy) -> ReconciliationRule {
     }
 }
 
-#[test]
-fn reference_ratio_keeps_both_measured_counts_and_emits_a_distinct_estimate() {
-    let mut plan = plan();
-    plan.layout.reconciliation = vec![rule(
-        &plan,
+fn limits(
+    min_events: u64,
+    max_scale: Option<f64>,
+    max_frequency_ratio: Option<f64>,
+) -> AnchorLimits {
+    AnchorLimits {
+        min_events,
+        max_scale,
+        max_frequency_ratio,
+    }
+}
+
+/// P2's T cells scaled by the `cells` anchor of P1 over that of P2.
+fn ratio_rule(plan: &SpecimenPlan, anchor_limits: AnchorLimits) -> ReconciliationRule {
+    rule(
+        plan,
         Strategy::ReferenceRatio {
             source: SourceRef {
                 panel: "P2".into(),
@@ -145,8 +157,61 @@ fn reference_ratio_keeps_both_measured_counts_and_emits_a_distinct_estimate() {
             anchor: plan.layout.panels["P1"].sources["gates"].bindings[0]
                 .target
                 .clone(),
+            anchor_limits,
         },
-    )];
+    )
+}
+
+/// Reconcile P1 (`p1` T cells of `p1_anchor`) and P2 under one ratio rule.
+fn ratio(
+    anchor_limits: AnchorLimits,
+    (p1, p1_anchor): (u64, u64),
+    (p2, p2_anchor): (u64, u64),
+) -> SpecimenResult {
+    let mut plan = plan();
+    plan.layout.reconciliation = vec![ratio_rule(&plan, anchor_limits)];
+    let sources = [
+        source(&plan, "P1", p1, p1_anchor),
+        source(&plan, "P2", p2, p2_anchor),
+    ];
+    reconcile(&plan, &sources).unwrap()
+}
+
+fn estimate(result: &SpecimenResult) -> &PopulationObservation {
+    result
+        .results
+        .iter()
+        .find(|o| o.measure == Measure::EstimatedCount)
+        .unwrap()
+}
+
+fn check<'a>(
+    result: &'a SpecimenResult,
+    name: &str,
+) -> Option<&'a cytiq_specimen::reconcile::SpecimenCheck> {
+    result.checks.iter().find(|c| c.check == name)
+}
+
+fn assert_measured_counts_unchanged(result: &SpecimenResult, p1: u64, p2: u64) {
+    let measured = result
+        .observations
+        .iter()
+        .filter(|o| o.target.id == "t_cells" && o.measure == Measure::ObservedCount)
+        .map(|o| (o.status, o.value_u64))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        measured,
+        [
+            (ObservationStatus::Measured, Some(p1)),
+            (ObservationStatus::Measured, Some(p2))
+        ]
+    );
+}
+
+#[test]
+fn reference_ratio_keeps_both_measured_counts_and_emits_a_distinct_estimate() {
+    let mut plan = plan();
+    plan.layout.reconciliation = vec![ratio_rule(&plan, limits(1, None, None))];
     let sources = vec![
         source(&plan, "P1", 3000, 10000),
         source(&plan, "P2", 6400, 20000),
@@ -168,6 +233,7 @@ fn reference_ratio_keeps_both_measured_counts_and_emits_a_distinct_estimate() {
     assert_eq!(estimate.value_f64, Some(3200.0));
     assert_eq!(estimate.status, ObservationStatus::Estimated);
     assert!(estimate.method.experimental);
+    assert_eq!(estimate.method.version, "2");
     assert_eq!(estimate.method.source_observation_ids.len(), 3);
 }
 
@@ -231,22 +297,7 @@ fn prefer_reference_has_no_fallback_and_never_adds_children() {
 #[test]
 fn zero_anchors_reject_only_the_derived_estimate() {
     let mut plan = plan();
-    plan.layout.reconciliation = vec![rule(
-        &plan,
-        Strategy::ReferenceRatio {
-            source: SourceRef {
-                panel: "P2".into(),
-                source: "gates".into(),
-            },
-            reference: SourceRef {
-                panel: "P1".into(),
-                source: "gates".into(),
-            },
-            anchor: plan.layout.panels["P1"].sources["gates"].bindings[0]
-                .target
-                .clone(),
-        },
-    )];
+    plan.layout.reconciliation = vec![ratio_rule(&plan, limits(1, None, None))];
     let result = reconcile(
         &plan,
         &[source(&plan, "P1", 3000, 10000), source(&plan, "P2", 0, 0)],
@@ -297,4 +348,207 @@ fn biological_disagreement_does_not_delete_or_reject_measurements() {
         source(&plan, "P1", 100, 10000),
     ];
     assert!(reconcile(&plan, &duplicate).is_err());
+}
+
+#[test]
+fn anchor_below_min_events_rejects_only_the_derived_estimate() {
+    // P2's anchor holds 49 events; the rule demands 50.
+    let result = ratio(limits(50, None, None), (30, 100), (20, 49));
+    let estimate = estimate(&result);
+    assert_eq!(estimate.status, ObservationStatus::QcRejected);
+    assert_eq!(estimate.reason.as_deref(), Some("anchor_below_min_events"));
+    assert_eq!(estimate.value_f64, None);
+    assert_eq!(estimate.supporting_count, Some(20));
+    let events = check(&result, "reference_ratio_anchor_events").unwrap();
+    assert_eq!(events.status, CheckStatus::Fail);
+    assert!(
+        events
+            .message
+            .contains("P2/gates anchor `cells`: 49 event(s) (minimum 50")
+    );
+    assert_eq!(
+        check(&result, "reference_ratio_anchor").unwrap().status,
+        CheckStatus::Pass
+    );
+    assert_eq!(result.status, CheckStatus::Fail);
+    assert_measured_counts_unchanged(&result, 30, 20);
+}
+
+#[test]
+fn anchor_count_equal_to_min_events_is_accepted() {
+    let result = ratio(limits(50, None, None), (30, 100), (20, 50));
+    let estimate = estimate(&result);
+    assert_eq!(estimate.status, ObservationStatus::Estimated);
+    assert_eq!(estimate.value_f64, Some(40.0));
+    assert_eq!(
+        check(&result, "reference_ratio_anchor_events")
+            .unwrap()
+            .status,
+        CheckStatus::Pass
+    );
+    let reference_low = ratio(limits(101, None, None), (30, 100), (20, 200));
+    assert_eq!(
+        estimate_status(&reference_low),
+        ObservationStatus::QcRejected,
+        "the reference anchor is checked too"
+    );
+}
+
+fn estimate_status(result: &SpecimenResult) -> ObservationStatus {
+    estimate(result).status
+}
+
+#[test]
+fn scale_beyond_bound_rejects_estimate_in_both_directions() {
+    // Reference (P1) over source (P2) anchor: scale 0.5, then 2.
+    for (p1_anchor, p2_anchor) in [(5000, 10000), (10000, 5000)] {
+        let result = ratio(
+            limits(1, Some(1.5), None),
+            (3000, p1_anchor),
+            (2000, p2_anchor),
+        );
+        let estimate = estimate(&result);
+        assert_eq!(estimate.status, ObservationStatus::QcRejected);
+        assert_eq!(
+            estimate.reason.as_deref(),
+            Some("anchor_scale_out_of_bounds")
+        );
+        assert_eq!(
+            check(&result, "reference_ratio_scale").unwrap().status,
+            CheckStatus::Fail
+        );
+        assert_measured_counts_unchanged(&result, 3000, 2000);
+    }
+}
+
+#[test]
+fn scale_at_bound_is_accepted() {
+    for (p1_anchor, p2_anchor) in [(5000, 10000), (10000, 5000)] {
+        let result = ratio(
+            limits(1, Some(2.0), None),
+            (3000, p1_anchor),
+            (2000, p2_anchor),
+        );
+        assert_eq!(estimate_status(&result), ObservationStatus::Estimated);
+        assert_eq!(
+            check(&result, "reference_ratio_scale").unwrap().status,
+            CheckStatus::Pass
+        );
+    }
+}
+
+#[test]
+fn events_are_reported_before_scale_when_both_fail() {
+    let result = ratio(limits(50, Some(1.5), None), (30, 100), (5, 10));
+    assert_eq!(
+        estimate(&result).reason.as_deref(),
+        Some("anchor_below_min_events")
+    );
+    assert_eq!(
+        check(&result, "reference_ratio_scale").unwrap().status,
+        CheckStatus::Fail
+    );
+}
+
+#[test]
+fn divergent_anchor_frequencies_warn_without_rejecting() {
+    // Anchor frequencies 4000/10000 = 0.4 in P1 and 16000/20000 = 0.8 in P2.
+    let result = ratio(limits(1, None, Some(1.5)), (1000, 4000), (2000, 16000));
+    let estimate = estimate(&result);
+    assert_eq!(estimate.status, ObservationStatus::Estimated);
+    assert_eq!(estimate.value_f64, Some(500.0));
+    let frequency = check(&result, "reference_ratio_anchor_frequency").unwrap();
+    assert_eq!(frequency.status, CheckStatus::Warn);
+    assert!(
+        frequency.message.contains("ratio 2"),
+        "{}",
+        frequency.message
+    );
+    assert_eq!(result.status, CheckStatus::Warn);
+
+    let at_limit = ratio(limits(1, None, Some(2.0)), (1000, 4000), (2000, 16000));
+    assert_eq!(
+        check(&at_limit, "reference_ratio_anchor_frequency")
+            .unwrap()
+            .status,
+        CheckStatus::Pass
+    );
+}
+
+#[test]
+fn optional_checks_are_absent_unless_configured_or_anchors_are_unavailable() {
+    let result = ratio(limits(1, None, None), (3000, 10000), (6400, 20000));
+    assert!(check(&result, "reference_ratio_scale").is_none());
+    assert!(check(&result, "reference_ratio_anchor_frequency").is_none());
+    let unavailable = ratio(limits(1, Some(2.0), Some(2.0)), (3000, 10000), (0, 0));
+    assert_eq!(
+        estimate(&unavailable).reason.as_deref(),
+        Some("invalid_or_unavailable_anchor")
+    );
+    assert!(check(&unavailable, "reference_ratio_scale").is_none());
+    assert!(check(&unavailable, "reference_ratio_anchor_frequency").is_none());
+    let events = check(&unavailable, "reference_ratio_anchor_events").unwrap();
+    assert_eq!(events.status, CheckStatus::Fail);
+    assert!(events.message.contains("unavailable"), "{}", events.message);
+}
+
+#[test]
+fn anchor_check_messages_report_poisson_cv() {
+    let result = ratio(limits(1, None, None), (100, 400), (100, 100));
+    let events = check(&result, "reference_ratio_anchor_events").unwrap();
+    assert!(
+        events.message.contains("Poisson CV 0.100") && events.message.contains("Poisson CV 0.050"),
+        "{}",
+        events.message
+    );
+    // √(1/100 + 1/100 + 1/400) = 0.15
+    let anchor = check(&result, "reference_ratio_anchor").unwrap();
+    assert!(
+        anchor.message.ends_with("estimate Poisson CV 0.150"),
+        "{}",
+        anchor.message
+    );
+    let empty = ratio(limits(1, None, None), (100, 400), (0, 100));
+    assert!(
+        check(&empty, "reference_ratio_anchor")
+            .unwrap()
+            .message
+            .ends_with("estimate Poisson CV n/a")
+    );
+}
+
+#[test]
+fn reference_ratio_without_anchor_limits_is_rejected() {
+    let plan = plan();
+    let mut rule = serde_json::to_value(ratio_rule(&plan, limits(1, None, None))).unwrap();
+    rule["strategy"]
+        .as_object_mut()
+        .unwrap()
+        .remove("anchor_limits");
+    assert!(serde_json::from_value::<ReconciliationRule>(rule).is_err());
+}
+
+#[test]
+fn invalid_anchor_limits_are_rejected() {
+    for invalid in [
+        limits(0, None, None),
+        limits(1, Some(f64::NAN), None),
+        limits(1, Some(0.5), None),
+        limits(1, None, Some(f64::INFINITY)),
+        limits(1, None, Some(0.99)),
+    ] {
+        let mut plan = plan();
+        plan.layout.reconciliation = vec![ratio_rule(&plan, invalid.clone())];
+        assert!(plan.layout.validate().is_err(), "{invalid:?}");
+    }
+    let mut plan = plan();
+    plan.layout.reconciliation = vec![ratio_rule(&plan, limits(1, Some(1.0), Some(1.0)))];
+    assert!(plan.layout.validate().is_ok());
+}
+
+#[test]
+fn optional_anchor_limits_are_omitted_from_the_layout_digest() {
+    let plan = plan();
+    let rule = serde_json::to_value(ratio_rule(&plan, limits(5, None, None))).unwrap();
+    assert_eq!(rule["strategy"]["anchor_limits"], json!({"min_events": 5}));
 }

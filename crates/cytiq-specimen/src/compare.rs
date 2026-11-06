@@ -214,6 +214,10 @@ impl SpecimenComparison {
         )?;
         let comparison: Self =
             serde_json::from_value(serialization::read(&directory.join("comparison.json"))?)?;
+        require(
+            comparison.baseline_package.is_some() && comparison.candidate_package.is_some(),
+            "comparison package lacks input identities",
+        )?;
         comparison.validate()?;
         require(
             outcome.reason == comparison.outcome_reason(),
@@ -248,7 +252,7 @@ pub(crate) fn index_rows(result: &SpecimenResult) -> Result<RowIndex<'_>> {
     Ok(index)
 }
 
-fn normalize(result: &SpecimenResult) -> Result<SpecimenResult> {
+pub(crate) fn normalize(result: &SpecimenResult) -> Result<SpecimenResult> {
     result.validate()?;
     let index = index_rows(result)?;
     let mut result = result.clone();

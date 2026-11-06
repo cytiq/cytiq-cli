@@ -409,6 +409,9 @@ pub(crate) const fn command_name(command: &Commands) -> &'static str {
         Commands::Specimen(crate::commands::specimen::SpecimenCommand::Compare(_)) => {
             "specimen compare"
         }
+        Commands::Specimen(crate::commands::specimen::SpecimenCommand::Report(_)) => {
+            "specimen report"
+        }
         Commands::Autospill(_) => "autospill",
         Commands::Autospread(_) => "autospread",
         Commands::Autospectral(_) => "autospectral",

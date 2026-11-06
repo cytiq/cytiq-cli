@@ -7,6 +7,8 @@ classification and vector diagnostic plots.
 [Specimen processing](crates/cytiq-specimen/README.md) adds versioned acquisition
 selection, population observations and panel reconciliation above those stages.
 It supports conventional flow, spectral gating and existing CyTOF classifiers.
+`specimen compare` checks native results with explicit tolerances;
+`specimen report` exports results and comparisons as offline HTML, CSV and JSON.
 
 ## Pipeline
 

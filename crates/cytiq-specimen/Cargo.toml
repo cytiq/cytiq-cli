@@ -9,6 +9,7 @@ categories.workspace = true
 description = "Specimen planning, reconciliation and quality checks for cytometry observations"
 
 [dependencies]
+csv = "1.3.1"
 cytiq-fcs.workspace = true
 cytiq-manifest.workspace = true
 cytiq-population.workspace = true

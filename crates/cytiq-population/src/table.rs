@@ -92,7 +92,16 @@ pub fn write(path: &Path, observations: &[PopulationObservation]) -> Result<()> 
 /// # Errors
 /// Rejects missing/changed schemas, inconsistent identities and excessive rows.
 pub fn read(path: &Path) -> Result<Vec<PopulationObservation>> {
-    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?;
+    read_from(File::open(path)?)
+}
+
+/// [`read`] from any Parquet source, such as `bytes::Bytes` in memory.
+/// # Errors
+/// Rejects missing/changed schemas, inconsistent identities and excessive rows.
+pub fn read_from<R: parquet::file::reader::ChunkReader + 'static>(
+    reader: R,
+) -> Result<Vec<PopulationObservation>> {
+    let builder = ParquetRecordBatchReaderBuilder::try_new(reader)?;
     require(
         builder.schema().fields().len() == TEXT.len() + JSON.len() + COUNTS.len() + 2,
         "unexpected observation columns",

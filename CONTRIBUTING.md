@@ -30,7 +30,7 @@ and ignores another mise on `PATH`; until `just mise` has run, recipes fail with
 Docker, a C/C++ toolchain and, for parity, R are prerequisites: parity compiles
 Bioconductor and git packages against the system R, which mise cannot provide,
 so `just parity-setup` checks it against `CYTIQ_R_VERSION`. Fuzzing uses the
-nightly in `CYTIQ_FUZZ_TOOLCHAIN`, which `just fuzz-fcs` installs on first use.
+nightly in `CYTIQ_FUZZ_TOOLCHAIN`, which `just fuzz` installs on first use.
 
 - `just mise` installs mise and the pinned tools; run it first.
 - `just run` starts the `cytiq` binary from the `cytiq-engine` package.
@@ -44,7 +44,7 @@ nightly in `CYTIQ_FUZZ_TOOLCHAIN`, which `just fuzz-fcs` installs on first use.
 - `just crap` reports CRAP and baseline deltas from that coverage run.
 - `just crap-check` tests report validation without coverage tools.
 - `just mutants` runs mutation tests for the CRAP remediation functions;
-  `just mutants cytiq-fcs` selects one of the ten supported crates.
+  `just mutants cytiq-fcs` selects one of the twelve supported crates.
 - `just package-check` checks crates.io metadata and internal dependency
   versions and packages every crate without uploading anything.
 - `just verify` runs the standard local quality gate.
@@ -84,7 +84,9 @@ durations too; the experiment does not alter required checks.
 there after compatibility testing; retain it only when cost falls without increasing required-check P95 by
 more than 10%. It never controls Docker or Rust runners.
 
-`.github/workflows/fuzz.yml` fuzzes the FCS reader and the spillover parser for one minute a target on pull requests that change `cytiq-fcs`, for ten minutes weekly, and on demand. It is not a required check. A crash uploads its input as an artifact; turn it into a regression test as `crates/cytiq-fcs/CONTRIBUTING.md` describes. `cargo test` replays the saved regressions on every run.
+`.github/workflows/fuzz.yml` fuzzes the FCS reader and the spillover parser (`cytiq-fcs`), the population JSON/YAML document and observation-table readers (`cytiq-population`) and specimen result comparison (`cytiq-specimen`): one minute a target on pull requests that change one of those crates, ten minutes weekly, and on demand. Run a target locally with `just fuzz <crate> <target> [seconds]` (`just fuzz-fcs` remains for `cytiq-fcs`). It is not a required check. A crash uploads its input as an artifact; turn it into a regression test as `crates/cytiq-fcs/CONTRIBUTING.md` describes. `cargo test` replays the saved regressions on every run.
+
+The upstream contracts are pinned and checked offline by `cargo test`: `crates/cytiq-population/contracts/cytiq-tree.lock.json` holds the sha256 of each vendored cytiq-tree schema, and `data/fixtures/classify/cytiq-ml.lock.json` the sha256 of each cytiq-ml bundle fixture. When bumping either, run `just contracts-upstream`, which compares the cytiq-tree pin with `git show` in a sibling checkout (`$CYTIQ_TREE_DIR`, default `../cytiq-tree`) and checks that a recorded cytiq-ml revision exists (`$CYTIQ_ML_DIR`). Hosted CI has no sibling checkouts, so this check is local.
 
 The parity suites against the upstream R/Python tools run locally, not in CI: installing the R environment takes too long for hosted runners. Run `just parity-setup` once, then `just parity` and `just parity-real` before merging a change that can move results; a violated tolerance exits non-zero. CI still runs a scientific smoke test (`crates/cytiq-engine/tests/parity_smoke.rs`) against R outputs committed in `data/fixtures/parity`; regenerate them with `just parity-smoke-fixture` when the generator, a dataset size or an upstream pin changes, never to make a cytiq change pass. Keep `parity/tolerances.json` and `parity/real/tolerances.json` honest: every rule states why its bound holds.
 
@@ -199,7 +201,9 @@ just mutants cytiq-gating
 ```
 
 `.cargo/mutants.toml` selects the 15 functions addressed by the initial CRAP
-analysis and their extracted helpers in ten crates. Keep this selection in sync
+analysis and their extracted helpers in ten crates, plus the validation,
+reconciliation, anchor-reliability and comparison functions of
+`cytiq-population` and `cytiq-specimen`. Keep this selection in sync
 when extracting or renaming helpers: a move must not remove mutation coverage.
 The runner rejects an empty selection and checks the unmodified tests before
 injecting mutations into a scratch copy; the working tree is never mutated.
@@ -225,7 +229,7 @@ representable sums inside and outside that boundary; the exact exclusion and
 its rationale live in `.cargo/mutants.toml`.
 
 The **Mutation tests** workflow runs manually and on Mondays at 04:00 UTC,
-separately from PR checks. Its ten-crate matrix runs up to three jobs at once,
+separately from PR checks. Its twelve-crate matrix runs up to three jobs at once,
 with a 120-minute limit per crate and reports retained for 35 days even on
 failure. `just verify` remains the ordinary quality gate. Neither mutation
 testing nor local CRAP analysis rewrites the reviewed Linux CRAP baseline.

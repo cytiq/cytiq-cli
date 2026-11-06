@@ -1,0 +1,243 @@
+{
+  "repository": "cytiq/cytiq-ml",
+  "revision": null,
+  "note": "These fixtures predate the lock and their generating revision was not recorded. v2/ was generated for cytiq/cytiq-ml#41 (50d48d7) according to cytiq-engine#109; v4/ and cytof/ come from cytiq-engine#111 and #112. Set revision when the fixtures are next regenerated, and update every sha256 with them.",
+  "files": [
+    {
+      "path": "catboost/manifest.json",
+      "sha256": "77d5eea012b8927d2adb9eae3eae0a867fed6bdaf7534e9c51d9fe0b53216c8e"
+    },
+    {
+      "path": "catboost/model.cbm",
+      "sha256": "e13b6c1094a0387d80099fd17d6527683de78566bfc8c3ec0d45d698f71880ee"
+    },
+    {
+      "path": "catboost/model.onnx",
+      "sha256": "2fe9623854ad1b72a627a8b90cefc7ad7b920524ccb3350204eda8ed25b31983"
+    },
+    {
+      "path": "catboost/parity.json",
+      "sha256": "49b019a8d68b5c2fd52b719ead52cb5d57f4d2e678932619448ab3cd8e336f73"
+    },
+    {
+      "path": "cytof/expected.json",
+      "sha256": "11074da82901c3fbb31663c88f2465162740c6b4eab0038dbf884670758d8f5c"
+    },
+    {
+      "path": "cytof/input.fcs",
+      "sha256": "113b9e37ad044ad56c64ea7dbb38e4a01bff754af179db9052a6aad337f3375c"
+    },
+    {
+      "path": "cytof/lightgbm/classes.yaml",
+      "sha256": "660d1a0f61ed0ae23ee28f4368d27fd38172cc5a43a7d1e43653b96e5da22d33"
+    },
+    {
+      "path": "cytof/lightgbm/label-mapping.yaml",
+      "sha256": "4ea38e3d08188e3a1235917289768eb3b426a221811245830a6277c42964fcc6"
+    },
+    {
+      "path": "cytof/lightgbm/manifest.yaml",
+      "sha256": "e1dcaec9f1c3d6d5ee2b4bfd05de13b07ee0fa3141b0b75a6e7bebbadadc846d"
+    },
+    {
+      "path": "cytof/lightgbm/model.onnx",
+      "sha256": "ebba68c84a382b135503a80908cf149dafea51c8661eaeb163a3c22805f8a891"
+    },
+    {
+      "path": "cytof/lightgbm/model.txt",
+      "sha256": "345d3f9c0d5a817976b20b321c1c4c93a090e55bdb616fab74cdedb23269cf5a"
+    },
+    {
+      "path": "cytof/lightgbm/panel.yaml",
+      "sha256": "033fd2f80e517a41bfd682baf9beaf964ec25c470e860743b36b74eb29569f8a"
+    },
+    {
+      "path": "cytof/lightgbm/parity.json",
+      "sha256": "358755de3a16a15b1303febb1c7f47516700927b2151ffe601694de097f6ce53"
+    },
+    {
+      "path": "cytof/spill.fcs",
+      "sha256": "3bc424ae4f93180531b234128d60e6dbbbc03c9d06544e150f8e39187575d793"
+    },
+    {
+      "path": "cytof/xgboost/classes.yaml",
+      "sha256": "660d1a0f61ed0ae23ee28f4368d27fd38172cc5a43a7d1e43653b96e5da22d33"
+    },
+    {
+      "path": "cytof/xgboost/label-mapping.yaml",
+      "sha256": "4ea38e3d08188e3a1235917289768eb3b426a221811245830a6277c42964fcc6"
+    },
+    {
+      "path": "cytof/xgboost/manifest.yaml",
+      "sha256": "f76c1f39fafc9a2f89d604f610f019554f02c5056856721eb286cc2011c79800"
+    },
+    {
+      "path": "cytof/xgboost/model.json",
+      "sha256": "72b9b61bd830efc96ce4f49379ed34c4e25281f4a84724dd201cd4551f861588"
+    },
+    {
+      "path": "cytof/xgboost/model.onnx",
+      "sha256": "e882bec5025fbafc6b1b4ead9ea19bc13cd0fc4581ff7aefea2d15bb3db378b7"
+    },
+    {
+      "path": "cytof/xgboost/panel.yaml",
+      "sha256": "033fd2f80e517a41bfd682baf9beaf964ec25c470e860743b36b74eb29569f8a"
+    },
+    {
+      "path": "cytof/xgboost/parity.json",
+      "sha256": "58a00ca701488a699d4931226b4e264330a33685f322cb0ff9325966f12c72e1"
+    },
+    {
+      "path": "expected.json",
+      "sha256": "f77e90554ddc26e8fdaac79d1755e6643e4aee2412d125cc7da9b66e5d357c0a"
+    },
+    {
+      "path": "lightgbm/manifest.json",
+      "sha256": "b62671669f3cf3bb42675b4dada052ca8cdb19775da3f286d71d4a087ec382b1"
+    },
+    {
+      "path": "lightgbm/model.onnx",
+      "sha256": "f7c8c4e27f5abfca2c79d378d4f3d2ec2500fae3be4902fa9c0f5431bcea03f2"
+    },
+    {
+      "path": "lightgbm/model.txt",
+      "sha256": "a77bcadac7106fc00d15e5d1d88cf6a8ab095082e2844312bd9759327a89b892"
+    },
+    {
+      "path": "lightgbm/parity.json",
+      "sha256": "48c8809786e2b9386249910ef4456f3c28e50b9861bb72988ee9e6a6b8827cbc"
+    },
+    {
+      "path": "raw.fcs",
+      "sha256": "005cde73114f04de069d866b1a04952d8235882e537612b0d909014ddbee9646"
+    },
+    {
+      "path": "serialization-vectors.json",
+      "sha256": "c263a0029f4aaad86da884f7f0164f096e6b7c8f24d8b076a514f8c29da219ab"
+    },
+    {
+      "path": "v2/binary/classes.json",
+      "sha256": "bb6d88e0239d72308062b2e92edbaba9417b31f33439203e7ed6e9af7f2acff2"
+    },
+    {
+      "path": "v2/binary/label-mapping.json",
+      "sha256": "d874c9ac2f9b45fa0c306ad8a7520a35058502a35d4cc623e76a46fcbee6abf6"
+    },
+    {
+      "path": "v2/binary/manifest.json",
+      "sha256": "adc0d3ea02ec954ad3d5d137405e38bfbeda6231066bf7b5af50c704a006f0b9"
+    },
+    {
+      "path": "v2/binary/model.onnx",
+      "sha256": "19a6d247ed9dd867d0496ee989e96b55b6d597819d25df9afc6314d25e33e637"
+    },
+    {
+      "path": "v2/binary/panel.json",
+      "sha256": "0dfacbfe6d1973ae2880286c05e0e36350741eac801340b2ac55448d2aa3c944"
+    },
+    {
+      "path": "v2/binary.expected.json",
+      "sha256": "d31d5eb5af8a9ada48fe303b0888d040ccbb0a09a082cddcea1c8b4b2dd8706d"
+    },
+    {
+      "path": "v2/catboost/classes.json",
+      "sha256": "ec7803b0311499549e68064473ba2bd144e45bfce0ec8d6b3f692e0f356a5aa7"
+    },
+    {
+      "path": "v2/catboost/label-mapping.json",
+      "sha256": "fc2bce8f18a9846054f9d0b584b9a552e9d158dc8ea82d55b412d79204878439"
+    },
+    {
+      "path": "v2/catboost/manifest.json",
+      "sha256": "6f13c467b030846d5bd75aa36fe4a09ba923956e151fabe1f94a98a250788c5c"
+    },
+    {
+      "path": "v2/catboost/model.onnx",
+      "sha256": "a0b6d611b84de0d4978fc25c9ba7267b1a3e1c9b9245f9d0e681a19b75a1fb27"
+    },
+    {
+      "path": "v2/catboost/panel.json",
+      "sha256": "b123c0dc2e69681a8e28cf91a81454494ff2136adcf47cd61b018b55c54967ac"
+    },
+    {
+      "path": "v2/catboost.expected.json",
+      "sha256": "d5ed487408a030f2807fa44085b87ada6e0b41feead3408278a75a03a4dd5a8c"
+    },
+    {
+      "path": "v2/input.fcs",
+      "sha256": "de2ba4a7c4d8b523db75247217d264b642c85fd60ece6610e6ae4a0699f5800b"
+    },
+    {
+      "path": "v2/lightgbm/classes.json",
+      "sha256": "ec7803b0311499549e68064473ba2bd144e45bfce0ec8d6b3f692e0f356a5aa7"
+    },
+    {
+      "path": "v2/lightgbm/label-mapping.json",
+      "sha256": "fc2bce8f18a9846054f9d0b584b9a552e9d158dc8ea82d55b412d79204878439"
+    },
+    {
+      "path": "v2/lightgbm/manifest.json",
+      "sha256": "afe826600e6e706e809c887eda740c51e7a83b4d7bb777f6036d54db147124b1"
+    },
+    {
+      "path": "v2/lightgbm/model.onnx",
+      "sha256": "4ba57a5b107d57154103891b0a7d4cc768ff2e27d2b40ce8a94c3a9f42d520cf"
+    },
+    {
+      "path": "v2/lightgbm/panel.json",
+      "sha256": "b123c0dc2e69681a8e28cf91a81454494ff2136adcf47cd61b018b55c54967ac"
+    },
+    {
+      "path": "v2/lightgbm.expected.json",
+      "sha256": "be838d4afd4b8e540d4fe81ad1924f974330470fe02432417654d1ec09a2ffe9"
+    },
+    {
+      "path": "v4/binary/classes.yaml",
+      "sha256": "f28bf3e7d7be293daa0d3385faf30e281db31a09c8768b82e3f521e0aef863c1"
+    },
+    {
+      "path": "v4/binary/label-mapping.yaml",
+      "sha256": "4c8336db4cc7649555940fde04b1c05fa2fb9b6378ddc13c4b6a447eedcd6511"
+    },
+    {
+      "path": "v4/binary/manifest.yaml",
+      "sha256": "451afe37b0366748eff34a972013d2d3fba7c034f08afae43d66fb1511e6af53"
+    },
+    {
+      "path": "v4/binary/panel.yaml",
+      "sha256": "f496d666be39b1499b39d81ca5030cbd1d38b62e88fd12949bc12d43242d23d8"
+    },
+    {
+      "path": "v4/catboost/classes.yaml",
+      "sha256": "6df2d16e6b8dcc790b9715a887df306763df0944c8db1a836b49a369f57eb446"
+    },
+    {
+      "path": "v4/catboost/label-mapping.yaml",
+      "sha256": "12a230f4d2c91a26a312d42bd2a54a3eb2b1def9d0b1fd0b2a16c2838462d510"
+    },
+    {
+      "path": "v4/catboost/manifest.yaml",
+      "sha256": "4adb729c16c09c4dd84661d77c96335abe7e035827f4f33dc69762beca1b8667"
+    },
+    {
+      "path": "v4/catboost/panel.yaml",
+      "sha256": "225a2f5c95f456ee53b7c2e6e73dd93ef3b6a357ef81bcadacf40ff660c9cea7"
+    },
+    {
+      "path": "v4/lightgbm/classes.yaml",
+      "sha256": "6df2d16e6b8dcc790b9715a887df306763df0944c8db1a836b49a369f57eb446"
+    },
+    {
+      "path": "v4/lightgbm/label-mapping.yaml",
+      "sha256": "12a230f4d2c91a26a312d42bd2a54a3eb2b1def9d0b1fd0b2a16c2838462d510"
+    },
+    {
+      "path": "v4/lightgbm/manifest.yaml",
+      "sha256": "6d9cc7cf0467b8a9c870932df12c1d0d48c091d7c5d57f4885502fffb1230e77"
+    },
+    {
+      "path": "v4/lightgbm/panel.yaml",
+      "sha256": "225a2f5c95f456ee53b7c2e6e73dd93ef3b6a357ef81bcadacf40ff660c9cea7"
+    }
+  ]
+}

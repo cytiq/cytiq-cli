@@ -85,7 +85,14 @@ impl ComparisonPolicy {
     /// # Errors
     /// Rejects malformed policy documents and invalid tolerance types or values.
     pub fn load(path: &Path) -> Result<Self> {
-        let policy: Self = serde_json::from_value(serialization::read(path)?)?;
+        Self::from_value(serialization::read(path)?)
+    }
+
+    /// Deserialize and validate a policy document already read.
+    /// # Errors
+    /// Rejects malformed policy documents and invalid tolerance types or values.
+    pub fn from_value(document: serde_json::Value) -> Result<Self> {
+        let policy: Self = serde_json::from_value(document)?;
         policy.validate()?;
         Ok(policy)
     }

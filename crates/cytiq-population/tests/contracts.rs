@@ -30,6 +30,222 @@ fn count(value: u64) -> PopulationObservation {
 }
 
 #[test]
+fn observation_fields_are_validated_independently_of_their_digest() {
+    let base = serde_json::to_value(count(10)).unwrap();
+    for (pointer, replacement) in [
+        ("/specimen_id", json!(" ")),
+        ("/panel_id", json!("")),
+        ("/source_id", json!("")),
+        ("/method/definition_sha256", json!("g".repeat(64))),
+        ("/method/name", json!("")),
+        ("/method/version", json!("")),
+        ("/value_f64", json!(-0.1)),
+        ("/value_f64", json!(1.0)),
+        ("/status", json!("estimated")),
+        ("/denominator/observed_count", json!(9)),
+    ] {
+        let mut value = base.clone();
+        *value.pointer_mut(pointer).unwrap() = replacement;
+        let mut row: PopulationObservation = serde_json::from_value(value).unwrap();
+        assert!(row.seal().is_err(), "accepted invalid {pointer}");
+    }
+}
+
+#[test]
+fn numeric_observations_obey_their_measure_contract() {
+    use cytiq_population::{Measure, ObservationStatus as S};
+    for (measure, unit, status, integer, float, denominator, valid) in [
+        (
+            Measure::EstimatedCount,
+            "events",
+            S::Estimated,
+            None,
+            Some(0.0),
+            10,
+            true,
+        ),
+        (
+            Measure::EstimatedCount,
+            "events",
+            S::Measured,
+            None,
+            Some(0.0),
+            10,
+            false,
+        ),
+        (
+            Measure::EstimatedCount,
+            "events",
+            S::Estimated,
+            Some(1),
+            None,
+            10,
+            false,
+        ),
+        (
+            Measure::Fraction,
+            "fraction",
+            S::Measured,
+            None,
+            Some(1.0),
+            10,
+            true,
+        ),
+        (
+            Measure::Fraction,
+            "fraction",
+            S::Measured,
+            None,
+            Some(1.1),
+            10,
+            false,
+        ),
+        (
+            Measure::Fraction,
+            "fraction",
+            S::Measured,
+            None,
+            Some(0.0),
+            0,
+            false,
+        ),
+        (
+            Measure::Concentration,
+            "cells_per_ul",
+            S::Measured,
+            None,
+            Some(0.0),
+            10,
+            true,
+        ),
+        (
+            Measure::Concentration,
+            "cells_per_ul",
+            S::Measured,
+            Some(1),
+            None,
+            10,
+            false,
+        ),
+    ] {
+        let mut row = count(10);
+        row.measure = measure;
+        row.unit = unit.into();
+        row.status = status;
+        row.value_u64 = integer;
+        row.value_f64 = float;
+        row.denominator.as_mut().unwrap().observed_count = denominator;
+        assert_eq!(
+            row.seal().is_ok(),
+            valid,
+            "{measure:?}/{status:?}/{float:?}"
+        );
+    }
+}
+
+#[test]
+fn unavailable_observations_require_a_reason_without_either_numeric_value() {
+    use cytiq_population::ObservationStatus as S;
+    for (integer, float, reason, valid) in [
+        (None, None, None, false),
+        (Some(0), Some(0.0), Some("missing"), false),
+        (None, None, Some("missing"), true),
+    ] {
+        let mut row = count(10);
+        row.status = S::NotMeasured;
+        row.value_u64 = integer;
+        row.value_f64 = float;
+        row.reason = reason.map(str::to_owned);
+        assert_eq!(row.seal().is_ok(), valid);
+    }
+}
+
+#[test]
+fn sha256_requires_exactly_64_lowercase_hex_digits() {
+    use cytiq_population::observation::is_sha256;
+    for value in [
+        "a".repeat(63),
+        "a".repeat(65),
+        "g".repeat(64),
+        "A".repeat(64),
+        String::new(),
+    ] {
+        assert!(!is_sha256(&value), "{value}");
+    }
+    assert!(is_sha256(&"0123456789abcdef".repeat(4)));
+}
+
+#[test]
+fn floating_observations_reject_negative_and_non_finite_values() {
+    for value in [-0.1, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let mut row = count(10);
+        row.measure = cytiq_population::Measure::EstimatedCount;
+        row.status = cytiq_population::ObservationStatus::Estimated;
+        row.value_u64 = None;
+        row.value_f64 = Some(value);
+        assert!(row.seal().is_err(), "accepted {value}");
+    }
+}
+
+#[test]
+fn completion_markers_cannot_hide_independently_invalid_fields() {
+    let directory = tempfile::tempdir().unwrap();
+    let output = directory.path().join("result");
+    write_package(
+        &output,
+        false,
+        RunRecorder::start("test", "1", vec![]),
+        "test",
+        OutcomeReason::Success,
+        |staged| {
+            std::fs::write(staged.join("data.json"), b"data")?;
+            Ok(vec!["data.json".into()])
+        },
+    )
+    .unwrap();
+    let path = output.join("outcome.json");
+    let original: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    for (pointer, replacement) in [
+        ("/schema_version", json!(2)),
+        ("/completed", json!(false)),
+        ("/exit_code", json!(3)),
+        ("/artifacts/0/bytes", json!(5)),
+        ("/artifacts/0/sha256", json!("0".repeat(64))),
+    ] {
+        let mut value = original.clone();
+        *value.pointer_mut(pointer).unwrap() = replacement;
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(verify_package(&output).is_err(), "accepted {pointer}");
+    }
+    let mut value = original.clone();
+    value["reason"] = json!("runtime_error");
+    value["exit_code"] = json!(1);
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(verify_package(&output).is_err());
+    let mut value = original.clone();
+    value["artifacts"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|a| a["path"] == "provenance.json");
+    std::fs::remove_file(output.join("data.json")).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(verify_package(&output).is_err());
+    std::fs::write(output.join("data.json"), b"data").unwrap();
+    let mut value = original.clone();
+    value["artifacts"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|a| a["path"] != "provenance.json");
+    let provenance = std::fs::read(output.join("provenance.json")).unwrap();
+    std::fs::remove_file(output.join("provenance.json")).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(verify_package(&output).is_err());
+    std::fs::write(output.join("provenance.json"), provenance).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
+    verify_package(&output).unwrap();
+}
+
+#[test]
 fn observed_counts_above_float_precision_round_trip_exactly() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("counts.parquet");
@@ -184,4 +400,48 @@ fn failed_replacement_preserves_the_entire_previous_package() {
     std::fs::write(output.join("data.json"), b"corrupt").unwrap();
     assert!(verify_package(&output).is_err());
     let _value: Value = serde_json::from_slice(&original).unwrap();
+}
+
+#[test]
+fn vendored_cytiq_tree_schemas_match_lock() {
+    use sha2::{Digest, Sha256};
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let lock: Value = serde_json::from_slice(
+        &std::fs::read(root.join("contracts/cytiq-tree.lock.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(lock["repository"], "cytiq/cytiq-tree");
+    let revision = lock["revision"].as_str().unwrap();
+    assert!(revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let mut locked = std::collections::BTreeSet::new();
+    for file in lock["files"].as_array().unwrap() {
+        let path = file["path"].as_str().unwrap();
+        let digest: String = Sha256::digest(std::fs::read(root.join(path)).unwrap())
+            .iter()
+            .fold(String::new(), |mut text, byte| {
+                use std::fmt::Write as _;
+                write!(text, "{byte:02x}").expect("write to a String");
+                text
+            });
+        assert_eq!(digest, file["sha256"].as_str().unwrap(), "{path}");
+        assert!(
+            file["source"]
+                .as_str()
+                .is_some_and(|source| !source.is_empty())
+        );
+        assert!(locked.insert(path.to_owned()), "{path} is locked twice");
+    }
+    let vendored = std::fs::read_dir(root.join("contracts/v2"))
+        .unwrap()
+        .map(|entry| {
+            format!(
+                "contracts/v2/{}",
+                entry.unwrap().file_name().to_str().unwrap()
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        vendored, locked,
+        "every vendored schema is locked, and only those"
+    );
 }

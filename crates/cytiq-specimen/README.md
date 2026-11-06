@@ -198,6 +198,43 @@ failures. Invalid inputs/policy use 2, missing inputs/output conflicts use 4 and
 runtime errors use 1. An unchanged failing source QC can compare equal; its source
 status remains present and a successful comparison is not a source QC approval.
 
+## Reports and exports
+
+```sh
+cytiq specimen report --input results/S01/ --output reports/S01/
+cytiq specimen report --input comparison/S01/ --output reports/S01-comparison/
+cytiq specimen report --input results/S01/ --format csv --output exports/S01/
+```
+
+`--format all` (default) publishes offline `report.html`, versioned `report.json`
+and CSV tables. Select `html`, `json` or `csv` to publish only that representation.
+Every representation is a package with provenance and outcome; `--output` is a
+directory, and existing directories require `--overwrite`.
+
+For a specimen, CSV consists of `summary.csv`, `observations.csv`, `results.csv`
+and `checks.csv`. A comparison exports `summary.csv`, `rows.csv`, `checks.csv` and
+`context.csv`. Observation columns retain separate `value_u64`/`value_f64`, status,
+unit, complete target, denominator, method and lineage. Structured columns contain
+compact JSON. Nulls are empty cells, counts are exact decimal integers, fractions
+remain 0–1, and floating values are not rounded before export. Comparison rows
+include both sides, the applied tolerance, verdict and typed exact/float deltas.
+
+The HTML is self-contained and script-free, with summary tables and expandable
+metadata. Text is escaped and integers never pass through JavaScript Number.
+Only the supplied package is read: source data, models and plans can be offline;
+reports of comparisons also work after the baseline/candidate packages are gone.
+Information absent from a result, such as excluded retake reasons, is not inferred.
+
+Report generation returns exit 0 on a successful export, including exports of
+incomplete specimens or failed comparisons. Source QC/completeness and comparison
+verdicts remain prominent in the report and JSON; they are not export errors.
+Corrupt/unsupported input uses exit 2, missing input or output conflicts use 4,
+and runtime failures use 1. Publication failure preserves the prior report.
+
+Rust entry points are `compare`, `ComparisonPolicy`, `SpecimenComparison::load`,
+`SpecimenReport::load`, `runner::write_comparison` and `report::write_report` with
+`ReportConfig`/`ReportFormat`. Existing specimen/result schemas are unchanged.
+
 ## Validation and shadow runs
 
 ```sh

@@ -26,6 +26,7 @@ chain and signal-state checks.
 | `cytiq population validate/observe` | [`cytiq-population`](../cytiq-population/README.md) | Validate native annotations and produce typed population observations |
 | `cytiq specimen validate/plan/run` | [`cytiq-specimen`](../cytiq-specimen/README.md) | Freeze acquisition selection, reconcile panels and publish specimen results |
 | `cytiq specimen compare` | [`cytiq-specimen`](../cytiq-specimen/README.md#comparing-native-results) | Compare native specimen summaries with exact counts and explicit tolerances |
+| `cytiq specimen report` | [`cytiq-specimen`](../cytiq-specimen/README.md#reports-and-exports) | Export a verified result or comparison as offline HTML, CSV and JSON |
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean/README.md) | Debris, doublet and dead-cell removal as per-event masks |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc/README.md) | Peak-based acquisition quality control |
 | `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | FlowSOM-style clustering |

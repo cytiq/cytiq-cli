@@ -119,3 +119,74 @@ fn comparison_cli_publishes_failed_checks_and_respects_policy_and_atomic_outputs
     );
     verify_package(&diff).unwrap();
 }
+
+fn export(input: &Path, output: &Path, options: &[&str], code: i32) -> Value {
+    let mut args = vec![
+        "specimen",
+        "report",
+        "--input",
+        text(input),
+        "--output",
+        text(output),
+    ];
+    args.extend_from_slice(options);
+    invoke(&args, code)
+}
+
+#[test]
+fn report_cli_exports_results_and_failed_comparisons_without_reopening_sources() {
+    let tmp = tempfile::tempdir().unwrap();
+    let input = tmp.path().join("input");
+    let other = tmp.path().join("other");
+    let comparison = tmp.path().join("comparison");
+    let report = tmp.path().join("report");
+    package(&input, 0);
+    package(&other, 1);
+    export(&input, &report, &[], 0);
+    for name in [
+        "report.html",
+        "report.json",
+        "summary.csv",
+        "observations.csv",
+        "results.csv",
+        "checks.csv",
+    ] {
+        assert!(report.join(name).exists());
+    }
+    export(&input, &report, &[], 4);
+    export(&input, &report, &["--format", "json", "--overwrite"], 0);
+    assert!(!report.join("report.html").exists());
+    assert!(!report.join("results.csv").exists());
+    invoke(
+        &[
+            "specimen",
+            "compare",
+            "--baseline",
+            text(&input),
+            "--candidate",
+            text(&other),
+            "--output",
+            text(&comparison),
+        ],
+        3,
+    );
+    std::fs::remove_dir_all(&input).unwrap();
+    std::fs::remove_dir_all(&other).unwrap();
+    export(&comparison, &report, &["--overwrite"], 0);
+    assert!(report.join("rows.csv").exists());
+    assert!(report.join("context.csv").exists());
+    assert!(
+        std::fs::read_to_string(report.join("report.html"))
+            .unwrap()
+            .contains("checks_failed")
+    );
+    let record: Value =
+        serde_json::from_slice(&std::fs::read(report.join("provenance.json")).unwrap()).unwrap();
+    assert_eq!(record["config"]["Report"]["format"], "All");
+    let before = std::fs::read(report.join("outcome.json")).unwrap();
+    export(&input, &report, &["--overwrite"], 4);
+    assert_eq!(before, std::fs::read(report.join("outcome.json")).unwrap());
+    std::fs::write(comparison.join("comparison.json"), b"{}").unwrap();
+    export(&comparison, &report, &["--overwrite"], 2);
+    verify_package(&report).unwrap();
+}

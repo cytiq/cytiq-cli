@@ -1,6 +1,7 @@
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use cytiq_provenance::{RunRecorder, outcome::CommandOutcome};
 use cytiq_specimen::runner::{self, CompareConfig, PlanConfig};
+use cytiq_specimen::{ReportConfig, ReportFormat};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -14,6 +15,8 @@ pub(crate) enum SpecimenCommand {
     Run(RunArgs),
     /// Compare two native result packages for the same specimen.
     Compare(CompareArgs),
+    /// Export a verified specimen result or comparison as offline HTML, CSV and JSON.
+    Report(ReportArgs),
 }
 
 #[derive(Debug, Serialize, Args)]
@@ -92,6 +95,48 @@ impl From<CompareArgs> for CompareConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, ValueEnum)]
+pub(crate) enum CliReportFormat {
+    All,
+    Html,
+    Csv,
+    Json,
+}
+
+impl From<CliReportFormat> for ReportFormat {
+    fn from(value: CliReportFormat) -> Self {
+        match value {
+            CliReportFormat::All => Self::All,
+            CliReportFormat::Html => Self::Html,
+            CliReportFormat::Csv => Self::Csv,
+            CliReportFormat::Json => Self::Json,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Args)]
+pub(crate) struct ReportArgs {
+    #[arg(long)]
+    input: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long, value_enum, default_value = cytiq_specimen::report::DEFAULT_REPORT_FORMAT)]
+    format: CliReportFormat,
+    #[arg(long)]
+    overwrite: bool,
+}
+
+impl From<ReportArgs> for ReportConfig {
+    fn from(args: ReportArgs) -> Self {
+        Self {
+            input: args.input,
+            output: args.output,
+            format: args.format.into(),
+            overwrite: args.overwrite,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct OutcomeExit(pub CommandOutcome);
 impl std::fmt::Display for OutcomeExit {
@@ -148,6 +193,10 @@ pub(crate) fn run(
         SpecimenCommand::Compare(args) => finish(
             "cytiq specimen compare",
             runner::write_comparison(&args.into(), recorder),
+        ),
+        SpecimenCommand::Report(args) => finish(
+            "cytiq specimen report",
+            cytiq_specimen::report::write_report(&args.into(), recorder),
         ),
     }
 }

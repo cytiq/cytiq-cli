@@ -4,12 +4,14 @@ pub mod compare;
 pub mod layout;
 pub mod plan;
 pub mod reconcile;
+pub mod report;
 pub mod runner;
 
 pub use compare::{ComparisonPolicy, SpecimenComparison, compare};
 pub use layout::{SpecimenLayout, Strategy};
 pub use plan::SpecimenPlan;
 pub use reconcile::{SpecimenResult, reconcile};
+pub use report::{ReportConfig, ReportFormat, SpecimenReport};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SpecimenError {
@@ -25,6 +27,8 @@ pub enum SpecimenError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Csv(#[from] csv::Error),
     #[error(transparent)]
     Provenance(#[from] cytiq_provenance::ProvenanceError),
     #[error(transparent)]

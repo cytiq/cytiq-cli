@@ -2,7 +2,7 @@
 
 use crate::{
     Result, SpecimenPlan,
-    layout::{SourceRef, Strategy},
+    layout::{AnchorLimits, SourceRef, Strategy},
     require,
 };
 use cytiq_population::{
@@ -569,40 +569,50 @@ fn apply_rules(
                 source,
                 reference,
                 anchor,
+                anchor_limits,
             } => {
-                let (estimate, check) = reference_ratio(
+                let (estimate, ratio_checks) = reference_ratio(
                     observations,
                     &rule.target,
-                    source,
-                    reference,
-                    anchor,
+                    &RatioInputs {
+                        source,
+                        reference,
+                        anchor,
+                        limits: anchor_limits,
+                    },
                     &definition_sha256,
                 )?;
                 results.push(estimate);
-                checks.push(check);
+                checks.extend(ratio_checks);
             }
         }
     }
     Ok(())
 }
 
+struct RatioInputs<'a> {
+    source: &'a SourceRef,
+    reference: &'a SourceRef,
+    anchor: &'a Target,
+    limits: &'a AnchorLimits,
+}
+
 fn reference_ratio(
     observations: &[PopulationObservation],
     target: &Target,
-    source: &SourceRef,
-    reference: &SourceRef,
-    anchor: &Target,
+    inputs: &RatioInputs<'_>,
     definition_sha256: &str,
-) -> Result<(PopulationObservation, SpecimenCheck)> {
-    let population = find_count(observations, source, target)?;
-    let source_anchor = find_count(observations, source, anchor)?;
-    let reference_anchor = find_count(observations, reference, anchor)?;
+) -> Result<(PopulationObservation, Vec<SpecimenCheck>)> {
+    let population = find_count(observations, inputs.source, target)?;
+    let source_anchor = find_count(observations, inputs.source, inputs.anchor)?;
+    let reference_anchor = find_count(observations, inputs.reference, inputs.anchor)?;
     let mut estimate = population.clone();
     estimate.measure = Measure::EstimatedCount;
     estimate.value_u64 = None;
     estimate.method = Method {
         name: "reference_ratio".into(),
-        version: "1".into(),
+        // 2: anchor limits can reject an estimate version 1 accepted.
+        version: "2".into(),
         definition_sha256: definition_sha256.to_owned(),
         experimental: true,
         source_observation_ids: vec![
@@ -611,40 +621,183 @@ fn reference_ratio(
             reference_anchor.observation_id.clone(),
         ],
     };
-    let valid = [population, source_anchor, reference_anchor]
-        .iter()
-        .all(|o| o.status == ObservationStatus::Measured)
-        && source_anchor.value_u64.is_some_and(|n| n > 0)
-        && reference_anchor.value_u64.is_some_and(|n| n > 0);
-    if valid {
-        #[allow(clippy::cast_precision_loss)]
-        {
-            estimate.value_f64 = Some(
-                population.value_u64.expect("measured count") as f64
-                    * (reference_anchor.value_u64.expect("measured count") as f64
-                        / source_anchor.value_u64.expect("measured count") as f64),
-            );
-        }
+    let counts = AnchorCounts {
+        population: measured_count(population),
+        source: measured_count(source_anchor).filter(|&n| n > 0),
+        reference: measured_count(reference_anchor).filter(|&n| n > 0),
+    };
+    let available =
+        counts.population.is_some() && counts.source.is_some() && counts.reference.is_some();
+    let (mut checks, rejection) = anchor_checks(
+        &target.id,
+        [source_anchor, reference_anchor],
+        &counts,
+        inputs.limits,
+    );
+    let rejection = if available {
+        rejection
+    } else {
+        Some("invalid_or_unavailable_anchor")
+    };
+    if let (None, Some(population), Some(source), Some(reference)) = (
+        rejection,
+        counts.population,
+        counts.source,
+        counts.reference,
+    ) {
+        estimate.value_f64 = Some(as_f64(population) * (as_f64(reference) / as_f64(source)));
         estimate.status = ObservationStatus::Estimated;
         estimate.reason = None;
     } else {
         estimate.status = ObservationStatus::QcRejected;
         estimate.value_f64 = None;
         estimate.supporting_count = population.value_u64.or(population.supporting_count);
-        estimate.reason = Some("invalid_or_unavailable_anchor".into());
+        estimate.reason = rejection.map(Into::into);
     }
     estimate.seal()?;
 
-    let check = SpecimenCheck {
-        category: "consistency".into(),
-        scope: target.id.clone(),
-        check: "reference_ratio_anchor".into(),
-        status: if valid {
-            CheckStatus::Pass
-        } else {
-            CheckStatus::Fail
+    checks.insert(
+        0,
+        SpecimenCheck {
+            category: "consistency".into(),
+            scope: target.id.clone(),
+            check: "reference_ratio_anchor".into(),
+            status: if available {
+                CheckStatus::Pass
+            } else {
+                CheckStatus::Fail
+            },
+            message: format!(
+                "reference_ratio is experimental; no fallback or averaging; {}",
+                estimate_precision(&counts)
+            ),
         },
-        message: "reference_ratio is experimental; no fallback or averaging".into(),
+    );
+    Ok((estimate, checks))
+}
+
+/// Measured counts of a ratio; anchors are `None` unless measured and
+/// positive.
+struct AnchorCounts {
+    population: Option<u64>,
+    source: Option<u64>,
+    reference: Option<u64>,
+}
+
+fn measured_count(observation: &PopulationObservation) -> Option<u64> {
+    (observation.status == ObservationStatus::Measured)
+        .then_some(observation.value_u64)
+        .flatten()
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn as_f64(count: u64) -> f64 {
+    count as f64
+}
+
+/// Poisson relative CV of `population × reference / source` for independent
+/// counts (delta method); undefined without a positive population count.
+fn estimate_precision(counts: &AnchorCounts) -> String {
+    match (counts.population, counts.source, counts.reference) {
+        (Some(population), Some(source), Some(reference)) if population > 0 => format!(
+            "estimate Poisson CV {:.3}",
+            (1.0 / as_f64(population) + 1.0 / as_f64(source) + 1.0 / as_f64(reference)).sqrt()
+        ),
+        _ => "estimate Poisson CV n/a".into(),
+    }
+}
+
+/// Reliability checks of a reference-ratio anchor. Returns the checks and
+/// the first rejection reason in fixed order: too few events, then scale.
+fn anchor_checks(
+    scope: &str,
+    [source, reference]: [&PopulationObservation; 2],
+    counts: &AnchorCounts,
+    limits: &AnchorLimits,
+) -> (Vec<SpecimenCheck>, Option<&'static str>) {
+    let check = |name: &str, status: CheckStatus, message: String| SpecimenCheck {
+        category: "consistency".into(),
+        scope: scope.to_owned(),
+        check: name.into(),
+        status,
+        message,
     };
-    Ok((estimate, check))
+    let mut rejection = None;
+    let mut low = false;
+    let describe = |observation: &PopulationObservation, count: Option<u64>| {
+        let name = format!(
+            "{}/{} anchor `{}`",
+            observation.panel_id, observation.source_id, observation.target.id
+        );
+        match count {
+            Some(n) => format!(
+                "{name}: {n} event(s) (minimum {}, Poisson CV {:.3})",
+                limits.min_events,
+                1.0 / as_f64(n).sqrt()
+            ),
+            None => format!("{name}: unavailable (minimum {})", limits.min_events),
+        }
+    };
+    let mut messages = Vec::new();
+    for (observation, count) in [(source, counts.source), (reference, counts.reference)] {
+        low |= count.is_none_or(|n| n < limits.min_events);
+        messages.push(describe(observation, count));
+    }
+    if low {
+        rejection = Some("anchor_below_min_events");
+    }
+    let mut checks = vec![check(
+        "reference_ratio_anchor_events",
+        if low {
+            CheckStatus::Fail
+        } else {
+            CheckStatus::Pass
+        },
+        messages.join("; "),
+    )];
+    let (Some(source_count), Some(reference_count)) = (counts.source, counts.reference) else {
+        return (checks, rejection);
+    };
+    if let Some(max_scale) = limits.max_scale {
+        let scale = as_f64(reference_count) / as_f64(source_count);
+        let excess = scale.max(1.0 / scale) > max_scale;
+        if excess && rejection.is_none() {
+            rejection = Some("anchor_scale_out_of_bounds");
+        }
+        checks.push(check(
+            "reference_ratio_scale",
+            if excess {
+                CheckStatus::Fail
+            } else {
+                CheckStatus::Pass
+            },
+            format!(
+                "scale {scale} (accepted [{}, {max_scale}])",
+                1.0 / max_scale
+            ),
+        ));
+    }
+    if let Some(max_ratio) = limits.max_frequency_ratio {
+        let frequency = |count: u64, observation: &PopulationObservation| {
+            as_f64(count) / as_f64(observation.n_events)
+        };
+        let source_frequency = frequency(source_count, source);
+        let reference_frequency = frequency(reference_count, reference);
+        let ratio =
+            source_frequency.max(reference_frequency) / source_frequency.min(reference_frequency);
+        let diverges = ratio.is_nan() || ratio > max_ratio;
+        checks.push(check(
+            "reference_ratio_anchor_frequency",
+            if diverges {
+                CheckStatus::Warn
+            } else {
+                CheckStatus::Pass
+            },
+            format!(
+                "anchor frequency {source_frequency} in {}/{} vs {reference_frequency} in {}/{}; ratio {ratio} (limit {max_ratio})",
+                source.panel_id, source.source_id, reference.panel_id, reference.source_id
+            ),
+        ));
+    }
+    (checks, rejection)
 }

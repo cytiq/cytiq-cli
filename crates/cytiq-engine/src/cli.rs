@@ -43,6 +43,9 @@ pub(crate) struct Cli {
     /// this file; it is replaced when it exists.
     #[arg(long, global = true, value_name = "PATH", value_parser = crate::parsers::parse_outcome_path)]
     pub(crate) outcome: Option<PathBuf>,
+    /// Reuse verified matching outputs, or reject stale outputs, instead of recomputing.
+    #[arg(long, global = true, value_enum, default_value = "recompute")]
+    pub(crate) reuse: CliReusePolicy,
     #[command(subcommand)]
     pub(crate) command: Commands,
 }
@@ -463,5 +466,21 @@ mod tests {
     #[test]
     fn cli_definition_is_consistent() {
         Cli::command().debug_assert();
+    }
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum CliReusePolicy {
+    Recompute,
+    Skip,
+    Reject,
+}
+impl From<CliReusePolicy> for cytiq_provenance::reuse::ReusePolicy {
+    fn from(value: CliReusePolicy) -> Self {
+        match value {
+            CliReusePolicy::Recompute => Self::Recompute,
+            CliReusePolicy::Skip => Self::Skip,
+            CliReusePolicy::Reject => Self::Reject,
+        }
     }
 }

@@ -22,7 +22,7 @@ this crate.
   `parse_positive_f64`, `parse_finite_f64`, `parse_non_negative_f64`, and
   `parse_channels` for every `--channels` + `--channel` pair, built on
   `cytiq_fcs::parse_channel_list`).
-- `src/provenance.rs` — `build_info` and `record_provenance`.
+- `src/provenance.rs` — build info, Invocation, the begin macro, and recording under an output lock.
 - `src/logging.rs` — the stderr logger; the binary's own modules all log as
   `cytiq`.
 - `tests/<command>_cli.rs` — integration tests per subcommand, running the
@@ -59,10 +59,10 @@ The package is `cytiq-engine`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`)
 - Errors propagate as `Box<dyn Error>` from `run()`; `main` prints the error
   and exits with the code `error::classify` assigns (0–4, see the README).
   Channel-list errors are wrapped as `io::ErrorKind::InvalidInput` (code 2).
-  Failed checks are a library error variant returned after the report and
-  provenance are written (`QcError::Failed`, `PreflightError::Failed`,
-  `SpillQcError::Flagged`), which classifies as `3`. Do not `panic!` or call
-  `process::exit` in a command arm.
+  Completed QC failures return a typed outcome after the report and provenance
+  are written. The corresponding library errors (`QcError::Failed`,
+  `PreflightError::Failed`, `SpillQcError::Flagged`) determine reason/code 3.
+  Do not `panic!` or call `process::exit` in a command arm.
 - `src/error/libraries.rs` matches every variant of every library error
   without a `_` arm, so a new variant does not compile until it is
   classified. When a variant mixes cases that need different codes, split it
@@ -141,3 +141,19 @@ determinism), `preflight_cli.rs`,
 a library crate. `autospill_cli.rs` and
 `autospectral_cli.rs` include `crates/<crate>/tests/support.rs` via
 `#[path]`, so changes to those helpers affect both crates' tests.
+
+## Execution and reuse
+
+Command arms accept `Invocation`, snapshot inputs and set algorithm/constants before
+`provenance::begin!`. Choose a File or Dir destination matching the library layout.
+The macro returns a verified reused outcome or a Run that owns the destination lock;
+pass that Run to `record_provenance` (or `record_with_reason` for completed QC).
+Never publish before begin or release the lock before the record is durable.
+Population/specimen workflows use `artifact::begin_package` and PackageRun::write.
+Their callers must snapshot every source before beginning the package.
+
+Use `tests/reuse_cli.rs` for policy, integrity, contention and mtime checks.
+`build.rs` fingerprints dirty source including untracked files; keep its Cargo
+rerun paths aligned with source/manifests. New global operational flags do not
+belong in semantic config. Existing per-command options remain semantic unless
+listed in provenance's documented NON_SEMANTIC_OPTIONS.

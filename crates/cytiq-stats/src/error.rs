@@ -34,7 +34,9 @@ impl From<cytiq_publish::PublishError> for StatsError {
     fn from(error: cytiq_publish::PublishError) -> Self {
         use cytiq_publish::PublishError;
         match error {
-            PublishError::Exists { path } => Self::OutputExists { path },
+            PublishError::Exists { path } | PublishError::Locked { path } => {
+                Self::OutputExists { path }
+            }
             PublishError::Io { path, source } => Self::OutputWrite { path, source },
             PublishError::StagedTwice { .. } | PublishError::RollbackFailed { .. } => {
                 Self::OutputWrite {

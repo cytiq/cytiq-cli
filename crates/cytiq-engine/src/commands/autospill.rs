@@ -5,7 +5,7 @@ use cytiq_autospill::{
     AutospillConfig, AutospillRunner, export_matrix, read_controls_manifest,
     read_detectors_manifest, read_transform_manifest,
 };
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::{debug, info};
 use serde::Serialize;
 
@@ -41,8 +41,8 @@ pub(crate) struct AutospillArgs {
 
 pub(crate) fn run(
     args: AutospillArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let AutospillArgs {
         controls,
         input_dir,
@@ -104,6 +104,10 @@ pub(crate) fn run(
         debug_dir,
         threads,
     };
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(output.clone())
+    );
     let result = AutospillRunner::run(&manifest, &input_dir, &config)?;
     info!(
         "autospill finished computation for {} dyes across {} detectors",

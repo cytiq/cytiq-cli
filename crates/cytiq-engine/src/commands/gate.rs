@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use cytiq_gating::{GatingConfig, GatingRunner};
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::{debug, info};
 use serde::Serialize;
 
@@ -37,8 +37,8 @@ pub(crate) struct GateArgs {
 
 pub(crate) fn run(
     args: GateArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let GateArgs {
         input,
         gating_ml,
@@ -67,6 +67,10 @@ pub(crate) fn run(
     recorder.snapshot_inputs("gating_ml", std::slice::from_ref(&config.gating_ml))?;
     recorder.snapshot_inputs("mask", &config.masks)?;
     recorder.set_algorithms(cytiq_gating::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(config.output.clone())
+    );
     let result = GatingRunner::run(&config)?;
     let mut outputs = vec![config.output.clone()];
     outputs.extend(config.membership.clone());

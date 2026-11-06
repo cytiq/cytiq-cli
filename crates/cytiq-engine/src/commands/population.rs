@@ -63,6 +63,7 @@ pub(crate) struct ObserveArgs {
 pub(crate) fn run(
     command: PopulationCommand,
     recorder: RunRecorder,
+    reuse: cytiq_provenance::reuse::ReusePolicy,
 ) -> Result<CommandOutcome, Box<dyn std::error::Error>> {
     match command {
         PopulationCommand::Validate(args) => finish(
@@ -71,7 +72,13 @@ pub(crate) fn run(
         ),
         PopulationCommand::Observe(args) => finish(
             "cytiq population observe",
-            runner::write_observations(&args.inputs.into(), &args.output, args.overwrite, recorder),
+            runner::write_observations(
+                &args.inputs.into(),
+                &args.output,
+                args.overwrite,
+                reuse,
+                recorder,
+            ),
         ),
     }
 }

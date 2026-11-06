@@ -126,6 +126,7 @@ fn setup(directory: &Path, fail: bool) -> ObserveConfig {
         .finish(
             std::slice::from_ref(&config.annotations),
             &config.producer_provenance,
+            cytiq_provenance::outcome::OutcomeReason::Success,
         )
         .unwrap();
     let status = if fail { "fail" } else { "pass" };
@@ -141,6 +142,7 @@ fn setup(directory: &Path, fail: bool) -> ObserveConfig {
     qc.finish(
         std::slice::from_ref(&config.qc_report),
         &config.qc_provenance,
+        cytiq_provenance::outcome::OutcomeReason::Success,
     )
     .unwrap();
     config

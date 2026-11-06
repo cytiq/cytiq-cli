@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use cytiq_provenance::{RunRecorder, record_path_for_dir};
+use cytiq_provenance::record_path_for_dir;
 use log::info;
 use serde::Serialize;
 
@@ -30,8 +30,8 @@ pub(crate) struct ClassifyArgs {
 
 pub(crate) fn run(
     args: ClassifyArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let ClassifyArgs {
         input,
         model,
@@ -58,6 +58,15 @@ pub(crate) fn run(
     recorder.snapshot_inputs("model", &cytiq_classify::input_files(&config.model)?)?;
     recorder.snapshot_inputs("mask", &config.masks)?;
     recorder.set_algorithms(cytiq_classify::UPSTREAM);
+    recorder.set_parallelism(
+        config
+            .threads
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
+    );
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::Dir(config.output.clone())
+    );
     let result = cytiq_classify::ClassifyRunner::run(&config)?;
     info!(
         "classified {} of {} events; {} unknown",

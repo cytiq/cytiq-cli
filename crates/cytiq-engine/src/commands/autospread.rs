@@ -5,7 +5,7 @@ use cytiq_autospill::{
     AutospreadConfig, AutospreadRunner, export_spread_matrix, read_controls_manifest,
     read_detectors_manifest,
 };
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::{debug, info};
 use serde::Serialize;
 
@@ -36,8 +36,8 @@ pub(crate) struct AutospreadArgs {
 
 pub(crate) fn run(
     args: AutospreadArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let AutospreadArgs {
         controls,
         input_dir,
@@ -83,6 +83,10 @@ pub(crate) fn run(
         debug_dir,
         threads,
     };
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(output.clone())
+    );
     let result = AutospreadRunner::run(&manifest, &input_dir, &config)?;
     export_spread_matrix(&result, &output)?;
     info!(

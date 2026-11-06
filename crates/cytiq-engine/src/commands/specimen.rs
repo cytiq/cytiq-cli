@@ -91,6 +91,7 @@ impl From<CompareArgs> for CompareConfig {
             policy: args.policy,
             output: args.output,
             overwrite: args.overwrite,
+            reuse: cytiq_provenance::reuse::ReusePolicy::Recompute,
         }
     }
 }
@@ -133,6 +134,7 @@ impl From<ReportArgs> for ReportConfig {
             output: args.output,
             format: args.format.into(),
             overwrite: args.overwrite,
+            reuse: cytiq_provenance::reuse::ReusePolicy::Recompute,
         }
     }
 }
@@ -159,6 +161,7 @@ pub(crate) fn finish(
 pub(crate) fn run(
     command: SpecimenCommand,
     recorder: RunRecorder,
+    reuse: cytiq_provenance::reuse::ReusePolicy,
 ) -> Result<CommandOutcome, Box<dyn std::error::Error>> {
     match command {
         SpecimenCommand::Validate(args) => finish(
@@ -167,7 +170,13 @@ pub(crate) fn run(
         ),
         SpecimenCommand::Plan(args) => finish(
             "cytiq specimen plan",
-            runner::write_plan(&args.inputs.into(), &args.output, args.overwrite, recorder),
+            runner::write_plan(
+                &args.inputs.into(),
+                &args.output,
+                args.overwrite,
+                reuse,
+                recorder,
+            ),
         ),
         SpecimenCommand::Run(args) => finish(
             "cytiq specimen run",
@@ -176,16 +185,29 @@ pub(crate) fn run(
                 &args.observations,
                 &args.output,
                 args.overwrite,
+                reuse,
                 recorder,
             ),
         ),
         SpecimenCommand::Compare(args) => finish(
             "cytiq specimen compare",
-            runner::write_comparison(&args.into(), recorder),
+            runner::write_comparison(
+                &CompareConfig {
+                    reuse,
+                    ..args.into()
+                },
+                recorder,
+            ),
         ),
         SpecimenCommand::Report(args) => finish(
             "cytiq specimen report",
-            cytiq_specimen::report::write_report(&args.into(), recorder),
+            cytiq_specimen::report::write_report(
+                &ReportConfig {
+                    reuse,
+                    ..args.into()
+                },
+                recorder,
+            ),
         ),
     }
 }

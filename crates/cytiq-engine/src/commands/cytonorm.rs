@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 use cytiq_flowsom::FlowSomConstants;
-use cytiq_provenance::RunRecorder;
+
 use log::info;
 use serde::Serialize;
 
@@ -45,12 +45,12 @@ pub(crate) enum CytoNormCommand {
 
 pub(crate) fn run(
     command: CytoNormCommand,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     use cytiq_cytonorm::{ApplyConfig, CytoNormRunner, TrainConfig};
     recorder.set_algorithms(cytiq_cytonorm::UPSTREAM);
     recorder.set_constants(&FlowSomConstants::default());
-    let result = match command {
+    let (result, recorder) = match command {
         CytoNormCommand::Train {
             manifest,
             output,
@@ -61,13 +61,18 @@ pub(crate) fn run(
             let design = cytiq_cytonorm::Manifest::load(&manifest)?;
             recorder.set_config(&serde_json::json!({"manifest":design,"output":output,"threads":threads,"debug_dir":debug_dir,"overwrite":overwrite}));
             recorder.snapshot_inputs("cohort_input", &CytoNormRunner::input_files(&manifest)?)?;
-            CytoNormRunner::train(&TrainConfig {
+            let run = crate::provenance::begin!(
+                recorder,
+                cytiq_provenance::reuse::Destination::Dir(output.clone())
+            );
+            let result = CytoNormRunner::train(&TrainConfig {
                 manifest,
                 output,
                 threads,
                 debug_dir,
                 overwrite,
-            })?
+            })?;
+            (result, run)
         }
         CytoNormCommand::Apply {
             input,
@@ -83,7 +88,11 @@ pub(crate) fn run(
                 "normalization_model",
                 &cytiq_cytonorm::CytoNormModel::input_files(&model),
             )?;
-            CytoNormRunner::apply(&ApplyConfig {
+            let run = crate::provenance::begin!(
+                recorder,
+                cytiq_provenance::reuse::Destination::File(output.clone())
+            );
+            let result = CytoNormRunner::apply(&ApplyConfig {
                 input,
                 model,
                 batch,
@@ -91,7 +100,8 @@ pub(crate) fn run(
                 threads,
                 debug_dir,
                 overwrite,
-            })?
+            })?;
+            (result, run)
         }
     };
     info!(

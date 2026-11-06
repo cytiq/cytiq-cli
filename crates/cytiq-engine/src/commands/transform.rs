@@ -2,7 +2,7 @@ use std::io::{self};
 use std::path::PathBuf;
 
 use clap::Args;
-use cytiq_provenance::{RunRecorder, record_path_for_dir, record_path_for_file};
+use cytiq_provenance::{record_path_for_dir, record_path_for_file};
 use cytiq_transform::{
     BiexponentialParameters, LogicleParameters, TransformConfig, TransformParameters,
     TransformRunResult, TransformRunner,
@@ -81,8 +81,8 @@ pub(crate) struct TransformArgs {
 
 pub(crate) fn run(
     args: TransformArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let TransformArgs {
         input,
         output,
@@ -142,6 +142,17 @@ pub(crate) fn run(
         recorder.snapshot_inputs("input", &TransformRunner::input_files(&config)?)?;
         recorder.set_algorithms(cytiq_transform::UPSTREAM);
     }
+    if config.dry_run {
+        print_transform_dry_run(&TransformRunner::run(&config)?);
+        return Ok(None);
+    }
+    let directory = config.output.is_dir() || TransformRunner::input_files(&config)?.len() > 1;
+    let destination = if directory {
+        cytiq_provenance::reuse::Destination::Dir(config.output.clone())
+    } else {
+        cytiq_provenance::reuse::Destination::File(config.output.clone())
+    };
+    let recorder = crate::provenance::begin!(recorder, destination);
     let result = TransformRunner::run(&config)?;
     if result.dry_run {
         print_transform_dry_run(&result);
@@ -151,7 +162,7 @@ pub(crate) fn run(
     }
     info!("transform completed for {} file(s)", result.files.len());
     if result.dry_run {
-        return Ok(());
+        return Ok(None);
     }
     let mut outputs = result
         .files

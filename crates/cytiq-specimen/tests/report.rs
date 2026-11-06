@@ -16,6 +16,7 @@ fn config(input: &Path, output: &Path, format: ReportFormat) -> ReportConfig {
         output: output.into(),
         format,
         overwrite: false,
+        reuse: cytiq_provenance::reuse::ReusePolicy::Recompute,
     }
 }
 
@@ -104,6 +105,7 @@ fn reports_comparisons_after_original_packages_are_removed() {
             policy: None,
             output: diff.clone(),
             overwrite: false,
+            reuse: cytiq_provenance::reuse::ReusePolicy::Recompute,
         },
         recorder("cytiq specimen compare"),
     )

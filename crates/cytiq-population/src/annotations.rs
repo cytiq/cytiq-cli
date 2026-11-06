@@ -326,7 +326,11 @@ pub fn observe(config: &ObserveConfig) -> Result<(EventAnnotations, Vec<Populati
 
 fn producer_record(path: &Path) -> Result<RunRecord> {
     let record: RunRecord = serde_json::from_value(serialization::read(path)?)?;
-    require(record.schema_version == 2, "producer provenance must be v2")?;
+    require(
+        (cytiq_provenance::MIN_READ_SCHEMA_VERSION..=cytiq_provenance::SCHEMA_VERSION)
+            .contains(&record.schema_version),
+        "unsupported producer provenance version",
+    )?;
     Ok(record)
 }
 

@@ -27,7 +27,10 @@
 //! ```
 
 mod error;
+mod lock;
 mod publication;
+pub mod recovery;
 
 pub use crate::error::{PublishError, RollbackFailure};
+pub use crate::lock::OutputLock;
 pub use crate::publication::{Existing, Publication, Staging, write_file};

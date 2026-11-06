@@ -3,7 +3,9 @@
 //! else the one cargo recorded in `.cargo_vcs_info.json` when packaging (a
 //! crates.io install), else `git rev-parse HEAD`.
 
+use sha2::{Digest, Sha256};
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -68,7 +70,46 @@ fn git_commit() -> Option<String> {
     {
         println!("cargo:rerun-if-changed={path}");
     }
-    git(&["rev-parse", "HEAD"])
+    let root = git(&["rev-parse", "--show-toplevel"])?;
+    println!("cargo:rerun-if-changed={root}/crates");
+    println!("cargo:rerun-if-changed={root}/Cargo.lock");
+    println!("cargo:rerun-if-changed={root}/Cargo.toml");
+    let commit = git(&["rev-parse", "HEAD"])?;
+    let diff = Command::new("git")
+        .args(["diff", "HEAD", "--binary"])
+        .output()
+        .ok()?;
+    if !diff.status.success() {
+        return None;
+    }
+    // Include new Rust/manifests too: git diff alone omits untracked source.
+    let mut hasher = Sha256::new();
+    hasher.update(&diff.stdout);
+    let mut dirty = !diff.stdout.is_empty();
+    if let Some(files) = git(&[
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "../../crates",
+    ]) {
+        for name in files.lines() {
+            if let Ok(bytes) = fs::read(name) {
+                dirty = true;
+                hasher.update(name.as_bytes());
+                hasher.update(bytes);
+            }
+        }
+    }
+    Some(if dirty {
+        let digest = hasher.finalize().iter().fold(String::new(), |mut hex, b| {
+            write!(hex, "{b:02x}").unwrap();
+            hex
+        });
+        format!("{commit}-dirty.{}", &digest[..12])
+    } else {
+        commit
+    })
 }
 
 fn git(args: &[&str]) -> Option<String> {

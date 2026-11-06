@@ -22,11 +22,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod fingerprint;
 pub mod outcome;
+pub mod reuse;
 
-/// Version 2 added `build`, `platform`, `config`, `constants`, `algorithms`
-/// and input `role`s, and hashes inputs before the run.
-pub const SCHEMA_VERSION: u32 = 2;
+/// Version 3 adds execution fingerprints, completion reasons and optional parallelism.
+/// Version 2 records remain readable, but cannot be reused.
+pub const SCHEMA_VERSION: u32 = 3;
+pub const MIN_READ_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum ProvenanceError {
@@ -161,6 +164,19 @@ pub struct RunRecord {
     pub finished_at_unix_ms: u128,
     pub inputs: Vec<FileRecord>,
     pub outputs: Vec<FileRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<outcome::OutcomeReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallelism: Option<usize>,
+}
+
+impl RunRecord {
+    #[must_use]
+    pub fn compute_fingerprint(&self) -> String {
+        fingerprint::compute(self)
+    }
 }
 
 /// Collects a run's record: start it and snapshot the inputs before the
@@ -176,6 +192,7 @@ pub struct RunRecorder {
     algorithms: BTreeMap<String, String>,
     started_at_unix_ms: u128,
     inputs: Vec<InputSnapshot>,
+    parallelism: Option<usize>,
 }
 
 /// An input as it was before the command ran.
@@ -183,11 +200,10 @@ pub struct RunRecorder {
 struct InputSnapshot {
     path: PathBuf,
     record: FileRecord,
-    modified: Option<SystemTime>,
 }
 
 impl RunRecorder {
-    /// Build a v2 record for staged files without publishing anything.
+    /// Build a v3 record for staged files without publishing anything.
     /// Each pair contains the final path and the file to hash before commit.
     ///
     /// # Errors
@@ -195,18 +211,9 @@ impl RunRecorder {
     pub fn prepare_staged(
         self,
         outputs: &[(PathBuf, PathBuf)],
+        reason: outcome::OutcomeReason,
     ) -> Result<RunRecord, ProvenanceError> {
-        for input in &self.inputs {
-            let current = hash_file(&input.path).map_err(|source| ProvenanceError::Hash {
-                path: input.path.clone(),
-                source,
-            })?;
-            if current != (input.record.bytes, input.record.sha256.clone()) {
-                return Err(ProvenanceError::InputChanged {
-                    path: input.path.clone(),
-                });
-            }
-        }
+        self.verify_inputs()?;
         let outputs = outputs
             .iter()
             .map(|(target, staged)| {
@@ -215,7 +222,7 @@ impl RunRecorder {
                 Ok(record)
             })
             .collect::<Result<Vec<_>, ProvenanceError>>()?;
-        Ok(RunRecord {
+        let mut record = RunRecord {
             schema_version: SCHEMA_VERSION,
             tool: self.tool,
             version: self.version,
@@ -229,7 +236,12 @@ impl RunRecorder {
             finished_at_unix_ms: unix_ms(),
             inputs: self.inputs.into_iter().map(|input| input.record).collect(),
             outputs,
-        })
+            execution_fingerprint: None,
+            reason: Some(reason),
+            parallelism: self.parallelism,
+        };
+        record.execution_fingerprint = Some(record.compute_fingerprint());
+        Ok(record)
     }
 
     #[must_use]
@@ -248,6 +260,7 @@ impl RunRecorder {
             algorithms: BTreeMap::new(),
             started_at_unix_ms: unix_ms(),
             inputs: Vec::new(),
+            parallelism: None,
         }
     }
 
@@ -255,6 +268,38 @@ impl RunRecorder {
     pub fn with_build(mut self, build: BuildInfo) -> Self {
         self.build = build;
         self
+    }
+
+    pub fn set_parallelism(&mut self, threads: usize) {
+        self.parallelism = Some(threads);
+    }
+
+    #[must_use]
+    pub fn execution_fingerprint(&self) -> String {
+        self.snapshot_record().compute_fingerprint()
+    }
+
+    /// Current semantic inputs, suitable for read-only reuse assessment.
+    #[must_use]
+    pub fn snapshot_record(&self) -> RunRecord {
+        RunRecord {
+            schema_version: SCHEMA_VERSION,
+            tool: self.tool.clone(),
+            version: self.version.clone(),
+            build: self.build.clone(),
+            platform: Platform::current(),
+            arguments: self.arguments.clone(),
+            config: self.config.clone(),
+            constants: self.constants.clone(),
+            algorithms: self.algorithms.clone(),
+            started_at_unix_ms: self.started_at_unix_ms,
+            finished_at_unix_ms: unix_ms(),
+            inputs: self.inputs.iter().map(|i| i.record.clone()).collect(),
+            outputs: Vec::new(),
+            execution_fingerprint: None,
+            reason: None,
+            parallelism: self.parallelism,
+        }
     }
 
     /// Record the command's effective configuration.
@@ -288,13 +333,34 @@ impl RunRecorder {
         inputs: &[PathBuf],
     ) -> Result<(), ProvenanceError> {
         for path in inputs.iter().filter(|path| path.is_file()) {
-            let modified = modified(path);
             let mut record = FileRecord::of(path)?;
             record.role = Some(role.to_owned());
             self.inputs.push(InputSnapshot {
                 path: path.clone(),
                 record,
-                modified,
+            });
+        }
+        Ok(())
+    }
+
+    /// Verify that every snapshotted input still has its original bytes.
+    /// # Errors
+    /// Returns hashing failures or `InputChanged`, including changes with preserved mtimes.
+    pub fn verify_inputs(&self) -> Result<(), ProvenanceError> {
+        for input in &self.inputs {
+            Self::verify_input(input)?;
+        }
+        Ok(())
+    }
+
+    fn verify_input(input: &InputSnapshot) -> Result<(), ProvenanceError> {
+        let current = hash_file(&input.path).map_err(|source| ProvenanceError::Hash {
+            path: input.path.clone(),
+            source,
+        })?;
+        if current != (input.record.bytes, input.record.sha256.clone()) {
+            return Err(ProvenanceError::InputChanged {
+                path: input.path.clone(),
             });
         }
         Ok(())
@@ -326,6 +392,7 @@ impl RunRecorder {
         self,
         outputs: &[PathBuf],
         record_path: &Path,
+        reason: outcome::OutcomeReason,
     ) -> Result<RunRecord, ProvenanceError> {
         let outputs = outputs
             .iter()
@@ -336,16 +403,11 @@ impl RunRecorder {
             .map(|path| canonical(path))
             .collect::<Vec<_>>();
         for input in &self.inputs {
-            let unchanged = fs::metadata(&input.path).is_ok_and(|metadata| {
-                metadata.len() == input.record.bytes && metadata.modified().ok() == input.modified
-            });
-            if !unchanged && !written.contains(&canonical(&input.path)) {
-                return Err(ProvenanceError::InputChanged {
-                    path: input.path.clone(),
-                });
+            if !written.contains(&canonical(&input.path)) {
+                Self::verify_input(input)?;
             }
         }
-        let record = RunRecord {
+        let mut record = RunRecord {
             schema_version: SCHEMA_VERSION,
             tool: self.tool,
             version: self.version,
@@ -362,7 +424,11 @@ impl RunRecorder {
                 .into_iter()
                 .map(|path| FileRecord::of(path))
                 .collect::<Result<_, _>>()?,
+            execution_fingerprint: None,
+            reason: Some(reason),
+            parallelism: self.parallelism,
         };
+        record.execution_fingerprint = Some(record.compute_fingerprint());
         write_record(record_path, &record)?;
         Ok(record)
     }
@@ -412,7 +478,11 @@ fn is_record_or_temporary(path: &Path) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == "provenance.json" || name.ends_with(".provenance.json"));
-    is_temporary(path) || record
+    is_temporary(path)
+        || record
+        || path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().ends_with(".cytiq-lock"))
 }
 
 /// Staged outputs (`cytiq-publish`) are `.tmp` files or directories until
@@ -478,12 +548,6 @@ fn to_value(value: &impl Serialize) -> serde_json::Value {
     serde_json::to_value(value).unwrap_or_else(|error| serde_json::Value::String(error.to_string()))
 }
 
-fn modified(path: &Path) -> Option<SystemTime> {
-    fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-}
-
 /// `path` resolved, so `./a` and `a` name the same file.
 fn canonical(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
@@ -521,9 +585,12 @@ mod tests {
             .snapshot_inputs("input", std::slice::from_ref(&input))
             .unwrap();
         let record = recorder
-            .prepare_staged(&[(target.clone(), staged)])
+            .prepare_staged(
+                &[(target.clone(), staged)],
+                crate::outcome::OutcomeReason::Success,
+            )
             .unwrap();
-        assert_eq!(record.schema_version, 2);
+        assert_eq!(record.schema_version, SCHEMA_VERSION);
         assert_eq!(record.outputs[0].path, target.display().to_string());
         assert_eq!(record.outputs[0].sha256, ABC_SHA256);
         assert!(!target.exists());
@@ -596,7 +663,13 @@ mod tests {
             .snapshot_inputs("input", &[input, directory.join("missing.txt")])
             .unwrap();
         fs::write(&output, b"").unwrap();
-        let record = recorder.finish(&[output], &record_path).unwrap();
+        let record = recorder
+            .finish(
+                &[output],
+                &record_path,
+                crate::outcome::OutcomeReason::Success,
+            )
+            .unwrap();
 
         assert_eq!(record.inputs.len(), 1, "missing paths are skipped");
         assert_eq!(record.inputs[0].sha256, ABC_SHA256);
@@ -621,7 +694,11 @@ mod tests {
         // The command replaces its input in place.
         fs::write(&file, b"abcdef").unwrap();
         let record = recorder
-            .finish(std::slice::from_ref(&file), &record_path_for_file(&file))
+            .finish(
+                std::slice::from_ref(&file),
+                &record_path_for_file(&file),
+                crate::outcome::OutcomeReason::Success,
+            )
             .unwrap();
 
         assert_eq!(record.inputs[0].sha256, ABC_SHA256);
@@ -645,7 +722,11 @@ mod tests {
         let record_path = record_path_for_file(&output);
 
         assert!(matches!(
-            recorder.finish(&[output], &record_path),
+            recorder.finish(
+                &[output],
+                &record_path,
+                crate::outcome::OutcomeReason::Success
+            ),
             Err(ProvenanceError::InputChanged { .. })
         ));
         assert!(!record_path.exists());
@@ -676,10 +757,11 @@ mod tests {
             .finish(
                 std::slice::from_ref(&output),
                 &record_path_for_file(&output),
+                crate::outcome::OutcomeReason::Success,
             )
             .unwrap();
 
-        assert_eq!(record.schema_version, 2);
+        assert_eq!(record.schema_version, SCHEMA_VERSION);
         assert_eq!(record.build, build);
         assert_eq!(record.platform.os, std::env::consts::OS);
         assert!(record.platform.cpus >= 1);

@@ -6,7 +6,7 @@ use cytiq_autospectral::{
     read_controls_manifest as read_autospectral_controls_manifest,
     read_detectors_manifest as read_autospectral_detectors_manifest, read_samples_manifest,
 };
-use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir};
+use cytiq_provenance::{files_under, record_path_for_dir};
 use log::{debug, info};
 use serde::Serialize;
 
@@ -51,8 +51,8 @@ pub(crate) struct AutospectralArgs {
 
 pub(crate) fn run(
     args: AutospectralArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let AutospectralArgs {
         controls,
         samples,
@@ -107,6 +107,10 @@ pub(crate) fn run(
         threads,
         clean_controls: !quantile_gate,
     };
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::Dir(output.clone())
+    );
     let summary =
         AutoSpectralRunner::run(&control_manifest, &sample_manifest, &input_dir, &config)?;
     info!(

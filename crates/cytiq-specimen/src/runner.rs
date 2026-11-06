@@ -8,7 +8,7 @@ use crate::{
 use cytiq_manifest::RunManifest;
 use cytiq_population::{
     EventAnnotations, ObserveConfig,
-    artifact::{verify_package, write_json, write_package},
+    artifact::{PackageBegin, begin_package, verify_package, write_json},
     serialization, table,
 };
 use cytiq_provenance::{
@@ -84,7 +84,7 @@ fn build(config: &PlanConfig, recorder: &mut RunRecorder) -> Result<SpecimenPlan
 /// Returns configuration, definition or acquisition validation failures.
 pub fn validate_plan(config: &PlanConfig, mut recorder: RunRecorder) -> Result<CommandOutcome> {
     let plan = build(config, &mut recorder)?;
-    recorder.prepare_staged(&[])?;
+    recorder.prepare_staged(&[], cytiq_provenance::outcome::OutcomeReason::Success)?;
     Ok(CommandOutcome::new(
         "cytiq specimen validate",
         true,
@@ -103,25 +103,23 @@ pub fn write_plan(
     config: &PlanConfig,
     output: &Path,
     overwrite: bool,
+    reuse: cytiq_provenance::reuse::ReusePolicy,
     mut recorder: RunRecorder,
 ) -> Result<CommandOutcome> {
     let plan = build(config, &mut recorder)?;
+    let run = match begin_package(output, overwrite, "cytiq specimen plan", reuse, recorder)? {
+        PackageBegin::Reused(outcome) => return Ok(outcome),
+        PackageBegin::Compute(run) => run,
+    };
     let reason = if plan.missing_required() {
         OutcomeReason::Incomplete
     } else {
         OutcomeReason::Success
     };
-    Ok(write_package(
-        output,
-        overwrite,
-        recorder,
-        "cytiq specimen plan",
-        reason,
-        |staged| {
-            write_json(&staged.join("plan.json"), &plan)?;
-            Ok(vec!["plan.json".into()])
-        },
-    )?)
+    Ok(run.write("cytiq specimen plan", reason, |staged| {
+        write_json(&staged.join("plan.json"), &plan)?;
+        Ok(vec!["plan.json".into()])
+    })?)
 }
 
 fn prepare_observe(request: &ObserveRequest, recorder: &mut RunRecorder) -> Result<ObserveConfig> {
@@ -149,7 +147,7 @@ pub fn validate_population(
 ) -> Result<CommandOutcome> {
     let config = prepare_observe(request, &mut recorder)?;
     let (annotations, _) = cytiq_population::observe(&config)?;
-    recorder.prepare_staged(&[])?;
+    recorder.prepare_staged(&[], cytiq_provenance::outcome::OutcomeReason::Success)?;
     Ok(CommandOutcome::new(
         "cytiq population validate",
         true,
@@ -168,30 +166,34 @@ pub fn write_observations(
     request: &ObserveRequest,
     output: &Path,
     overwrite: bool,
+    reuse: cytiq_provenance::reuse::ReusePolicy,
     mut recorder: RunRecorder,
 ) -> Result<CommandOutcome> {
     let config = prepare_observe(request, &mut recorder)?;
+    let run = match begin_package(
+        output,
+        overwrite,
+        "cytiq population observe",
+        reuse,
+        recorder,
+    )? {
+        PackageBegin::Reused(outcome) => return Ok(outcome),
+        PackageBegin::Compute(run) => run,
+    };
     let (annotations, observations) = cytiq_population::observe(&config)?;
     let reason = if annotations.technical_status == "fail" {
         OutcomeReason::ChecksFailed
     } else {
         OutcomeReason::Success
     };
-    Ok(write_package(
-        output,
-        overwrite,
-        recorder,
-        "cytiq population observe",
-        reason,
-        |staged| {
-            write_json(&staged.join("event-annotations.json"), &annotations)?;
-            table::write(&staged.join("observations.parquet"), &observations)?;
-            Ok(vec![
-                "event-annotations.json".into(),
-                "observations.parquet".into(),
-            ])
-        },
-    )?)
+    Ok(run.write("cytiq population observe", reason, |staged| {
+        write_json(&staged.join("event-annotations.json"), &annotations)?;
+        table::write(&staged.join("observations.parquet"), &observations)?;
+        Ok(vec![
+            "event-annotations.json".into(),
+            "observations.parquet".into(),
+        ])
+    })?)
 }
 
 /// Assemble verified summaries; never opens FCS files or native annotation Parquet.
@@ -202,6 +204,7 @@ pub fn run_specimen(
     packages: &[PathBuf],
     output: &Path,
     overwrite: bool,
+    reuse: cytiq_provenance::reuse::ReusePolicy,
     mut recorder: RunRecorder,
 ) -> Result<CommandOutcome> {
     recorder.snapshot_inputs("plan", &plan_files(plan_path))?;
@@ -232,6 +235,10 @@ pub fn run_specimen(
             observations,
         });
     }
+    let run = match begin_package(output, overwrite, "cytiq specimen run", reuse, recorder)? {
+        PackageBegin::Reused(outcome) => return Ok(outcome),
+        PackageBegin::Compute(run) => run,
+    };
     let result = reconcile(&plan, &sources)?;
     let reason = if !result.complete {
         OutcomeReason::Incomplete
@@ -240,18 +247,11 @@ pub fn run_specimen(
     } else {
         OutcomeReason::Success
     };
-    Ok(write_package(
-        output,
-        overwrite,
-        recorder,
-        "cytiq specimen run",
-        reason,
-        |staged| {
-            write_json(&staged.join("result.json"), &result)?;
-            table::write(&staged.join("results.parquet"), &result.results)?;
-            Ok(vec!["result.json".into(), "results.parquet".into()])
-        },
-    )?)
+    Ok(run.write("cytiq specimen run", reason, |staged| {
+        write_json(&staged.join("result.json"), &result)?;
+        table::write(&staged.join("results.parquet"), &result.results)?;
+        Ok(vec!["result.json".into(), "results.parquet".into()])
+    })?)
 }
 
 fn plan_files(path: &Path) -> Vec<PathBuf> {
@@ -270,6 +270,7 @@ pub struct CompareConfig {
     pub policy: Option<PathBuf>,
     pub output: PathBuf,
     pub overwrite: bool,
+    pub reuse: cytiq_provenance::reuse::ReusePolicy,
 }
 
 pub(crate) fn snapshot_package(
@@ -295,7 +296,8 @@ pub(crate) fn package_identity(
     let record: cytiq_provenance::RunRecord =
         serde_json::from_value(serialization::read(&directory.join("provenance.json"))?)?;
     require(
-        record.schema_version == cytiq_provenance::SCHEMA_VERSION,
+        (cytiq_provenance::MIN_READ_SCHEMA_VERSION..=cytiq_provenance::SCHEMA_VERSION)
+            .contains(&record.schema_version),
         "unsupported source provenance version",
     )?;
     Ok(crate::compare::PackageIdentity {
@@ -322,13 +324,20 @@ pub fn write_comparison(
     } else {
         crate::ComparisonPolicy::default()
     };
+    let run = match begin_package(
+        &config.output,
+        config.overwrite,
+        "cytiq specimen compare",
+        config.reuse,
+        recorder,
+    )? {
+        PackageBegin::Reused(outcome) => return Ok(outcome),
+        PackageBegin::Compute(run) => run,
+    };
     let mut comparison = crate::compare(&baseline, &candidate, &policy)?;
     comparison.baseline_package = Some(package_identity(&config.baseline, &a)?);
     comparison.candidate_package = Some(package_identity(&config.candidate, &b)?);
-    Ok(write_package(
-        &config.output,
-        config.overwrite,
-        recorder,
+    Ok(run.write(
         "cytiq specimen compare",
         comparison.outcome_reason(),
         |staged| {

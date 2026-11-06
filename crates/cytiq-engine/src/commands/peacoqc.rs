@@ -5,7 +5,7 @@ use clap::Args;
 use cytiq_peacoqc::{
     PeacoQcConfig, PeacoQcConstants, PeacoQcRunner, masks_path as peacoqc_masks_path,
 };
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::info;
 use serde::Serialize;
 
@@ -42,8 +42,8 @@ pub(crate) struct PeacoqcArgs {
 
 pub(crate) fn run(
     args: PeacoqcArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let PeacoqcArgs {
         input,
         output,
@@ -74,6 +74,10 @@ pub(crate) fn run(
     recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
     recorder.set_constants(&PeacoQcConstants::default());
     recorder.set_algorithms(cytiq_peacoqc::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(output.clone())
+    );
     let result = PeacoQcRunner::run(&input, &output, &config)?;
     let outputs = [output.clone(), peacoqc_masks_path(&output)];
     info!(

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 use cytiq_mask::{MaskCombineConfig, MaskCombineRunner};
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::info;
 use serde::Serialize;
 
@@ -28,8 +28,8 @@ pub(crate) enum MaskCommand {
 
 pub(crate) fn run(
     command: MaskCommand,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     match command {
         MaskCommand::Combine {
             masks,
@@ -43,6 +43,10 @@ pub(crate) fn run(
                 overwrite,
             };
             recorder.snapshot_inputs("mask", &config.masks)?;
+            let recorder = crate::provenance::begin!(
+                recorder,
+                cytiq_provenance::reuse::Destination::File(config.output.clone())
+            );
             let combined = MaskCombineRunner::run(&config)?;
             info!(
                 "mask combine kept {} of {} event(s); wrote {}",

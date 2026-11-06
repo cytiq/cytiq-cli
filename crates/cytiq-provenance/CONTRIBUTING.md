@@ -36,3 +36,14 @@ this crate.
 cargo test -p cytiq-provenance
 cargo test -p cytiq-engine
 ```
+
+## Reuse invariants
+
+`fingerprint.rs` owns `FINGERPRINT_VERSION` and `NON_SEMANTIC_OPTIONS`. Bump the
+fingerprint version when canonicalization or semantic inclusion changes. All options
+are semantic except recursively removed overwrite/debug_dir/dry_run/threads;
+classify must call `set_parallelism` with its effective thread count.
+`reuse.rs` assesses records read-only; the caller holds the destination's OutputLock
+through assessment and publication. Never accept v2, unidentified builds, missing
+fingerprints or unchecked outputs. Test both fingerprint component changes and
+reused failing outcomes. `finish` and `prepare_staged` require a completion reason.

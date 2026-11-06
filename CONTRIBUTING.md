@@ -263,3 +263,16 @@ Every crate under `crates/` has its own `README.md` (purpose, public API, usage)
 ## Data Handling
 
 Treat `data/` as intentional repository content. Do not commit secrets, temporary exports, or generated artifacts unless they are required for reproducible development or tests.
+
+## Reusable execution
+
+Global `--reuse skip` reuses only matching v3 provenance with every output hash
+verified under a destination lock. `--reuse reject` refuses stale/damaged/unrecorded
+outputs; `--reuse recompute` keeps ordinary overwrite behavior. See the engine
+README for the policy table. QC outcomes retain their original exit code on reuse.
+
+Fingerprint config is semantic by default. Only overwrite/debug_dir/dry_run/threads
+are recursively removed; classify adds effective thread count as parallelism.
+New algorithm inputs and options must enter the recorder before begin. When these
+rules change, bump FINGERPRINT_VERSION and test invalidation. Paths matter;
+outputs are re-hashed. Keep dependency installations locked.

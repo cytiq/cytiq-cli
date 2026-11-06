@@ -68,3 +68,9 @@ from a specimen plan; see [cytiq-specimen](../cytiq-specimen/README.md).
 ```sh
 cargo test -p cytiq-population
 ```
+
+Package publication holds an OutputLock through recovery and commit.
+`artifact::begin_package` accepts a ReusePolicy and returns a verified saved outcome
+or a PackageRun for new publication. The CLI exposes this as global `--reuse`;
+new packages carry v3 provenance and outcome.execution metadata. Existing v2
+producer records remain readable and are never reused as execution caches.

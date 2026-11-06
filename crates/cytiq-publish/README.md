@@ -20,7 +20,7 @@ run publishes none of its outputs.
 | `commit()` | publish every staged output in staging order, then sync their directories; undo everything if that fails |
 | `write_file(target, existing, \|writer\| ...)` | one file: stage and commit |
 
-Errors are `PublishError::{Exists, StagedTwice, Io, RollbackFailed}`;
+Errors are `PublishError::{Exists, Locked, StagedTwice, Io, RollbackFailed}`;
 `PublishError::path()` is the path an error is about. `RollbackFailed` keeps
 the error that failed the commit as its `source` and lists a
 `RollbackFailure { target, previous, source }` for every step it could not
@@ -93,3 +93,21 @@ fn run(output: &std::path::Path, overwrite: bool) -> Result<(), PublishError> {
     publication.commit()
 }
 ```
+
+## Locking and recovery
+
+`OutputLock::acquire(target)` takes a nonblocking kernel lock on a sibling
+`.<name>.cytiq-lock`, outside any directory publication swaps. Keep the guard alive
+from recovery/assessment through the final provenance write. Another owner receives
+`PublishError::Locked`. The guard unlinks its lock file while holding the lock;
+on Unix it checks the inode before accepting or unlinking it. A crash releases the
+kernel lock, and the next invocation can claim the leftover file.
+
+`recovery::leftovers(target)` recognizes only that target's exact six-character
+`.tmp`/`.old.tmp` names. `recovery::recover(&lock)` restores a missing target from a
+unique backup (directories use `previous`), cleans abandoned staging, and syncs the
+parent. Multiple possible predecessors are preserved and reported as a conflict.
+Mixed file sets still require a matching provenance record and verified hashes.
+Locks are cooperative: older binaries do not take them, and filesystem support
+varies on NFS, SMB and FUSE. CLI recompute warns if locking is explicitly unsupported;
+reuse requires a working lock. Package publication requires locking for every policy.

@@ -64,7 +64,7 @@ impl OutcomeReason {
     #[must_use]
     pub fn of_publish(error: &PublishError) -> Self {
         match error {
-            PublishError::Exists { .. } => Self::OutputConflict,
+            PublishError::Exists { .. } | PublishError::Locked { .. } => Self::OutputConflict,
             PublishError::Io { source, .. } => Self::of_io(source),
             PublishError::StagedTwice { .. } | PublishError::RollbackFailed { .. } => {
                 Self::RuntimeError
@@ -84,6 +84,15 @@ pub struct CommandOutcome {
     pub message: String,
     /// Paths are relative to the package; never includes outcome.json itself.
     pub artifacts: Vec<FileRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<Execution>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Execution {
+    pub fingerprint: String,
+    pub reused: bool,
 }
 
 impl CommandOutcome {
@@ -97,6 +106,7 @@ impl CommandOutcome {
             exit_code: reason.exit_code(),
             message,
             artifacts: Vec::new(),
+            execution: None,
         }
     }
 

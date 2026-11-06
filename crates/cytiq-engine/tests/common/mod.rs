@@ -220,7 +220,12 @@ pub fn assert_provenance_chain(directory: &Path) {
         })
         .collect::<HashMap<_, _>>();
     for record in &records {
-        assert_eq!(record["schema_version"], 2, "{record:#}");
+        assert_eq!(record["schema_version"], 3, "{record:#}");
+        let fingerprint = record["execution_fingerprint"]
+            .as_str()
+            .expect("execution fingerprint");
+        assert_eq!(fingerprint.len(), 64);
+        assert!(fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert!(
             record["build"]["git_commit"]
                 .as_str()

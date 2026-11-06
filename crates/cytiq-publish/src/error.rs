@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
+    #[error("{} is locked by another cytiq process", path.display())]
+    Locked { path: PathBuf },
     #[error("{} already exists; pass --overwrite to replace it", path.display())]
     Exists { path: PathBuf },
     #[error("{} is staged more than once", path.display())]
@@ -36,7 +38,10 @@ impl PublishError {
     #[must_use]
     pub fn path(&self) -> &Path {
         match self {
-            Self::Exists { path } | Self::StagedTwice { path } | Self::Io { path, .. } => path,
+            Self::Locked { path }
+            | Self::Exists { path }
+            | Self::StagedTwice { path }
+            | Self::Io { path, .. } => path,
             Self::RollbackFailed { source, .. } => source.path(),
         }
     }

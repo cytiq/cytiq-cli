@@ -116,7 +116,7 @@ incomplete. Clinical criteria, absolute concentration and LoD/LoQ are not evalua
 
 Plans contain `plan.json`; observations contain `event-annotations.json` and
 `observations.parquet`; specimen results contain `result.json` and
-`results.parquet`. Every package also contains RunRecord v2 `provenance.json` and
+`results.parquet`. Every package also contains RunRecord v3 `provenance.json` (v2 remains readable) and
 completion record v1 `outcome.json`. Readers verify every outcome digest before
 using data; the presence of a result file alone does not prove completion.
 `SpecimenResult` v1 includes source observations, selected/derived results and
@@ -126,8 +126,9 @@ references, outcome/QC agreement and logical equality of JSON and Parquet result
 
 Publication stages and syncs a complete directory before replacement.
 `--overwrite` replaces the entire prior package; the default refuses existing
-outputs. No cache/resume or implicit retries are implemented. Failures and
-interrupted writes must be reconciled by the caller using completion records.
+outputs. `--reuse skip` reuses a matching verified package; `--reuse reject` refuses
+stale or damaged packages with exit 4. Interrupted directory publication is recovered
+under an output lock before assessment. Implicit retries are not performed.
 Only `specimen plan` reads raw FCS metadata; `specimen run` reads verified plans
 and population packages, so raw files and native annotations can be offline.
 

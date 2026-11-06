@@ -3,8 +3,8 @@
 Run records for cytiq commands: which command, with which arguments, read
 which files and wrote which files.
 
-Every command that writes files (all except `meta`, whose output already
-records the input's SHA-256) writes a `provenance.json` next to its output:
+Every command that writes files writes a `provenance.json` next to its output.
+`meta` to stdout carries the input hash in its document and writes no record:
 
 - `<output>.provenance.json` when the output is a file (`sample.comp.fcs` →
   `sample.comp.fcs.provenance.json`);
@@ -13,7 +13,7 @@ records the input's SHA-256) writes a `provenance.json` next to its output:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "tool": "cytiq compensate",
   "version": "0.1.0",
   "build": { "git_commit": "…", "rustc": "rustc 1.99.1 …", "target": "aarch64-apple-darwin", "profile": "release" },
@@ -26,7 +26,9 @@ records the input's SHA-256) writes a `provenance.json` next to its output:
   "finished_at_unix_ms": 1792790000420,
   "inputs":  [{ "path": "sample.fcs", "role": "input", "bytes": 320905, "sha256": "…" }],
   "outputs": [{ "path": "sample.comp.fcs", "bytes": 321580, "sha256": "…" },
-              { "path": "sample.comp.masks.parquet", "bytes": 21544, "sha256": "…" }]
+              { "path": "sample.comp.masks.parquet", "bytes": 21544, "sha256": "…" }],
+  "execution_fingerprint": "…",
+  "reason": "success"
 }
 ```
 
@@ -40,8 +42,8 @@ carries its `role`. Debug directories are not listed.
 
 `build.git_commit` is `CYTIQ_BUILD_COMMIT` when set at build time (as in
 Docker), else the commit cargo recorded when packaging the crate (a crates.io
-install; `-dirty` marks uncommitted changes), else `git rev-parse HEAD`, which
-does not detect uncommitted changes. Following each record's inputs back to earlier outputs
+install; `-dirty` marks uncommitted changes), else `git rev-parse HEAD` with `-dirty.<digest>` for modified source. An unknown
+commit or a packaged bare `-dirty` build cannot be reused. Following each record's inputs back to earlier outputs
 reconstructs the chain from the raw FCS files.
 
 Schema version 2 added `build`, `platform`, `config`, `constants`,
@@ -49,16 +51,17 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 
 ## Public API
 
-`RunRecorder::prepare_staged` builds a v2 record from `(final_path, staged_path)`
+`RunRecorder::prepare_staged` builds a v3 record from `(final_path, staged_path)`
 pairs, verifying input byte identities before publication. It writes nothing;
 the caller publishes it with data and an `outcome::CommandOutcome` v1 in one
-directory transaction. Existing `finish` and RunRecord v2 retain their contracts.
+directory transaction. `finish` and `prepare_staged` require an explicit `OutcomeReason`. Readers still accept
+v2 records; reuse requires v3.
 
 | Item | Purpose |
 | --- | --- |
 | `RunRecorder::start` / `snapshot_inputs` / `snapshot_roles` / `finish` | Start a record and hash the inputs, with their role, before a command runs; hash its outputs and write the record afterwards |
 | `RunRecorder::with_build`, `set_config`, `set_constants`, `set_algorithms` | Build info, effective configuration, fixed algorithm constants, upstream versions |
-| `RunRecord`, `FileRecord`, `BuildInfo`, `Platform`, `SCHEMA_VERSION` (2) | The document |
+| `RunRecord`, `FileRecord`, `BuildInfo`, `Platform`, `SCHEMA_VERSION` (3) | The document |
 | `record_path_for_file`, `record_path_for_dir` | Where a command's record goes |
 | `files_under` | Every file of an output directory, sorted, without records and `.tmp` files or directories (staged outputs and `.old.tmp` backups of `cytiq-publish`) |
 | `hash_file` | Streamed SHA-256 (also used by `cytiq-meta`) |
@@ -94,3 +97,21 @@ directory transaction. Existing `finish` and RunRecord v2 retain their contracts
 cargo test -p cytiq-provenance
 cargo test -p cytiq-engine   # every *_cli.rs checks its command's record via tests/common
 ```
+
+## Execution fingerprints and reuse
+
+Version 3 adds optional `execution_fingerprint`, `reason` and `parallelism`.
+`RunRecorder::execution_fingerprint()` and `RunRecord::compute_fingerprint()` use
+one versioned SHA-256 of sorted JSON keys: tool/version, build, effective semantic
+configuration, constants, algorithm versions, ordered input paths/roles/sizes/hashes,
+and recorded parallelism. Timestamps, platform, arguments and outputs are excluded.
+`overwrite`, `debug_dir`, `dry_run` and `threads` are removed recursively from config;
+every other option is semantic. Classify records effective parallelism separately,
+because ONNX results can depend on it.
+
+`reuse::assess` verifies the fingerprint and every output size/hash under the caller's
+output lock. `reuse::decide` implements recompute/skip/reject; v2, stale, damaged and
+unrecorded results are never reused. `CommandOutcome.execution` reports the
+fingerprint and whether the result was reused. Input paths remain significant,
+and assessment re-hashes all outputs. An unlocked dependency update at `cargo install`
+time can change a build without changing its source commit; use `--locked`.

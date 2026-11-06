@@ -33,6 +33,7 @@ pub struct ReportConfig {
     pub output: PathBuf,
     pub format: ReportFormat,
     pub overwrite: bool,
+    pub reuse: cytiq_provenance::reuse::ReusePolicy,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -124,17 +125,22 @@ impl SpecimenReport {
 /// Rejects invalid inputs and conflicts; preserves prior output when publication fails.
 pub fn write_report(config: &ReportConfig, mut recorder: RunRecorder) -> Result<CommandOutcome> {
     crate::runner::snapshot_package(&config.input, "report_input", &mut recorder)?;
-    let report = SpecimenReport::load(&config.input)?;
-    Ok(cytiq_population::write_package(
+    let run = match cytiq_population::artifact::begin_package(
         &config.output,
         config.overwrite,
-        recorder,
         "cytiq specimen report",
-        OutcomeReason::Success,
-        |staged| {
+        config.reuse,
+        recorder,
+    )? {
+        cytiq_population::artifact::PackageBegin::Reused(outcome) => return Ok(outcome),
+        cytiq_population::artifact::PackageBegin::Compute(run) => run,
+    };
+    let report = SpecimenReport::load(&config.input)?;
+    Ok(
+        run.write("cytiq specimen report", OutcomeReason::Success, |staged| {
             report.write(staged, config.format).map_err(|error| {
                 cytiq_population::PopulationError::Io(std::io::Error::other(error))
             })
-        },
-    )?)
+        })?,
+    )
 }

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use cytiq_compensate::MatrixKind as CompensateMatrixKind;
-use cytiq_provenance::{RunRecorder, record_path_for_dir};
+use cytiq_provenance::record_path_for_dir;
 use cytiq_spillqc::{
     BatchSettings, CompensaidParameters, DEFAULT_BATCH_MIN_FILES, DEFAULT_BATCH_MIN_FRACTION,
     DEFAULT_MIN_EVENTS, DEFAULT_SEGMENTS, PreprocessOptions, SpillQcConfig, SpillQcRunner,
@@ -13,7 +13,6 @@ use serde::Serialize;
 
 use crate::cli::CliMatrixKind;
 use crate::parsers::{parse_channels, parse_fraction, parse_positive_usize, parse_threads};
-use crate::provenance::record_provenance;
 
 #[derive(Debug, Serialize, Args)]
 #[allow(clippy::struct_excessive_bools)]
@@ -108,8 +107,8 @@ impl SpillqcArgs {
 
 pub(crate) fn run(
     args: &SpillqcArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     info!(
         "starting spillqc: inputs={}, output={}",
         args.input.len(),
@@ -123,6 +122,10 @@ pub(crate) fn run(
         recorder.snapshot_inputs("matrix", std::slice::from_ref(matrix))?;
     }
     recorder.set_algorithms(cytiq_spillqc::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::Dir(config.output.clone())
+    );
     let result = SpillQcRunner::run(&config)?;
     let counts = &result.summary.counts;
     for file in &result.summary.files {
@@ -147,13 +150,23 @@ pub(crate) fn run(
         counts.recurrent_pairs,
         config.output.display()
     );
-    record_provenance(
+    let failure = args
+        .fail_on_flag
+        .then(|| counts.ensure_unflagged(&config.output).err())
+        .flatten();
+    let reason = if failure.is_some() {
+        cytiq_provenance::outcome::OutcomeReason::ChecksFailed
+    } else {
+        cytiq_provenance::outcome::OutcomeReason::Success
+    };
+    let mut outcome = crate::provenance::record_with_reason(
         recorder,
         &result.outputs,
         &record_path_for_dir(&config.output),
+        reason,
     )?;
-    if args.fail_on_flag {
-        counts.ensure_unflagged(&config.output)?;
+    if let (Some(outcome), Some(failure)) = (&mut outcome, failure) {
+        outcome.message = failure.to_string();
     }
-    Ok(())
+    Ok(outcome)
 }

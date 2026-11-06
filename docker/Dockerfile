@@ -42,7 +42,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 
 # The build context has no `.git`; provenance records take the commit from
-# here (`just docker-build` passes `git rev-parse HEAD`). Declared after the
+# here (`just docker-build` also marks modified source as dirty). Declared after the
 # cook step, so that a new commit does not invalidate the dependency layer.
 ARG CYTIQ_BUILD_COMMIT=unknown
 

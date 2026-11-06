@@ -24,9 +24,13 @@ fn main() -> ExitCode {
     }
 
     // Usage errors exit here with clap's code 2 and write no outcome.
-    let Cli { outcome, command } = Cli::parse();
+    let Cli {
+        outcome,
+        reuse,
+        command,
+    } = Cli::parse();
     let name = format!("cytiq {}", command_name(&command));
-    let result = match run(command, &name) {
+    let result = match run(command, &name, reuse.into()) {
         Ok(Some(result)) => {
             if result.exit_code != 0 {
                 eprintln!("{:?}: {}", result.reason, result.message);
@@ -52,11 +56,12 @@ fn main() -> ExitCode {
     ExitCode::from(result.exit_code)
 }
 
-/// `Some` for command families that build their own outcome; `None` when a
-/// command succeeded without one.
+/// `Some` when a command publishes or reuses a typed outcome; `None` for
+/// a successful command without durable output.
 fn run(
     command: Commands,
     name: &str,
+    policy: cytiq_provenance::reuse::ReusePolicy,
 ) -> Result<Option<CommandOutcome>, Box<dyn std::error::Error>> {
     let mut recorder = RunRecorder::start(
         name,
@@ -65,11 +70,14 @@ fn run(
     )
     .with_build(build_info());
     recorder.set_config(&command);
+    let recorder = crate::provenance::Invocation { recorder, policy };
     match command {
         Commands::Population(command) => {
-            return commands::population::run(command, recorder).map(Some);
+            commands::population::run(command, recorder.recorder, policy).map(Some)
         }
-        Commands::Specimen(command) => return commands::specimen::run(command, recorder).map(Some),
+        Commands::Specimen(command) => {
+            commands::specimen::run(command, recorder.recorder, policy).map(Some)
+        }
         Commands::Autospill(args) => commands::autospill::run(args, recorder),
         Commands::Autospread(args) => commands::autospread::run(args, recorder),
         Commands::Autospectral(args) => commands::autospectral::run(args, recorder),
@@ -90,5 +98,4 @@ fn run(
         Commands::Flowsom(args) => commands::flowsom::run(args, recorder),
         Commands::Cytonorm(command) => commands::cytonorm::run(command, recorder),
     }
-    .map(|()| None)
 }

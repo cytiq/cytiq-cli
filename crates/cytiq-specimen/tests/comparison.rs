@@ -222,6 +222,7 @@ fn comparison_packages_are_standalone_recomputed_and_atomic() {
         output: output.clone(),
         policy: None,
         overwrite: false,
+        reuse: cytiq_provenance::reuse::ReusePolicy::Recompute,
     };
     let outcome = write_comparison(&config, recorder("cytiq specimen compare")).unwrap();
     assert_eq!(outcome.exit_code, 3);

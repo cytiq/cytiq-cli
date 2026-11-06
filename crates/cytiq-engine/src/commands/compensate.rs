@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use cytiq_compensate::{CompensateConfig, CompensateRunner, MatrixKind as CompensateMatrixKind};
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::info;
 use serde::Serialize;
 
@@ -31,8 +31,8 @@ pub(crate) struct CompensateArgs {
 
 pub(crate) fn run(
     args: CompensateArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let CompensateArgs {
         input,
         output,
@@ -56,6 +56,10 @@ pub(crate) fn run(
         recorder.snapshot_inputs("matrix", std::slice::from_ref(matrix))?;
     }
     recorder.set_algorithms(cytiq_compensate::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(config.output.clone())
+    );
     let result = CompensateRunner::run(&config)?;
     info!(
         "compensated {} channel(s) over {} event(s); {} on a raw detector margin; wrote {} and {}",

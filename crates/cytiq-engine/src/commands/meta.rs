@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use cytiq_meta::{MetaConfig, MetaRunner};
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::debug;
 use serde::Serialize;
 
@@ -23,8 +23,8 @@ pub(crate) struct MetaArgs {
 
 pub(crate) fn run(
     args: MetaArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let MetaArgs {
         input,
         output,
@@ -42,18 +42,18 @@ pub(crate) fn run(
     if config.output.is_some() {
         recorder.snapshot_roles(&[("input", config.input.clone())])?;
     }
-    let result = MetaRunner::run(&config)?;
-    if let Some(output) = result.output.as_deref() {
-        record_provenance(
+    if let Some(output) = config.output.as_ref() {
+        let recorder = crate::provenance::begin!(
             recorder,
-            &[output.to_path_buf()],
+            cytiq_provenance::reuse::Destination::File(output.clone())
+        );
+        MetaRunner::run(&config)?;
+        return record_provenance(
+            recorder,
+            std::slice::from_ref(output),
             &record_path_for_file(output),
-        )?;
+        );
     }
-    debug!(
-        "meta read {} TEXT keyword(s) and {} parameter(s)",
-        result.metadata.text.len(),
-        result.metadata.parameter_count
-    );
-    Ok(())
+    MetaRunner::run(&config)?;
+    Ok(None)
 }

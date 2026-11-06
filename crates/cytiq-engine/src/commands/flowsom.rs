@@ -6,7 +6,7 @@ use cytiq_flowsom::{
     FLOWSOM_METACLUSTERS, FLOWSOM_RANDOM_SEED, FLOWSOM_XDIM, FLOWSOM_YDIM, FlowSomConfig,
     FlowSomConstants, FlowSomRunner,
 };
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use log::info;
 use serde::Serialize;
 
@@ -108,8 +108,8 @@ pub(crate) struct FlowsomArgs {
 
 pub(crate) fn run(
     args: FlowsomArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let FlowsomArgs {
         command,
         input,
@@ -154,6 +154,10 @@ pub(crate) fn run(
     recorder.snapshot_inputs("mask", &config.masks)?;
     recorder.set_constants(&FlowSomConstants::default());
     recorder.set_algorithms(cytiq_flowsom::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(output.clone())
+    );
     let result = FlowSomRunner::run(&input, &output, &config)?;
     info!(
         "flowsom assigned {} events across {} SOM nodes and {} metaclusters",
@@ -174,8 +178,8 @@ pub(crate) fn run(
 
 fn run_flowsom_model(
     command: FlowSomCommand,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     recorder.set_constants(&FlowSomConstants::default());
     recorder.set_algorithms(cytiq_flowsom::UPSTREAM);
     match command {
@@ -208,6 +212,10 @@ fn run_flowsom_model(
             config.training_events = training_events;
             config.masks = masks;
             config.threads = threads;
+            let recorder = crate::provenance::begin!(
+                recorder,
+                cytiq_provenance::reuse::Destination::File(output.clone())
+            );
             cytiq_flowsom::FlowSomModel::train_to_file(
                 &input,
                 &output,
@@ -232,6 +240,10 @@ fn run_flowsom_model(
             recorder.snapshot_inputs("input", std::slice::from_ref(&input))?;
             recorder.snapshot_inputs("model", std::slice::from_ref(&model))?;
             recorder.snapshot_inputs("mask", &masks)?;
+            let recorder = crate::provenance::begin!(
+                recorder,
+                cytiq_provenance::reuse::Destination::File(output.clone())
+            );
             let events = cytiq_flowsom::FlowSomModel::apply_model_file(
                 &model, &input, &output, &masks, threads, overwrite,
             )?;

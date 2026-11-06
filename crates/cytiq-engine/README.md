@@ -150,3 +150,41 @@ cargo test -p cytiq-engine --test transform_cli
 Some tests read fixtures from `data/fixtures/`; `autospill_cli.rs` and
 `autospectral_cli.rs` share the `tests/support.rs` module of their library
 crate via `#[path]`.
+
+## Reusing completed runs
+
+Every command accepts `--reuse recompute|skip|reject` (default `recompute`).
+
+| Existing output | recompute | skip | reject |
+| --- | --- | --- | --- |
+| Absent | Compute | Compute | Compute |
+| Verified matching v3 record | Compute under existing overwrite rules | Reuse | Reuse |
+| Stale, damaged or unrecorded | Compute under existing overwrite rules | Compute under existing overwrite rules | Exit 4, preserve output |
+| Another process holds the lock | Exit 4 | Exit 4 | Exit 4 |
+
+```bash
+cytiq stats --input raw.fcs --output stats.json --reuse skip --outcome step.json
+# Same command reuses stats.json and its provenance without rewriting either.
+cytiq stats --input raw.fcs --output stats.json --reuse skip --overwrite
+```
+
+Reuse requires matching input hashes, paths, semantic configuration, algorithm/build
+identity and all recorded output hashes. `--reuse reject --overwrite` is invalid
+(exit 2). Runs requesting `--debug-dir` compute again. Thread counts are nonsemantic
+except for classify, which records effective ONNX parallelism. An unknown commit or
+an unidentified dirty packaged build is never reused; a local dirty source build
+records its content digest. Source builds monitor crates and the Cargo manifests.
+`just docker-build` marks uncommitted source as bare `-dirty`, disabling reuse;
+release builds must supply the exact source commit.
+
+`--outcome` includes `execution: {fingerprint, reused}`. A reused failed QC result
+still exits 3; an incomplete package still exits 4. Reuse writes only the outcome
+requested by the caller and the population/specimen stdout line. Keep a separate
+`--outcome` file outside verified package directories. Validation subcommands,
+`meta` to stdout and transform dry runs have no durable destination and ignore reuse.
+
+The CLI locks each destination before assessment or computation, restores a unique
+predecessor moved aside by a crash and cleans its abandoned staging. Mixed files are
+never accepted by their presence alone. Older binaries do not cooperate with these
+locks; network filesystem lock behavior varies. Fingerprints retain paths and
+re-hash outputs; moving inputs to new staging paths causes recomputation.

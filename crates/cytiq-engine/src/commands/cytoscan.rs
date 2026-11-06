@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use cytiq_cytoscan::{CytoScanConfig, CytoScanConstants, CytoScanRunner};
-use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir};
+use cytiq_provenance::{files_under, record_path_for_dir};
 use log::{info, warn};
 use serde::Serialize;
 
@@ -45,8 +45,8 @@ pub(crate) struct CytoscanArgs {
 
 pub(crate) fn run(
     args: CytoscanArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let CytoscanArgs {
         input,
         reference,
@@ -85,6 +85,10 @@ pub(crate) fn run(
     recorder.snapshot_inputs("reference", &reference)?;
     recorder.set_constants(&CytoScanConstants::default());
     recorder.set_algorithms(cytiq_cytoscan::UPSTREAM);
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::Dir(config.output_dir.clone())
+    );
     let result = CytoScanRunner::run(&config)?;
     for warning in &result.diagnostics.warnings {
         warn!("cytoscan: {warning}");

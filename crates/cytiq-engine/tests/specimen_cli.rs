@@ -230,6 +230,27 @@ fn explicit_retake_selection_to_gates_to_specimen_is_atomic_and_preserves_overla
             .all(|r| r["acquisition_id"] != "A01")
     );
     let original = fs::read(result.join("outcome.json")).unwrap();
+    let stamp = fs::metadata(result.join("result.json"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    let mut reused = run.clone();
+    reused.extend(["--reuse", "skip"]);
+    assert_eq!(outcome(&reused, 0)["execution"]["reused"], true);
+    assert_eq!(
+        fs::metadata(result.join("result.json"))
+            .unwrap()
+            .modified()
+            .unwrap(),
+        stamp
+    );
+    assert_eq!(fs::read(result.join("outcome.json")).unwrap(), original);
+    // Simulate a process stopping after moving the previous package aside.
+    let backup = directory.join(".result.abc123.old.tmp");
+    fs::create_dir(&backup).unwrap();
+    fs::rename(&result, backup.join("previous")).unwrap();
+    assert_eq!(outcome(&reused, 0)["execution"]["reused"], true);
+    assert!(!backup.exists());
     assert_eq!(outcome(&run, 4)["reason"], "output_conflict");
     assert_eq!(fs::read(result.join("outcome.json")).unwrap(), original);
     let mut overwrite = run;

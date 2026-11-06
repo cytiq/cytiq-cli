@@ -43,3 +43,12 @@ this crate.
 ```bash
 cargo test -p cytiq-publish
 ```
+
+## Locks and interrupted runs
+
+`lock.rs` owns OutputLock, acquired before recovery and retained through publication.
+`recovery.rs` accepts a live guard, cleans only exact six-character tempfile names,
+and restores only an unambiguous predecessor. Keep every tempfile Builder at
+`rand_bytes(6)` in sync with that recognition. Never recover or delete another
+output's temporary files. Test contention, inode replacement and recovery using
+real filesystem conditions. Lock files are excluded by provenance directory scans.

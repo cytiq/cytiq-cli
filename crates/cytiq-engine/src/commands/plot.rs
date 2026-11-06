@@ -7,7 +7,7 @@ use cytiq_plot::{
     DEFAULT_MAX_POINTS, DEFAULT_WIDTH, OutputFormat, PlotConfig, PlotJob, PlotRequest, PlotRunner,
     load_batch, plot_name_for,
 };
-use cytiq_provenance::{RunRecorder, record_path_for_dir, record_path_for_file};
+use cytiq_provenance::{record_path_for_dir, record_path_for_file};
 use log::info;
 use serde::Serialize;
 
@@ -113,8 +113,8 @@ pub(crate) struct PlotArgs {
 
 pub(crate) fn run(
     args: PlotArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     info!(
         "starting plot: input={}, output={}",
         args.input.display(),
@@ -158,6 +158,12 @@ pub(crate) fn run(
         recorder.snapshot_inputs("classes", std::slice::from_ref(&source.path))?;
     }
     recorder.snapshot_inputs("config", batch.as_slice())?;
+    let destination = if batch.is_some() {
+        cytiq_provenance::reuse::Destination::Dir(output.clone())
+    } else {
+        cytiq_provenance::reuse::Destination::File(output.clone())
+    };
+    let recorder = crate::provenance::begin!(recorder, destination);
     let summary = PlotRunner::run(&config)?;
     for plot in &summary.plots {
         info!(

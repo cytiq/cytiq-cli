@@ -224,9 +224,15 @@ publish-crates-first:
 
 # ---- Build the Docker image
 [group('docker')]
+[script('bash')]
 docker-build:
-    docker build -f {{ DOCKERFILE }} -t {{ DOCKER_IMAGE }} \
-        --build-arg CYTIQ_BUILD_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)" .
+    set -euo pipefail
+    commit="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    if [[ -n "$(git status --porcelain -- crates Cargo.toml Cargo.lock)" ]]; then
+        commit="$commit-dirty"
+    fi
+    docker build -f {{ quote(DOCKERFILE) }} -t {{ quote(DOCKER_IMAGE) }} \
+        --build-arg CYTIQ_BUILD_COMMIT="$commit" .
 
 # ---- Remove Rust build artifacts
 [group('utils')]

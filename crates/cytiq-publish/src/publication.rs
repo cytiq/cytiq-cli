@@ -175,7 +175,7 @@ impl Publication {
         let target = self.prepare(target.as_ref())?;
         let prefix = hidden_prefix(&target);
         let mut builder = Builder::new();
-        builder.prefix(&prefix).suffix(STAGED);
+        builder.prefix(&prefix).rand_bytes(6).suffix(STAGED);
         request_mode(&mut builder, 0o777);
         let directory = builder
             .tempdir_in(parent(&target))
@@ -495,6 +495,7 @@ impl Published {
 fn back_up_file(target: &Path) -> Result<TempPath, PublishError> {
     let linked = Builder::new()
         .prefix(&hidden_prefix(target))
+        .rand_bytes(6)
         .suffix(BACKUP)
         .make_in(parent(target), |link| fs::hard_link(target, link));
     match linked {
@@ -514,6 +515,7 @@ fn copy_file(target: &Path) -> io::Result<TempPath> {
     let mut source = File::open(target)?;
     let mut copy = Builder::new()
         .prefix(&hidden_prefix(target))
+        .rand_bytes(6)
         .suffix(BACKUP)
         .tempfile_in(parent(target))?;
     io::copy(&mut source, copy.as_file_mut())?;
@@ -529,6 +531,7 @@ fn copy_file(target: &Path) -> io::Result<TempPath> {
 fn move_aside(target: &Path, suffix: &str) -> io::Result<TempDir> {
     let aside = Builder::new()
         .prefix(&hidden_prefix(target))
+        .rand_bytes(6)
         .suffix(suffix)
         .tempdir_in(parent(target))?;
     fs::rename(target, aside.path().join(MOVED))?;
@@ -557,7 +560,7 @@ fn keep_directory(backup: TempDir) -> PathBuf {
 fn temporary_file(target: &Path) -> Result<NamedTempFile, PublishError> {
     let prefix = hidden_prefix(target);
     let mut builder = Builder::new();
-    builder.prefix(&prefix).suffix(STAGED);
+    builder.prefix(&prefix).rand_bytes(6).suffix(STAGED);
     request_mode(&mut builder, 0o666);
     builder
         .tempfile_in(parent(target))

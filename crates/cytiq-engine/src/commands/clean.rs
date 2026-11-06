@@ -6,7 +6,7 @@ use cytiq_clean::{
     DEFAULT_MAX_FIT_EVENTS, DEFAULT_SINGLET_MAD, DEFAULT_SSC_A, DEFAULT_VIABILITY_COFACTOR,
     DEFAULT_VIABILITY_CONTROL_QUANTILE, DebrisConfig, FilterKind, FilterStatus, ViabilityConfig,
 };
-use cytiq_provenance::{RunRecorder, files_under, record_path_for_dir};
+use cytiq_provenance::{files_under, record_path_for_dir};
 use log::info;
 use serde::Serialize;
 
@@ -115,8 +115,8 @@ impl From<CleanArgs> for CleanConfig {
 
 pub(crate) fn run(
     args: CleanArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     info!(
         "starting clean: input={}, output={}",
         args.input.display(),
@@ -126,6 +126,10 @@ pub(crate) fn run(
     recorder.snapshot_inputs("mask", &args.masks)?;
     recorder.snapshot_inputs("gating_ml", args.gates.as_slice())?;
     recorder.snapshot_inputs("control", args.viability_control.as_slice())?;
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::Dir(args.output.clone())
+    );
     let result = CleanRunner::run(&args.into())?;
     let metrics = &result.metrics;
     for (name, report) in [

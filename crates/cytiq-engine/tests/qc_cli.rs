@@ -106,6 +106,38 @@ fn failed(report: &Value) -> Vec<String> {
 }
 
 #[test]
+fn reused_failed_qc_preserves_the_exit_code_and_report() {
+    let directory = create_temp_dir("cytiq-engine-qc-reuse");
+    let manifest = write_manifest(&directory, "  qc:\n    min_events: 20000\n");
+    let mask = write_mask(
+        &directory,
+        common::acquisition_of(&fixture("sample.fcs")),
+        1000,
+    );
+    let outcome = directory.join("outcome.json");
+    let (first, _) = qc_with(
+        &directory,
+        &manifest,
+        &mask,
+        &["--reuse", "skip", "--outcome", utf8(&outcome)],
+    );
+    assert_eq!(first.status.code(), Some(3));
+    let report = directory.join("qc.json");
+    let stamp = fs::metadata(&report).unwrap().modified().unwrap();
+    let (second, _) = qc_with(
+        &directory,
+        &manifest,
+        &mask,
+        &["--reuse", "skip", "--outcome", utf8(&outcome)],
+    );
+    assert_eq!(second.status.code(), Some(3));
+    let result: Value = serde_json::from_slice(&fs::read(outcome).unwrap()).unwrap();
+    assert_eq!(result["execution"]["reused"], true);
+    assert_eq!(result["reason"], "checks_failed");
+    assert_eq!(fs::metadata(report).unwrap().modified().unwrap(), stamp);
+}
+
+#[test]
 fn passes_a_mask_within_the_policy() {
     let directory = create_temp_dir("cytiq-engine-qc-pass");
     let manifest = write_manifest(

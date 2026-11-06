@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use cytiq_provenance::{RunRecorder, record_path_for_file};
+use cytiq_provenance::record_path_for_file;
 use cytiq_stats::{DEFAULT_BINS, StatsConfig, StatsRunner};
 use log::info;
 use serde::Serialize;
@@ -26,8 +26,8 @@ pub(crate) struct StatsArgs {
 
 pub(crate) fn run(
     args: StatsArgs,
-    mut recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut recorder: crate::provenance::Invocation,
+) -> crate::provenance::CommandResult {
     let StatsArgs {
         input,
         output,
@@ -42,8 +42,12 @@ pub(crate) fn run(
         bins,
         overwrite,
     };
+    let recorder = crate::provenance::begin!(
+        recorder,
+        cytiq_provenance::reuse::Destination::File(config.output.clone())
+    );
     let report = StatsRunner::run(&config)?;
-    record_provenance(
+    let outcome = record_provenance(
         recorder,
         std::slice::from_ref(&config.output),
         &record_path_for_file(&config.output),
@@ -54,5 +58,5 @@ pub(crate) fn run(
         report.channels.len(),
         config.output.display()
     );
-    Ok(())
+    Ok(outcome)
 }

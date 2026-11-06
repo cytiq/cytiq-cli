@@ -1,0 +1,240 @@
+{
+  "$defs": {
+    "Context": {
+      "additionalProperties": false,
+      "properties": {
+        "cohort": {
+          "minLength": 1,
+          "title": "Cohort",
+          "type": "string"
+        },
+        "organism": {
+          "minLength": 1,
+          "title": "Organism",
+          "type": "string"
+        },
+        "specimen": {
+          "minLength": 1,
+          "title": "Specimen",
+          "type": "string"
+        },
+        "tissue": {
+          "minLength": 1,
+          "title": "Tissue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organism",
+        "tissue",
+        "specimen",
+        "cohort"
+      ],
+      "title": "Context",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Id"
+        },
+        "reference": {
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshot Id"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "default": "source_adopted",
+          "enum": [
+            "source_adopted",
+            "expert_reviewed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "reference"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "PanelFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "minLength": 1,
+          "title": "Channel",
+          "type": "string"
+        },
+        "fluorescence": {
+          "title": "Fluorescence",
+          "type": "boolean"
+        },
+        "labels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "marker_id": {
+          "minLength": 1,
+          "title": "Marker Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "channel",
+        "marker_id",
+        "fluorescence"
+      ],
+      "title": "PanelFeature",
+      "type": "object"
+    },
+    "ResolutionRule": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "population": {
+          "minLength": 1,
+          "title": "Population",
+          "type": "string"
+        },
+        "required_features": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "population",
+        "required_features",
+        "evidence"
+      ],
+      "title": "ResolutionRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "const": "panel_profile",
+      "default": "panel_profile",
+      "title": "Artifact Type",
+      "type": "string"
+    },
+    "cofactor": {
+      "default": 150.0,
+      "exclusiveMinimum": 0,
+      "title": "Cofactor",
+      "type": "number"
+    },
+    "context": {
+      "$ref": "#/$defs/Context"
+    },
+    "features": {
+      "items": {
+        "$ref": "#/$defs/PanelFeature"
+      },
+      "minItems": 1,
+      "title": "Features",
+      "type": "array"
+    },
+    "instrument": {
+      "minLength": 1,
+      "title": "Instrument",
+      "type": "string"
+    },
+    "panel": {
+      "minLength": 1,
+      "title": "Panel",
+      "type": "string"
+    },
+    "recipe": {
+      "enum": [
+        "cytiq-fcm-arcsinh-v1",
+        "cytiq-flowcyt-stored-v1",
+        "cytiq-cytof-arcsinh-v1",
+        "cytiq-table-stored-v1"
+      ],
+      "title": "Recipe",
+      "type": "string"
+    },
+    "resolution_rules": {
+      "items": {
+        "$ref": "#/$defs/ResolutionRule"
+      },
+      "title": "Resolution Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "panel",
+    "instrument",
+    "recipe",
+    "context",
+    "features"
+  ],
+  "title": "PanelProfile",
+  "type": "object"
+}

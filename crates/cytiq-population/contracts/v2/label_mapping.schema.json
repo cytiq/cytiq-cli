@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "const": "label_mapping",
+      "default": "label_mapping",
+      "title": "Artifact Type",
+      "type": "string"
+    },
+    "dataset": {
+      "minLength": 1,
+      "title": "Dataset",
+      "type": "string"
+    },
+    "dataset_version": {
+      "minLength": 1,
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "ignored_labels": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ignored Labels",
+      "type": "array"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Labels",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "task": {
+      "minLength": 1,
+      "title": "Task",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "vocabulary_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Vocabulary Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "dataset",
+    "dataset_version",
+    "task",
+    "vocabulary_sha256",
+    "labels"
+  ],
+  "title": "LabelMapping",
+  "type": "object"
+}

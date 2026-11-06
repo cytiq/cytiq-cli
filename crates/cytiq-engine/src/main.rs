@@ -25,7 +25,11 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
-            ExitCode::from(1)
+            ExitCode::from(
+                error
+                    .downcast_ref::<commands::specimen::OutcomeExit>()
+                    .map_or(1, |e| e.0.exit_code),
+            )
         }
     }
 }
@@ -40,6 +44,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     .with_build(build_info());
     recorder.set_config(&cli.command);
     match cli.command {
+        Commands::Population(command) => commands::population::run(command, recorder),
+        Commands::Specimen(command) => commands::specimen::run(command, recorder),
         Commands::Autospill(args) => commands::autospill::run(args, recorder),
         Commands::Autospread(args) => commands::autospread::run(args, recorder),
         Commands::Autospectral(args) => commands::autospectral::run(args, recorder),

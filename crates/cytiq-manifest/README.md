@@ -61,7 +61,10 @@ is the only way they learn about processing done elsewhere.
   file paths are not empty.
 - With several panels, every panel has a name and every sample names an
   existing panel; a control's `panel`, when given, exists.
-- A specimen has at most one file per panel.
+- Omitted `schema_version` means v1, which permits at most one file per specimen/panel.
+  Version 2 permits repeats with unique acquisition/sample IDs; specimen planning
+  requires explicit selection when there is more than one candidate.
+- `cytometry: cytof` requires v2, raw ion counts and no compensation source.
 - `compensation` is for conventional runs only; `source: controls` needs
   single-stain controls in the panel.
 - Every spectral panel of raw samples needs an unstained control.

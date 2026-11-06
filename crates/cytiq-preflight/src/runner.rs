@@ -306,7 +306,7 @@ fn check_panel(
                 CheckStatus::Fail,
             ));
         }
-        None if raw => {
+        None if raw && manifest.cytometry == cytiq_manifest::Cytometry::Spectral => {
             checks.push(check_control_coverage(
                 &scope,
                 panel,

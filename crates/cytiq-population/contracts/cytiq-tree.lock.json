@@ -1,0 +1,36 @@
+{
+  "repository": "cytiq/cytiq-tree",
+  "revision": "6979697dd898387a841571edb78969ce737c8076",
+  "files": [
+    {
+      "source": "schema/v2/class_vocabulary.schema.json",
+      "path": "contracts/v2/class_vocabulary.schema.json",
+      "sha256": "e46a008e8d729a4b51b277b8425bddbb58b82cf28613ff4fd8af101712cb6247"
+    },
+    {
+      "source": "schema/v2/curated_tree.schema.json",
+      "path": "contracts/v2/curated_tree.schema.json",
+      "sha256": "4e6dfa02b8e90d507823c68ee8dd652f92125268e84ad33181c898f3846f0db0"
+    },
+    {
+      "source": "schema/v2/label_mapping.schema.json",
+      "path": "contracts/v2/label_mapping.schema.json",
+      "sha256": "e73d4ef18fc63249ea13328b629c2615d1661dae4b8af1010219747284cb62c8"
+    },
+    {
+      "source": "schema/v2/marker_registry.schema.json",
+      "path": "contracts/v2/marker_registry.schema.json",
+      "sha256": "39aeb2d8317b13c884ad828b83b7fdaac6c607c9b47691657d3e0fe9a906ef4d"
+    },
+    {
+      "source": "schema/v2/panel_profile.schema.json",
+      "path": "contracts/v2/panel_profile.schema.json",
+      "sha256": "d99e49da07dd6ceaea2008c56e1701f8e15e80f919ebd6f2852401c97e189f66"
+    },
+    {
+      "source": "schema/v2/panel_projection.schema.json",
+      "path": "contracts/v2/panel_projection.schema.json",
+      "sha256": "e5d445511962b6f2e68897ee91854fb04517e1ef1d62ee2cc504752121278c9c"
+    }
+  ]
+}

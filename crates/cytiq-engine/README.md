@@ -23,6 +23,8 @@ chain and signal-state checks.
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan/README.md) | File-level anomaly detection over a cohort |
 | `cytiq classify` | [`cytiq-classify`](../cytiq-classify/README.md) | Supervised binary or vocabulary-aware multiclass event classification |
 | `cytiq gate` | [`cytiq-gating`](../cytiq-gating/README.md) | Gating-ML 2.0 evaluation with per-gate counts and optional per-event membership |
+| `cytiq population validate/observe` | [`cytiq-population`](../cytiq-population/README.md) | Validate native annotations and produce typed population observations |
+| `cytiq specimen validate/plan/run` | [`cytiq-specimen`](../cytiq-specimen/README.md) | Freeze acquisition selection, reconcile panels and publish specimen results |
 | `cytiq clean` | [`cytiq-clean`](../cytiq-clean/README.md) | Debris, doublet and dead-cell removal as per-event masks |
 | `cytiq peacoqc` | [`cytiq-peacoqc`](../cytiq-peacoqc/README.md) | Peak-based acquisition quality control |
 | `cytiq flowsom` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | FlowSOM-style clustering |
@@ -100,6 +102,10 @@ the SHA-256 of the command's input and output files; see
   `warn` otherwise.
 
 ## Exit codes
+
+`population` and `specimen` emit JSON outcomes and use codes 0–4 as documented
+in [the specimen contract](../cytiq-specimen/README.md#packages-and-orchestration-contract).
+The existing commands retain:
 
 - `0` on success.
 - `1` when a command fails; the error is printed to stderr.

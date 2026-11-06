@@ -1,0 +1,26 @@
+[package]
+name = "cytiq-specimen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Specimen planning, reconciliation and quality checks for cytometry observations"
+
+[dependencies]
+cytiq-fcs.workspace = true
+cytiq-manifest.workspace = true
+cytiq-population.workspace = true
+cytiq-provenance.workspace = true
+cytiq-publish.workspace = true
+cytiq-qc.workspace = true
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

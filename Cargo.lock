@@ -602,6 +602,7 @@ dependencies = [
  "arrow-schema",
  "cytiq-fcs",
  "cytiq-mask",
+ "cytiq-population",
  "cytiq-provenance",
  "cytiq-publish",
  "ort",
@@ -711,9 +712,11 @@ dependencies = [
  "cytiq-meta",
  "cytiq-peacoqc",
  "cytiq-plot",
+ "cytiq-population",
  "cytiq-preflight",
  "cytiq-provenance",
  "cytiq-qc",
+ "cytiq-specimen",
  "cytiq-spillqc",
  "cytiq-stats",
  "cytiq-transform",
@@ -851,6 +854,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-population"
+version = "0.4.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "cytiq-provenance",
+ "cytiq-publish",
+ "parquet",
+ "ryu",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cytiq-preflight"
 version = "0.4.0"
 dependencies = [
@@ -895,6 +916,22 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "cytiq-specimen"
+version = "0.4.0"
+dependencies = [
+ "cytiq-fcs",
+ "cytiq-manifest",
+ "cytiq-population",
+ "cytiq-provenance",
+ "cytiq-publish",
+ "cytiq-qc",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror",
 ]
 

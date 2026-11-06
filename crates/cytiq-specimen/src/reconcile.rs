@@ -1,0 +1,637 @@
+//! Reconciliation operates on summary observations; no FCS/event-level I/O.
+
+use crate::{
+    Result, SpecimenPlan,
+    layout::{SourceRef, Strategy},
+    require,
+};
+use cytiq_population::{
+    EventAnnotations, Measure, Method, ObservationStatus, PopulationObservation, Target,
+    annotations::AnnotationFormat, observation::Lineage, serialization,
+};
+use cytiq_qc::CheckStatus;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Clone, Debug)]
+pub struct SourceObservations {
+    pub annotations: EventAnnotations,
+    pub observations: Vec<PopulationObservation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpecimenCheck {
+    pub category: String,
+    pub scope: String,
+    pub check: String,
+    pub status: CheckStatus,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpecimenResult {
+    pub schema_version: u32,
+    pub specimen_id: String,
+    pub protocol_id: String,
+    pub complete: bool,
+    pub status: CheckStatus,
+    pub observations: Vec<PopulationObservation>,
+    pub results: Vec<PopulationObservation>,
+    pub checks: Vec<SpecimenCheck>,
+}
+
+impl SpecimenResult {
+    /// Read a completed package, validating versions, quantities and JSON/Parquet agreement.
+    /// # Errors
+    /// Rejects corrupt or internally inconsistent result packages.
+    pub fn load(directory: &std::path::Path) -> Result<Self> {
+        let outcome = cytiq_population::verify_package(directory)?;
+        require(
+            outcome.command == "cytiq specimen run",
+            "not a specimen result package",
+        )?;
+        let result: Self =
+            serde_json::from_value(serialization::read(&directory.join("result.json"))?)?;
+        require(
+            result.schema_version == 1 && !result.specimen_id.is_empty(),
+            "invalid specimen result identity/version",
+        )?;
+        let mut identities = BTreeSet::new();
+        for observation in &result.observations {
+            observation.validate()?;
+            require(
+                observation.specimen_id == result.specimen_id
+                    && identities.insert(&observation.observation_id),
+                "unexpected or repeated original observation",
+            )?;
+        }
+        for observation in &result.results {
+            observation.validate()?;
+            require(
+                observation.specimen_id == result.specimen_id
+                    && observation
+                        .method
+                        .source_observation_ids
+                        .iter()
+                        .all(|id| identities.contains(id)),
+                "missing reconciliation input observation",
+            )?;
+        }
+        require(
+            cytiq_population::table::read(&directory.join("results.parquet"))? == result.results,
+            "result JSON/Parquet disagreement",
+        )?;
+        let status = result
+            .checks
+            .iter()
+            .map(|c| c.status)
+            .max()
+            .unwrap_or(CheckStatus::Pass);
+        require(status == result.status, "inconsistent specimen QC summary")?;
+        let reason = if !result.complete {
+            cytiq_provenance::outcome::OutcomeReason::Incomplete
+        } else if status == CheckStatus::Fail {
+            cytiq_provenance::outcome::OutcomeReason::ChecksFailed
+        } else {
+            cytiq_provenance::outcome::OutcomeReason::Success
+        };
+        require(
+            outcome.reason == reason,
+            "outcome and specimen result disagree",
+        )?;
+        Ok(result)
+    }
+}
+
+/// Assemble independent observations and explicitly requested derived results.
+/// # Errors
+/// Rejects duplicate, unexpected or incompatible source results.
+pub fn reconcile(plan: &SpecimenPlan, sources: &[SourceObservations]) -> Result<SpecimenResult> {
+    let provided = index_sources(plan, sources)?;
+    let mut checks = Vec::new();
+    let mut observations = Vec::new();
+    let mut complete = true;
+    for selection in &plan.selections {
+        let panel = &plan.layout.panels[&selection.panel_id];
+        for (source_id, definition) in &panel.sources {
+            if let Some(source) = provided.get(&(selection.panel_id.as_str(), source_id.as_str())) {
+                observations.extend(source.observations.iter().cloned());
+                checks.push(SpecimenCheck {
+                    category: "technical".into(),
+                    scope: format!("{}/{}", selection.panel_id, source_id),
+                    check: "acquisition_qc".into(),
+                    status: match source.annotations.technical_status.as_str() {
+                        "pass" => CheckStatus::Pass,
+                        "warn" => CheckStatus::Warn,
+                        "fail" => CheckStatus::Fail,
+                        _ => {
+                            return Err(crate::SpecimenError::Invalid(
+                                "invalid technical QC status".into(),
+                            ));
+                        }
+                    },
+                    message: "technical QC remains separate from biological consistency".into(),
+                });
+            } else {
+                let required = panel.required || selection.selected.is_some();
+                complete &= !required;
+                checks.push(SpecimenCheck {
+                    category: "completeness".into(),
+                    scope: format!("{}/{}", selection.panel_id, source_id),
+                    check: "source_available".into(),
+                    status: if required {
+                        CheckStatus::Fail
+                    } else {
+                        CheckStatus::Warn
+                    },
+                    message: if selection.selected.is_none() {
+                        "missing_panel"
+                    } else {
+                        "missing_source_output"
+                    }
+                    .into(),
+                });
+                observations.extend(missing_observations(
+                    plan, selection, source_id, definition,
+                )?);
+            }
+        }
+    }
+    let mut results = observations
+        .iter()
+        .filter(|o| {
+            !plan.layout.reconciliation.iter().any(|rule| {
+                rule.target == o.target && !matches!(rule.strategy, Strategy::Independent)
+            })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    apply_rules(plan, &observations, &mut results, &mut checks)?;
+    check_consistency(plan, &observations, &mut checks);
+    let status = checks
+        .iter()
+        .map(|c| c.status)
+        .max()
+        .unwrap_or(CheckStatus::Pass);
+    Ok(SpecimenResult {
+        schema_version: 1,
+        specimen_id: plan.specimen_id.clone(),
+        protocol_id: plan.layout.protocol_id.clone(),
+        complete,
+        status,
+        observations,
+        results,
+        checks,
+    })
+}
+
+fn matches_source(observation: &PopulationObservation, source: &SourceRef) -> bool {
+    observation.panel_id == source.panel && observation.source_id == source.source
+}
+
+fn find_count<'a>(
+    observations: &'a [PopulationObservation],
+    source: &SourceRef,
+    target: &Target,
+) -> Result<&'a PopulationObservation> {
+    observations
+        .iter()
+        .find(|o| {
+            matches_source(o, source) && &o.target == target && o.measure == Measure::ObservedCount
+        })
+        .ok_or_else(|| {
+            crate::SpecimenError::Invalid("configured count is missing from observations".into())
+        })
+}
+
+fn validate_observations(
+    source: &SourceObservations,
+    selection: &crate::plan::PanelSelection,
+) -> Result<()> {
+    let d = &source.annotations;
+    let c = &d.context;
+    require(
+        source.observations.len() == c.source.bindings.len() * 2,
+        "incomplete source observation set",
+    )?;
+    let mut keys = BTreeSet::new();
+    for o in &source.observations {
+        o.validate()?;
+        let key = (
+            &o.target,
+            match o.measure {
+                Measure::ObservedCount => 0,
+                Measure::Fraction => 1,
+                _ => 2,
+            },
+        );
+        require(
+            key.1 != 2
+                && keys.insert(key)
+                && c.source.bindings.iter().any(|b| b.target == o.target),
+            "unexpected or duplicate source observation",
+        )?;
+        require(
+            o.specimen_id == c.specimen_id
+                && o.panel_id == c.panel_id
+                && o.acquisition_id.as_deref() == Some(&c.acquisition_id)
+                && o.source_id == c.source_id
+                && o.n_events == d.assessed_events
+                && o.lineage.acquisition_sha256.as_deref() == Some(&c.acquisition_sha256)
+                && o.lineage.annotations_sha256.as_deref() == Some(&d.data.sha256)
+                && o.lineage.producer_provenance_sha256.as_deref()
+                    == Some(&d.producer_provenance.sha256)
+                && o.lineage.analysis_mask_sha256.as_deref() == Some(&d.analysis_mask.sha256)
+                && o.lineage.projection_sha256 == c.projection.sha256
+                && o.lineage.tree_sha256 == selection.tree_sha256
+                && o.lineage.panel_profile_sha256 == selection.panel_profile_sha256
+                && o.method.definition_sha256 == c.source.definition.sha256
+                && o.method.name
+                    == match c.source.format {
+                        AnnotationFormat::GateMembership => "gating",
+                        AnnotationFormat::ClassifyPredictions => "classify",
+                    }
+                && o.method.version == "1"
+                && !o.method.experimental
+                && o.method.source_observation_ids.is_empty(),
+            "observation and annotation lineage disagree",
+        )?;
+        require(
+            (d.technical_status == "fail") == (o.status == ObservationStatus::QcRejected),
+            "observation bypasses technical QC rejection",
+        )?;
+    }
+    validate_quantities(source)?;
+    Ok(())
+}
+
+fn validate_quantities(source: &SourceObservations) -> Result<()> {
+    let d = &source.annotations;
+    let c = &d.context;
+    let counts: BTreeMap<_, _> = source
+        .observations
+        .iter()
+        .filter(|o| o.measure == Measure::ObservedCount)
+        .map(|o| (&o.target, o))
+        .collect();
+    let mut classified = 0_u64;
+    for binding in &c.source.bindings {
+        let count = counts[&binding.target];
+        let fraction = source
+            .observations
+            .iter()
+            .find(|o| o.target == binding.target && o.measure == Measure::Fraction)
+            .ok_or_else(|| crate::SpecimenError::Invalid("missing source fraction".into()))?;
+        let available = d.technical_status != "fail" && d.assessed_events > 0;
+        require(
+            count.status
+                == if d.technical_status == "fail" {
+                    ObservationStatus::QcRejected
+                } else if available {
+                    ObservationStatus::Measured
+                } else {
+                    ObservationStatus::NotMeasured
+                },
+            "invalid assessment status",
+        )?;
+        let denominator = binding
+            .denominator
+            .as_ref()
+            .map_or(d.assessed_events, |label| {
+                let target = &c
+                    .source
+                    .bindings
+                    .iter()
+                    .find(|b| &b.label == label)
+                    .expect("planned binding")
+                    .target;
+                counts[target]
+                    .value_u64
+                    .or(counts[target].supporting_count)
+                    .unwrap_or(0)
+            });
+        let expected_target = binding.denominator.as_ref().map(|label| {
+            c.source
+                .bindings
+                .iter()
+                .find(|b| &b.label == label)
+                .expect("planned denominator")
+                .target
+                .clone()
+        });
+        for row in [count, fraction] {
+            require(
+                row.denominator.as_ref().is_some_and(|d| {
+                    d.scope == binding.target.scope
+                        && d.target == expected_target
+                        && d.observed_count == denominator
+                }),
+                "source denominator mismatch",
+            )?;
+        }
+        if available && denominator > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            let expected = count.value_u64.expect("measured count") as f64 / denominator as f64;
+            require(
+                fraction.status == ObservationStatus::Measured
+                    && fraction.value_f64 == Some(expected),
+                "source fraction/count mismatch",
+            )?;
+        } else if available {
+            require(
+                fraction.status == ObservationStatus::NotApplicable,
+                "zero denominator requires not_applicable",
+            )?;
+        }
+        classified = classified
+            .checked_add(count.value_u64.or(count.supporting_count).unwrap_or(0))
+            .ok_or_else(|| crate::SpecimenError::Invalid("summary count overflow".into()))?;
+    }
+    if c.source.format == AnnotationFormat::ClassifyPredictions {
+        require(
+            classified.checked_add(d.unknown_events) == Some(d.assessed_events),
+            "classified and unknown counts do not cover assessed events",
+        )?;
+    }
+    Ok(())
+}
+
+fn missing_observations(
+    plan: &SpecimenPlan,
+    selection: &crate::plan::PanelSelection,
+    source_id: &str,
+    definition: &cytiq_population::annotations::SourceDefinition,
+) -> Result<Vec<PopulationObservation>> {
+    let mut observations = Vec::new();
+    for binding in &definition.bindings {
+        for measure in [Measure::ObservedCount, Measure::Fraction] {
+            let mut missing = PopulationObservation {
+                schema_version: 1,
+                observation_id: String::new(),
+                specimen_id: plan.specimen_id.clone(),
+                panel_id: selection.panel_id.clone(),
+                acquisition_id: selection.selected.clone(),
+                source_id: source_id.to_owned(),
+                target: binding.target.clone(),
+                measure,
+                unit: if measure == Measure::Fraction {
+                    "fraction"
+                } else {
+                    "events"
+                }
+                .into(),
+                status: ObservationStatus::NotMeasured,
+                value_u64: None,
+                value_f64: None,
+                denominator: None,
+                method: Method {
+                    name: match definition.format {
+                        AnnotationFormat::GateMembership => "gating",
+                        AnnotationFormat::ClassifyPredictions => "classify",
+                    }
+                    .into(),
+                    version: "1".into(),
+                    definition_sha256: definition.definition.sha256.clone(),
+                    experimental: false,
+                    source_observation_ids: Vec::new(),
+                },
+                lineage: Lineage {
+                    acquisition_sha256: selection
+                        .selected
+                        .as_ref()
+                        .and_then(|id| selection.acquisitions.iter().find(|a| &a.id == id))
+                        .map(|a| a.file.sha256.clone()),
+                    tree_sha256: selection.tree_sha256.clone(),
+                    panel_profile_sha256: selection.panel_profile_sha256.clone(),
+                    projection_sha256: selection.projection_sha256.clone(),
+                    annotations_sha256: None,
+                    producer_provenance_sha256: None,
+                    analysis_mask_sha256: None,
+                },
+                n_events: 0,
+                supporting_count: None,
+                reason: Some(
+                    if selection.selected.is_none() {
+                        "missing_panel"
+                    } else {
+                        "missing_source_output"
+                    }
+                    .into(),
+                ),
+            };
+            missing.seal()?;
+            observations.push(missing);
+        }
+    }
+    Ok(observations)
+}
+
+fn index_sources<'a>(
+    plan: &SpecimenPlan,
+    sources: &'a [SourceObservations],
+) -> Result<BTreeMap<(&'a str, &'a str), &'a SourceObservations>> {
+    let mut provided = BTreeMap::new();
+    for source in sources {
+        let descriptor = &source.annotations;
+        let context = &descriptor.context;
+        require(
+            descriptor.schema_version == 1
+                && descriptor.unknown_events <= descriptor.assessed_events
+                && descriptor.assessed_events <= context.raw_events,
+            "invalid annotation descriptor",
+        )?;
+        require(
+            plan.context(&context.acquisition_id, &context.source_id)? == *context,
+            "source does not belong to this plan",
+        )?;
+        require(
+            provided
+                .insert(
+                    (context.panel_id.as_str(), context.source_id.as_str()),
+                    source,
+                )
+                .is_none(),
+            "duplicate observation package",
+        )?;
+        let selection = plan
+            .selections
+            .iter()
+            .find(|s| s.panel_id == context.panel_id)
+            .ok_or_else(|| crate::SpecimenError::Invalid("source has no planned panel".into()))?;
+        validate_observations(source, selection)?;
+    }
+    Ok(provided)
+}
+
+fn check_consistency(
+    plan: &SpecimenPlan,
+    observations: &[PopulationObservation],
+    checks: &mut Vec<SpecimenCheck>,
+) {
+    for policy in &plan.layout.consistency {
+        let fractions = observations
+            .iter()
+            .filter(|o| {
+                o.target == policy.target
+                    && o.measure == Measure::Fraction
+                    && o.status == ObservationStatus::Measured
+            })
+            .collect::<Vec<_>>();
+        let comparable = fractions.len() > 1
+            && fractions.iter().all(|o| {
+                let denominator = o.denominator.as_ref().expect("validated fraction");
+                let reference = fractions[0]
+                    .denominator
+                    .as_ref()
+                    .expect("validated fraction");
+                denominator.target == reference.target && denominator.scope == reference.scope
+            });
+        let (status, message) = if comparable {
+            let low = fractions
+                .iter()
+                .filter_map(|o| o.value_f64)
+                .fold(f64::INFINITY, f64::min);
+            let high = fractions
+                .iter()
+                .filter_map(|o| o.value_f64)
+                .fold(f64::NEG_INFINITY, f64::max);
+            (
+                if high - low > policy.max_abs_fraction_difference {
+                    policy.severity
+                } else {
+                    CheckStatus::Pass
+                },
+                format!(
+                    "absolute fraction difference {} (limit {})",
+                    high - low,
+                    policy.max_abs_fraction_difference
+                ),
+            )
+        } else {
+            (
+                CheckStatus::Warn,
+                "insufficient comparable fractions; no biological exclusion applied".into(),
+            )
+        };
+        checks.push(SpecimenCheck {
+            category: "consistency".into(),
+            scope: policy.target.id.clone(),
+            check: "fraction_agreement".into(),
+            status,
+            message,
+        });
+    }
+}
+
+fn apply_rules(
+    plan: &SpecimenPlan,
+    observations: &[PopulationObservation],
+    results: &mut Vec<PopulationObservation>,
+    checks: &mut Vec<SpecimenCheck>,
+) -> Result<()> {
+    let definition_sha256 = serialization::digest(&serde_json::to_value(&plan.layout)?);
+    for rule in &plan.layout.reconciliation {
+        match &rule.strategy {
+            Strategy::Independent => {}
+            Strategy::PreferReference { reference } => {
+                for observation in observations
+                    .iter()
+                    .filter(|o| matches_source(o, reference) && o.target == rule.target)
+                {
+                    let mut selected = observation.clone();
+                    selected.method = Method {
+                        name: "prefer_reference".into(),
+                        version: "1".into(),
+                        definition_sha256: definition_sha256.clone(),
+                        experimental: false,
+                        source_observation_ids: vec![observation.observation_id.clone()],
+                    };
+                    selected.seal()?;
+                    results.push(selected);
+                }
+            }
+            Strategy::ReferenceRatio {
+                source,
+                reference,
+                anchor,
+            } => {
+                let (estimate, check) = reference_ratio(
+                    observations,
+                    &rule.target,
+                    source,
+                    reference,
+                    anchor,
+                    &definition_sha256,
+                )?;
+                results.push(estimate);
+                checks.push(check);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reference_ratio(
+    observations: &[PopulationObservation],
+    target: &Target,
+    source: &SourceRef,
+    reference: &SourceRef,
+    anchor: &Target,
+    definition_sha256: &str,
+) -> Result<(PopulationObservation, SpecimenCheck)> {
+    let population = find_count(observations, source, target)?;
+    let source_anchor = find_count(observations, source, anchor)?;
+    let reference_anchor = find_count(observations, reference, anchor)?;
+    let mut estimate = population.clone();
+    estimate.measure = Measure::EstimatedCount;
+    estimate.value_u64 = None;
+    estimate.method = Method {
+        name: "reference_ratio".into(),
+        version: "1".into(),
+        definition_sha256: definition_sha256.to_owned(),
+        experimental: true,
+        source_observation_ids: vec![
+            population.observation_id.clone(),
+            source_anchor.observation_id.clone(),
+            reference_anchor.observation_id.clone(),
+        ],
+    };
+    let valid = [population, source_anchor, reference_anchor]
+        .iter()
+        .all(|o| o.status == ObservationStatus::Measured)
+        && source_anchor.value_u64.is_some_and(|n| n > 0)
+        && reference_anchor.value_u64.is_some_and(|n| n > 0);
+    if valid {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            estimate.value_f64 = Some(
+                population.value_u64.expect("measured count") as f64
+                    * (reference_anchor.value_u64.expect("measured count") as f64
+                        / source_anchor.value_u64.expect("measured count") as f64),
+            );
+        }
+        estimate.status = ObservationStatus::Estimated;
+        estimate.reason = None;
+    } else {
+        estimate.status = ObservationStatus::QcRejected;
+        estimate.value_f64 = None;
+        estimate.supporting_count = population.value_u64.or(population.supporting_count);
+        estimate.reason = Some("invalid_or_unavailable_anchor".into());
+    }
+    estimate.seal()?;
+
+    let check = SpecimenCheck {
+        category: "consistency".into(),
+        scope: target.id.clone(),
+        check: "reference_ratio_anchor".into(),
+        status: if valid {
+            CheckStatus::Pass
+        } else {
+            CheckStatus::Fail
+        },
+        message: "reference_ratio is experimental; no fallback or averaging".into(),
+    };
+    Ok((estimate, check))
+}

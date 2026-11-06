@@ -4,10 +4,14 @@ Rust workspace for flow-cytometry tooling: FCS I/O, compensation and spectral
 unmixing, event filtering, quality control, batch normalization, gating, clustering,
 classification and vector diagnostic plots.
 
+[Specimen processing](crates/cytiq-specimen/README.md) adds versioned acquisition
+selection, population observations and panel reconciliation above those stages.
+It supports conventional flow, spectral gating and existing CyTOF classifiers.
+
 ## Pipeline
 
 Solid arrows carry FCS files and matrices; dotted arrows carry
-[per-event masks](crates/cytiq-mask/README.md).
+[per-event masks](crates/cytiq-mask/README.md), annotations and summary artifacts.
 
 ```mermaid
 flowchart TB
@@ -85,6 +89,12 @@ flowchart TB
     transform -->|"t.fcs"| plot
     combine -.->|"analysis mask, whatever qc says"| plot
     analysis -.->|"gates, clusters, classes"| plot
+    manifest -.-> specimen_plan["specimen plan<br/>cytiq-specimen"]
+    analysis -.->|"membership / predictions"| population["population observe<br/>cytiq-population"]
+    qc -.->|"technical QC"| population
+    specimen_plan -.-> population
+    population -.-> specimen_result["specimen run<br/>reconciliation, QC, JSON / Parquet"]
+    specimen_plan -.-> specimen_result
 ```
 
 See the [pipeline guide](crates/cytiq-engine/PIPELINE.md) for a complete command

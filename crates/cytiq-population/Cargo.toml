@@ -1,0 +1,28 @@
+[package]
+name = "cytiq-population"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Typed population observations and adapters for cytometry event annotations"
+
+[dependencies]
+arrow-array = "60.1.0"
+arrow-schema = "60.1.0"
+cytiq-provenance.workspace = true
+cytiq-publish.workspace = true
+parquet = { version = "60.1.0", default-features = false, features = ["arrow", "zstd"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.150", features = ["float_roundtrip"] }
+serde-saphyr = "2.0.0"
+ryu = "1.0.23"
+sha2 = "0.11.1"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

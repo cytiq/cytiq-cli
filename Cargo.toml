@@ -19,6 +19,8 @@ members = [
     "crates/cytiq-plot",
     "crates/cytiq-preflight",
     "crates/cytiq-provenance",
+    "crates/cytiq-population",
+    "crates/cytiq-specimen",
     "crates/cytiq-publish",
     "crates/cytiq-qc",
     "crates/cytiq-spillqc",
@@ -57,6 +59,8 @@ cytiq-peacoqc = { path = "crates/cytiq-peacoqc", version = "0.4.0" }
 cytiq-plot = { path = "crates/cytiq-plot", version = "0.4.0" }
 cytiq-preflight = { path = "crates/cytiq-preflight", version = "0.4.0" }
 cytiq-provenance = { path = "crates/cytiq-provenance", version = "0.4.0" }
+cytiq-population = { path = "crates/cytiq-population", version = "0.4.0" }
+cytiq-specimen = { path = "crates/cytiq-specimen", version = "0.4.0" }
 cytiq-publish = { path = "crates/cytiq-publish", version = "0.4.0" }
 cytiq-qc = { path = "crates/cytiq-qc", version = "0.4.0" }
 cytiq-spillqc = { path = "crates/cytiq-spillqc", version = "0.4.0" }

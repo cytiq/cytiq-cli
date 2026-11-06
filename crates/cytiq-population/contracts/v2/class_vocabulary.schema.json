@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Id"
+        },
+        "reference": {
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshot Id"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "default": "source_adopted",
+          "enum": [
+            "source_adopted",
+            "expert_reviewed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "reference"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "ResidualDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "excluded_populations": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Excluded Populations",
+          "type": "array"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "excluded_populations",
+        "evidence"
+      ],
+      "title": "ResidualDefinition",
+      "type": "object"
+    },
+    "VocabularyClass": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "default": "population",
+          "enum": [
+            "population",
+            "phenotype",
+            "residual"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "residual_definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResidualDefinition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "index"
+      ],
+      "title": "VocabularyClass",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "const": "class_vocabulary",
+      "default": "class_vocabulary",
+      "title": "Artifact Type",
+      "type": "string"
+    },
+    "classes": {
+      "items": {
+        "$ref": "#/$defs/VocabularyClass"
+      },
+      "minItems": 2,
+      "title": "Classes",
+      "type": "array"
+    },
+    "decision_rule": {
+      "enum": [
+        "argmax",
+        "binary_threshold"
+      ],
+      "title": "Decision Rule",
+      "type": "string"
+    },
+    "hierarchy": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Hierarchy",
+      "type": "object"
+    },
+    "panel_id": {
+      "minLength": 1,
+      "title": "Panel Id",
+      "type": "string"
+    },
+    "panel_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Panel Sha256",
+      "type": "string"
+    },
+    "partition_complete": {
+      "title": "Partition Complete",
+      "type": "boolean"
+    },
+    "projection_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Projection Sha256",
+      "type": "string"
+    },
+    "registry_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Sha256",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "scope": {
+      "minLength": 1,
+      "title": "Scope",
+      "type": "string"
+    },
+    "task": {
+      "minLength": 1,
+      "title": "Task",
+      "type": "string"
+    },
+    "task_kind": {
+      "enum": [
+        "multiclass",
+        "binary_phenotype"
+      ],
+      "title": "Task Kind",
+      "type": "string"
+    },
+    "tree_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Tree Sha256",
+      "type": "string"
+    },
+    "tree_version": {
+      "minLength": 1,
+      "title": "Tree Version",
+      "type": "string"
+    },
+    "unknown_policy": {
+      "const": "disabled",
+      "default": "disabled",
+      "title": "Unknown Policy",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "tree_version",
+    "tree_sha256",
+    "panel_sha256",
+    "registry_sha256",
+    "projection_sha256",
+    "panel_id",
+    "task",
+    "task_kind",
+    "scope",
+    "classes",
+    "hierarchy",
+    "partition_complete",
+    "decision_rule"
+  ],
+  "title": "ClassVocabulary",
+  "type": "object"
+}

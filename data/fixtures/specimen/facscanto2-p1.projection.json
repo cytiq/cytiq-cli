@@ -1,0 +1,564 @@
+{
+  "artifact_type": "panel_projection",
+  "panel": {
+    "artifact_type": "panel_profile",
+    "cofactor": 150.0,
+    "context": {
+      "cohort": "aml_and_controls",
+      "organism": "Homo sapiens",
+      "specimen": "bone_marrow_aspirate",
+      "tissue": "bone_marrow"
+    },
+    "features": [
+      {
+        "channel": "FSC-A",
+        "fluorescence": false,
+        "labels": [],
+        "marker_id": "FSC_A",
+        "name": "FSC_A"
+      },
+      {
+        "channel": "FSC-H",
+        "fluorescence": false,
+        "labels": [],
+        "marker_id": "FSC_H",
+        "name": "FSC_H"
+      },
+      {
+        "channel": "SSC-A",
+        "fluorescence": false,
+        "labels": [],
+        "marker_id": "SSC_A",
+        "name": "SSC_A"
+      },
+      {
+        "channel": "SSC-H",
+        "fluorescence": false,
+        "labels": [],
+        "marker_id": "SSC_H",
+        "name": "SSC_H"
+      },
+      {
+        "channel": "FITC-A",
+        "fluorescence": true,
+        "labels": [
+          "CD7"
+        ],
+        "marker_id": "CD7",
+        "name": "CD7"
+      },
+      {
+        "channel": "PE-A",
+        "fluorescence": true,
+        "labels": [
+          "CD56"
+        ],
+        "marker_id": "CD56",
+        "name": "CD56"
+      },
+      {
+        "channel": "PerCP-A",
+        "fluorescence": true,
+        "labels": [
+          "CD34",
+          "CD34 Cy55"
+        ],
+        "marker_id": "CD34",
+        "name": "CD34"
+      },
+      {
+        "channel": "PC7-A",
+        "fluorescence": true,
+        "labels": [
+          "CD117"
+        ],
+        "marker_id": "CD117",
+        "name": "CD117"
+      },
+      {
+        "channel": "APC-A",
+        "fluorescence": true,
+        "labels": [
+          "CD33"
+        ],
+        "marker_id": "CD33",
+        "name": "CD33"
+      },
+      {
+        "channel": "APC-H7-A",
+        "fluorescence": true,
+        "labels": [
+          "HLA-DR"
+        ],
+        "marker_id": "HLA-DR",
+        "name": "HLA_DR"
+      },
+      {
+        "channel": "Horizon V450-A",
+        "fluorescence": true,
+        "labels": [
+          "CD13",
+          "CD13 BV421"
+        ],
+        "marker_id": "CD13",
+        "name": "CD13"
+      },
+      {
+        "channel": "Horizon V500-A",
+        "fluorescence": true,
+        "labels": [
+          "CD45 KO",
+          "CD45"
+        ],
+        "marker_id": "CD45",
+        "name": "CD45"
+      }
+    ],
+    "instrument": "FACSCantoII",
+    "panel": "P1",
+    "recipe": "cytiq-fcm-arcsinh-v1",
+    "resolution_rules": [],
+    "schema_version": 2,
+    "version": "0.1.0"
+  },
+  "panel_sha256": "0dfacbfe6d1973ae2880286c05e0e36350741eac801340b2ac55448d2aa3c944",
+  "populations": [
+    {
+      "missing_features": [],
+      "population": "bone_marrow_cells",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "lymphocytes",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "t_cells",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "b_cells",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "monocytes",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "mast_cells",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    },
+    {
+      "missing_features": [],
+      "population": "hspc",
+      "reason": "no accepted panel-specific rule",
+      "resolved_parent": null,
+      "status": "ambiguous"
+    }
+  ],
+  "schema_version": 2,
+  "tree": {
+    "artifact_type": "curated_tree",
+    "cells": [
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "bone_marrow_cells",
+        "marker_signature": [],
+        "name": "Qualified bone marrow events",
+        "ontology_ids": [],
+        "parent": null
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "lymphocytes",
+        "marker_signature": [],
+        "name": "Lymphocytes",
+        "ontology_ids": [
+          "CL:0000542"
+        ],
+        "parent": "bone_marrow_cells"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "t_cells",
+        "marker_signature": [],
+        "name": "T cells",
+        "ontology_ids": [
+          "CL:0000084"
+        ],
+        "parent": "lymphocytes"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "b_cells",
+        "marker_signature": [],
+        "name": "B cells",
+        "ontology_ids": [
+          "CL:0000236"
+        ],
+        "parent": "lymphocytes"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "monocytes",
+        "marker_signature": [],
+        "name": "Monocytes",
+        "ontology_ids": [
+          "CL:0000576"
+        ],
+        "parent": "bone_marrow_cells"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "mast_cells",
+        "marker_signature": [],
+        "name": "Mast cells",
+        "ontology_ids": [
+          "CL:0000097"
+        ],
+        "parent": "bone_marrow_cells"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://purl.obolibrary.org/obo/cl.owl",
+            "snapshot_id": null,
+            "source": "Cell Ontology",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "hspc",
+        "marker_signature": [],
+        "name": "Hematopoietic stem/progenitor cells",
+        "ontology_ids": [
+          "CL:0000037",
+          "CL:0008001"
+        ],
+        "parent": "bone_marrow_cells"
+      }
+    ],
+    "context": {
+      "cohort": "aml_and_controls",
+      "organism": "Homo sapiens",
+      "specimen": "bone_marrow_aspirate",
+      "tissue": "bone_marrow"
+    },
+    "decisions": [],
+    "generated_at": "2026-10-27T00:00:00Z",
+    "mappings": [
+      {
+        "dataset": "BLAST110",
+        "dataset_version": "11046402",
+        "ignored_labels": [],
+        "labels": {
+          "0": "non_blast",
+          "1": "blast"
+        },
+        "task": "blast"
+      },
+      {
+        "dataset": "LAIP29",
+        "dataset_version": "11046402",
+        "ignored_labels": [],
+        "labels": {
+          "0": "non_blast",
+          "1": "blast"
+        },
+        "task": "blast"
+      }
+    ],
+    "ontology_edges": [
+      {
+        "child": "CL:0000037",
+        "parent": "CL:0000255"
+      },
+      {
+        "child": "CL:0000037",
+        "parent": "CL:0000723"
+      },
+      {
+        "child": "CL:0000037",
+        "parent": "CL:0008001"
+      },
+      {
+        "child": "CL:0000037",
+        "parent": "CL:0011026"
+      },
+      {
+        "child": "CL:0000084",
+        "parent": "CL:0000542"
+      },
+      {
+        "child": "CL:0000097",
+        "parent": "CL:0000766"
+      },
+      {
+        "child": "CL:0000097",
+        "parent": "CL:0002274"
+      },
+      {
+        "child": "CL:0000236",
+        "parent": "CL:0000945"
+      },
+      {
+        "child": "CL:0000542",
+        "parent": "CL:0000842"
+      },
+      {
+        "child": "CL:0000576",
+        "parent": "CL:0000113"
+      },
+      {
+        "child": "CL:0000576",
+        "parent": "CL:0000766"
+      },
+      {
+        "child": "CL:0000576",
+        "parent": "CL:0011026"
+      },
+      {
+        "child": "CL:0008001",
+        "parent": "CL:0000988"
+      }
+    ],
+    "phenotypes": [
+      {
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "https://zenodo.org/records/11046402",
+            "snapshot_id": null,
+            "source": "BLAST110",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "blast",
+        "name": "Expert-annotated Blast phenotype"
+      }
+    ],
+    "registry": {
+      "artifact_type": "marker_registry",
+      "markers": [
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD3",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD7",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD13",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD14",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD16",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD19",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD33",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD34",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD40",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD45",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD56",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD117",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [
+            "HLADR",
+            "HLA_DR"
+          ],
+          "external_ids": [],
+          "id": "HLA-DR",
+          "measurement_kind": "protein"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "FSC_A",
+          "measurement_kind": "derived"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "FSC_H",
+          "measurement_kind": "derived"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "SSC_A",
+          "measurement_kind": "derived"
+        },
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "SSC_H",
+          "measurement_kind": "derived"
+        },
+        {
+          "aliases": [
+            "CD34"
+          ],
+          "external_ids": [],
+          "id": "gene:CD34",
+          "measurement_kind": "gene"
+        }
+      ],
+      "schema_version": 2,
+      "version": "0.1.0"
+    },
+    "schema_version": 2,
+    "snapshots": {
+      "cell-ontology": "ecc25e1d5e83fb4a2ea571c90a6fbbe004ff1b5803a8e75a5f6467059b04f095"
+    },
+    "tasks": [
+      {
+        "classes": [
+          {
+            "id": "non_blast",
+            "kind": "phenotype",
+            "residual_definition": null,
+            "state": false,
+            "target": "blast"
+          },
+          {
+            "id": "blast",
+            "kind": "phenotype",
+            "residual_definition": null,
+            "state": true,
+            "target": "blast"
+          }
+        ],
+        "id": "blast",
+        "kind": "binary_phenotype",
+        "partition_complete": true,
+        "scope": "bone_marrow_cells"
+      }
+    ],
+    "version": "0.1.0"
+  },
+  "tree_sha256": "0d5009ccbec7f08ebe14f427b441bdca104db93b4c6eebbcefec614f970550d8",
+  "version": "0.1.0"
+}

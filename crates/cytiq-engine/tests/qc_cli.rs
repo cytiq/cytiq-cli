@@ -341,12 +341,24 @@ fn warns_without_a_policy_unless_one_is_required() {
     assert_eq!(report["checks"][1]["check"], "policy");
     assert_eq!(report["checks"][1]["status"], "warn");
 
-    let (output, report) = qc_with(&directory, &manifest, &mask, &["--require-policy"]);
-    assert_eq!(output.status.code(), Some(1));
+    let outcome = directory.join("outcome.json");
+    let (output, report) = qc_with(
+        &directory,
+        &manifest,
+        &mask,
+        &["--require-policy", "--outcome", utf8(&outcome)],
+    );
+    assert_eq!(output.status.code(), Some(3));
     assert_eq!(
         failed(&report.expect("report")),
         [r#""sample S01" "policy""#]
     );
+    let outcome: Value =
+        serde_json::from_str(&fs::read_to_string(outcome).expect("outcome")).expect("JSON");
+    assert_eq!(outcome["reason"], "checks_failed");
+    assert_eq!(outcome["exit_code"], 3);
+    assert_eq!(outcome["completed"], true);
+    assert_eq!(outcome["command"], "cytiq qc");
 }
 
 #[test]

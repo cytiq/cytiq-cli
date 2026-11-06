@@ -143,7 +143,7 @@ fn fails_on_a_missing_required_marker() {
         &manifest(&sample("S01", &fixture("sample.fcs")), &markers),
     );
 
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(3));
     assert_eq!(failed_checks(&report), [r#""sample S01" "panel_marker""#]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("marker `CD8`"), "stderr: {stderr}");

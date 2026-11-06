@@ -96,4 +96,7 @@ pub enum SpillQcError {
     },
     #[error("{0}")]
     Publish(#[from] cytiq_publish::PublishError),
+    /// The run completed and wrote its report, but flagged pairs.
+    #[error("spillqc flagged {pairs} pair(s); review {}", report.display())]
+    Flagged { pairs: usize, report: PathBuf },
 }

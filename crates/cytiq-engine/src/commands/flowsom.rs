@@ -196,7 +196,10 @@ fn run_flowsom_model(
         } => {
             recorder.snapshot_inputs("input", &input)?;
             recorder.snapshot_inputs("mask", &masks)?;
-            let mut config = FlowSomConfig::new(cytiq_fcs::parse_channel_list(&channels)?);
+            let mut config = FlowSomConfig::new(
+                cytiq_fcs::parse_channel_list(&channels)
+                    .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?,
+            );
             config.xdim = xdim;
             config.ydim = ydim;
             config.metaclusters = metaclusters;

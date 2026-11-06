@@ -1,4 +1,5 @@
 use cytiq_transform::parse_channel_list as parse_transform_channel_list;
+use std::path::PathBuf;
 
 pub(crate) fn parse_threads(raw: &str) -> Result<usize, String> {
     let threads = raw
@@ -137,5 +138,14 @@ pub(crate) fn parse_contour_step(raw: &str) -> Result<f64, String> {
             "expected a number in (0, {}], got `{raw}`",
             cytiq_plot::MAX_CONTOUR_STEP
         )),
+    }
+}
+
+/// `--outcome`: a file path; stdout (`-`) is reserved for command output.
+pub(crate) fn parse_outcome_path(raw: &str) -> Result<PathBuf, String> {
+    if raw.is_empty() || raw == "-" {
+        Err("`--outcome` needs a file path; stdout is reserved for command output".to_owned())
+    } else {
+        Ok(PathBuf::from(raw))
     }
 }

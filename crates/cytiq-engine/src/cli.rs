@@ -8,6 +8,7 @@ use cytiq_peacoqc::PeacoQcMethod;
 use cytiq_plot::{OutputFormat, Palette, PlotKind, RemovedLayer, ScaleChoice};
 use cytiq_transform::{TransformFormat, TransformMethod};
 use serde::Serialize;
+use std::path::PathBuf;
 
 use crate::commands::autospectral::AutospectralArgs;
 use crate::commands::autospill::AutospillArgs;
@@ -32,7 +33,16 @@ use crate::commands::transform::TransformArgs;
 #[derive(Debug, Parser)]
 #[command(name = "cytiq")]
 #[command(about = "Command-line tools for cytiq workflows.")]
+#[command(
+    after_help = "Exit codes: 0 success, 1 runtime error (retryable), 2 invalid input, \
+configuration or data, 3 completed but checks failed, 4 output conflict, missing input or \
+incomplete result."
+)]
 pub(crate) struct Cli {
+    /// Also write the command's JSON outcome (exit code, reason, message) to
+    /// this file; it is replaced when it exists.
+    #[arg(long, global = true, value_name = "PATH", value_parser = crate::parsers::parse_outcome_path)]
+    pub(crate) outcome: Option<PathBuf>,
     #[command(subcommand)]
     pub(crate) command: Commands,
 }
@@ -74,10 +84,11 @@ pub(crate) enum Commands {
     /// SVG (or Plotly JSON), with removed events, gates and classes overlaid.
     Plot(PlotArgs),
     /// Check a run manifest and its FCS files before any computation; exits
-    /// with 1 when a check fails.
+    /// with 3 after writing the report when a check fails.
     Preflight(PreflightArgs),
     /// Check a sample's final event mask against its panel's `qc` policy in
-    /// the run manifest; exits with 1 when a check fails.
+    /// the run manifest; exits with 3 after writing the report when a check
+    /// fails.
     Qc(QcArgs),
     /// Dump FCS metadata (file hash, parameters, all TEXT keywords) as JSON.
     Meta(MetaArgs),

@@ -1,6 +1,6 @@
 use super::specimen::finish;
 use clap::{Args, Subcommand};
-use cytiq_provenance::RunRecorder;
+use cytiq_provenance::{RunRecorder, outcome::CommandOutcome};
 use cytiq_specimen::runner::{self, ObserveRequest};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -63,7 +63,7 @@ pub(crate) struct ObserveArgs {
 pub(crate) fn run(
     command: PopulationCommand,
     recorder: RunRecorder,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<CommandOutcome, Box<dyn std::error::Error>> {
     match command {
         PopulationCommand::Validate(args) => finish(
             "cytiq population validate",

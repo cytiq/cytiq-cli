@@ -219,7 +219,7 @@ fn refuses_input_already_compensated_by_cytiq() {
         "--output",
         utf8(&directory.join("qc")),
     ]);
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("already compensated"), "{stderr}");
     assert!(stderr.contains("--preprocessed"), "{stderr}");
@@ -266,7 +266,7 @@ fn assesses_stored_values_with_preprocessed() {
 }
 
 #[test]
-fn fail_on_flag_exits_with_one_after_writing_outputs() {
+fn fail_on_flag_exits_with_three_after_writing_outputs() {
     let directory = create_temp_dir("cytiq-engine-spillqc-fail");
     let output = directory.join("qc");
     let result = cytiq(&[
@@ -277,7 +277,7 @@ fn fail_on_flag_exits_with_one_after_writing_outputs() {
         utf8(&output),
         "--fail-on-flag",
     ]);
-    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(result.status.code(), Some(3));
     assert!(String::from_utf8_lossy(&result.stderr).contains("flagged"));
     assert!(output.join("report.html").is_file());
     assert!(output.join("provenance.json").is_file());
@@ -297,7 +297,7 @@ fn refuses_to_overwrite_an_earlier_run() {
     ];
     run(&args);
     let again = cytiq(&args);
-    assert_eq!(again.status.code(), Some(1));
+    assert_eq!(again.status.code(), Some(4));
     assert!(String::from_utf8_lossy(&again.stderr).contains("--overwrite"));
     run(&[&args[..], &["--overwrite"]].concat());
 }
@@ -337,7 +337,7 @@ fn a_failed_overwrite_keeps_the_earlier_run() {
         utf8(&output),
         "--overwrite",
     ]);
-    assert_eq!(failed.status.code(), Some(1));
+    assert_eq!(failed.status.code(), Some(2));
     assert_eq!(
         fs::read(output.join("summary.json")).expect("summary"),
         before
@@ -364,7 +364,7 @@ fn fails_when_input_is_missing() {
         "--output",
         utf8(&directory.join("qc")),
     ]);
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(4));
     assert!(String::from_utf8_lossy(&output.stderr).contains("does not exist"));
 }
 

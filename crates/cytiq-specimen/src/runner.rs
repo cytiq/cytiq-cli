@@ -341,34 +341,44 @@ pub fn write_comparison(
     )?)
 }
 
-/// Map only new-family errors; existing commands keep their exit behavior.
+/// Map specimen/population failures onto the exit contract shared by every
+/// command: I/O follows its kind, unreadable or inconsistent content is
+/// invalid input, an existing output a conflict.
 #[must_use]
 pub fn error_reason(error: &crate::SpecimenError) -> OutcomeReason {
-    use cytiq_population::PopulationError as P;
-    use cytiq_publish::PublishError;
+    use crate::SpecimenError as S;
     match error {
-        crate::SpecimenError::Invalid(_) | crate::SpecimenError::Json(_) => {
-            OutcomeReason::InvalidConfiguration
-        }
-        crate::SpecimenError::Population(p) => match p {
-            P::Missing(_) => OutcomeReason::Incomplete,
-            P::Invalid(_) | P::Json(_) | P::Arrow(_) | P::Parquet(_) => {
-                OutcomeReason::InvalidConfiguration
-            }
-            P::Publish(PublishError::Exists { .. }) => OutcomeReason::OutputConflict,
-            P::Io(e) if e.kind() == std::io::ErrorKind::NotFound => OutcomeReason::Incomplete,
+        S::Json(source) => json_reason(source),
+        S::Population(source) => population_reason(source),
+        S::Manifest(cytiq_manifest::ManifestError::Read { source, .. })
+        | S::Fcs(cytiq_fcs::Error::Io(source))
+        | S::Io(source) => OutcomeReason::of_io(source),
+        S::Invalid(_) | S::Manifest(_) | S::Fcs(_) => OutcomeReason::InvalidConfiguration,
+        // CSV is only written (report tables).
+        S::Csv(source) => match source.kind() {
+            csv::ErrorKind::Io(source) => OutcomeReason::of_io(source),
             _ => OutcomeReason::RuntimeError,
         },
-        crate::SpecimenError::Manifest(cytiq_manifest::ManifestError::Read { source, .. })
-            if source.kind() == std::io::ErrorKind::NotFound =>
-        {
-            OutcomeReason::Incomplete
-        }
-        crate::SpecimenError::Manifest(_) => OutcomeReason::InvalidConfiguration,
-        crate::SpecimenError::Publish(PublishError::Exists { .. }) => OutcomeReason::OutputConflict,
-        crate::SpecimenError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            OutcomeReason::Incomplete
-        }
-        _ => OutcomeReason::RuntimeError,
+        S::Provenance(source) => source.outcome_reason(),
+        S::Publish(source) => OutcomeReason::of_publish(source),
     }
+}
+
+fn population_reason(error: &cytiq_population::PopulationError) -> OutcomeReason {
+    use cytiq_population::PopulationError as P;
+    match error {
+        P::Missing(_) => OutcomeReason::Incomplete,
+        P::Invalid(_) | P::Arrow(_) | P::Parquet(_) => OutcomeReason::InvalidConfiguration,
+        P::Json(source) => json_reason(source),
+        P::Io(source) => OutcomeReason::of_io(source),
+        P::Publish(source) => OutcomeReason::of_publish(source),
+        P::Provenance(source) => source.outcome_reason(),
+    }
+}
+
+fn json_reason(error: &serde_json::Error) -> OutcomeReason {
+    error.io_error_kind().map_or(
+        OutcomeReason::InvalidConfiguration,
+        OutcomeReason::of_io_kind,
+    )
 }

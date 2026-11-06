@@ -263,6 +263,84 @@ fn plan_files(path: &Path) -> Vec<PathBuf> {
     ]
 }
 
+#[derive(Clone, Debug)]
+pub struct CompareConfig {
+    pub baseline: PathBuf,
+    pub candidate: PathBuf,
+    pub policy: Option<PathBuf>,
+    pub output: PathBuf,
+    pub overwrite: bool,
+}
+
+pub(crate) fn snapshot_package(
+    directory: &Path,
+    role: &str,
+    recorder: &mut RunRecorder,
+) -> Result<CommandOutcome> {
+    let outcome = verify_package(directory)?;
+    let files: Vec<_> = outcome
+        .artifacts
+        .iter()
+        .map(|a| directory.join(&a.path))
+        .chain(std::iter::once(directory.join("outcome.json")))
+        .collect();
+    recorder.snapshot_inputs(role, &files)?;
+    Ok(outcome)
+}
+
+pub(crate) fn package_identity(
+    directory: &Path,
+    outcome: &CommandOutcome,
+) -> Result<crate::compare::PackageIdentity> {
+    let record: cytiq_provenance::RunRecord =
+        serde_json::from_value(serialization::read(&directory.join("provenance.json"))?)?;
+    require(
+        record.schema_version == cytiq_provenance::SCHEMA_VERSION,
+        "unsupported source provenance version",
+    )?;
+    Ok(crate::compare::PackageIdentity {
+        artifacts: outcome.artifacts.clone(),
+        version: record.version,
+        build: record.build,
+    })
+}
+
+/// Compare and publish standalone summaries, including failed or unavailable comparisons.
+/// # Errors
+/// Rejects invalid packages/policy, differing specimen identities and output conflicts.
+pub fn write_comparison(
+    config: &CompareConfig,
+    mut recorder: RunRecorder,
+) -> Result<CommandOutcome> {
+    let a = snapshot_package(&config.baseline, "baseline", &mut recorder)?;
+    let b = snapshot_package(&config.candidate, "candidate", &mut recorder)?;
+    let baseline = crate::SpecimenResult::load(&config.baseline)?;
+    let candidate = crate::SpecimenResult::load(&config.candidate)?;
+    let policy = if let Some(path) = &config.policy {
+        recorder.snapshot_inputs("policy", std::slice::from_ref(path))?;
+        crate::ComparisonPolicy::load(path)?
+    } else {
+        crate::ComparisonPolicy::default()
+    };
+    let mut comparison = crate::compare(&baseline, &candidate, &policy)?;
+    comparison.baseline_package = Some(package_identity(&config.baseline, &a)?);
+    comparison.candidate_package = Some(package_identity(&config.candidate, &b)?);
+    Ok(write_package(
+        &config.output,
+        config.overwrite,
+        recorder,
+        "cytiq specimen compare",
+        comparison.outcome_reason(),
+        |staged| {
+            let path = staged.join("comparison.json");
+            write_json(&path, &comparison)?;
+            // Do not publish a comparison that its bounded native reader cannot reopen.
+            serialization::read(&path)?;
+            Ok(vec!["comparison.json".into()])
+        },
+    )?)
+}
+
 /// Map only new-family errors; existing commands keep their exit behavior.
 #[must_use]
 pub fn error_reason(error: &crate::SpecimenError) -> OutcomeReason {

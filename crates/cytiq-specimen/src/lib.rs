@@ -1,10 +1,12 @@
 //! Specimen protocols and summary-only reconciliation.
 
+pub mod compare;
 pub mod layout;
 pub mod plan;
 pub mod reconcile;
 pub mod runner;
 
+pub use compare::{ComparisonPolicy, SpecimenComparison, compare};
 pub use layout::{SpecimenLayout, Strategy};
 pub use plan::SpecimenPlan;
 pub use reconcile::{SpecimenResult, reconcile};

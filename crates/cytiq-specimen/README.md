@@ -146,6 +146,58 @@ errors. Argument syntax errors use clap's usual code 2 and need not have JSON.
 Existing commands retain their previous exit codes. This contract is usable by
 the API/compute facade and Prefect without either becoming a runtime dependency.
 
+## Comparing native results
+
+```sh
+cytiq specimen compare --baseline previous/S01/ --candidate current/S01/ --output comparison/S01/
+cytiq specimen compare --baseline previous/S01/ --candidate current/S01/ \
+  --policy comparison-policy.yaml --output comparison/S01/ --overwrite
+```
+
+Both inputs are verified `specimen run` packages for the same specimen. The
+command reads summaries only, compares `observations` and `results` independently,
+and publishes `comparison.json`, provenance and outcome. Embedded snapshots make
+the comparison readable after the original packages are moved or removed.
+`SpecimenComparison::load` verifies the package and recomputes its calculations.
+
+Rows match by collection, panel, source, full target and measure, never content
+identity or acquisition ID. Duplicate semantic keys are invalid. A changed tree,
+unit or denominator target/scope is incompatible; changed status, added/removed
+rows, QC status multisets and specimen completeness/QC are checks. Model, mask,
+acquisition, method, protocol and projection changes remain visible as context.
+Denominator counts may change without changing its definition. Measured zero
+stays numeric; equal unavailable states have no numeric delta.
+
+Default limits are exactly zero. Policy v1 accepts JSON/YAML with absolute limits:
+
+```yaml
+schema_version: 1
+defaults:
+  observed_count: 0       # exact UInt64 event difference
+  estimated_count: 0.0
+  fraction: 0.001         # units fraction, not percent
+  concentration: 0.0
+overrides:
+  - key:
+      collection: results
+      panel_id: P1
+      source_id: gates
+      target: {kind: population, id: t_cells, scope: cells}
+      measure: observed_count
+    limit: {kind: count, value: 2}
+```
+
+Other measures use `limit: {kind: float, value: 0.001}`. Limits are inclusive,
+finite and nonnegative; duplicate overrides and keys absent from both inputs are
+errors. Counts and their deltas never pass through floating point. Checks compare
+status multisets, preserving repetitions; message changes are descriptive.
+
+Exit 0 means all comparisons passed; 3 publishes a comparison with failed checks;
+4 publishes an unavailable comparison when there are no numeric pairs and no
+failures. Invalid inputs/policy use 2, missing inputs/output conflicts use 4 and
+runtime errors use 1. An unchanged failing source QC can compare equal; its source
+status remains present and a successful comparison is not a source QC approval.
+
 ## Validation and shadow runs
 
 ```sh

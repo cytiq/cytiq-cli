@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 use cytiq_provenance::{RunRecorder, outcome::CommandOutcome};
-use cytiq_specimen::runner::{self, PlanConfig};
+use cytiq_specimen::runner::{self, CompareConfig, PlanConfig};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -12,6 +12,8 @@ pub(crate) enum SpecimenCommand {
     Plan(PlanArgs),
     /// Reconcile observation packages without reading event-level data.
     Run(RunArgs),
+    /// Compare two native result packages for the same specimen.
+    Compare(CompareArgs),
 }
 
 #[derive(Debug, Serialize, Args)]
@@ -61,6 +63,33 @@ pub(crate) struct RunArgs {
     output: PathBuf,
     #[arg(long)]
     overwrite: bool,
+}
+
+#[derive(Debug, Serialize, Args)]
+pub(crate) struct CompareArgs {
+    #[arg(long)]
+    baseline: PathBuf,
+    #[arg(long)]
+    candidate: PathBuf,
+    /// Optional JSON/YAML absolute tolerances; defaults to exact equality.
+    #[arg(long)]
+    policy: Option<PathBuf>,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    overwrite: bool,
+}
+
+impl From<CompareArgs> for CompareConfig {
+    fn from(args: CompareArgs) -> Self {
+        Self {
+            baseline: args.baseline,
+            candidate: args.candidate,
+            policy: args.policy,
+            output: args.output,
+            overwrite: args.overwrite,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -115,6 +144,10 @@ pub(crate) fn run(
                 args.overwrite,
                 recorder,
             ),
+        ),
+        SpecimenCommand::Compare(args) => finish(
+            "cytiq specimen compare",
+            runner::write_comparison(&args.into(), recorder),
         ),
     }
 }

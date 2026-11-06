@@ -54,6 +54,23 @@ impl SpecimenResult {
         )?;
         let result: Self =
             serde_json::from_value(serialization::read(&directory.join("result.json"))?)?;
+        result.validate()?;
+        require(
+            cytiq_population::table::read(&directory.join("results.parquet"))? == result.results,
+            "result JSON/Parquet disagreement",
+        )?;
+        require(
+            outcome.reason == result.outcome_reason(),
+            "outcome and specimen result disagree",
+        )?;
+        Ok(result)
+    }
+
+    /// Validate a summary snapshot without reopening its original input files.
+    /// # Errors
+    /// Rejects invalid identities, quantities, source references and QC summaries.
+    pub fn validate(&self) -> Result<()> {
+        let result = self;
         require(
             result.schema_version == 1 && !result.specimen_id.is_empty(),
             "invalid specimen result identity/version",
@@ -79,10 +96,6 @@ impl SpecimenResult {
                 "missing reconciliation input observation",
             )?;
         }
-        require(
-            cytiq_population::table::read(&directory.join("results.parquet"))? == result.results,
-            "result JSON/Parquet disagreement",
-        )?;
         let status = result
             .checks
             .iter()
@@ -90,18 +103,18 @@ impl SpecimenResult {
             .max()
             .unwrap_or(CheckStatus::Pass);
         require(status == result.status, "inconsistent specimen QC summary")?;
-        let reason = if !result.complete {
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn outcome_reason(&self) -> cytiq_provenance::outcome::OutcomeReason {
+        if !self.complete {
             cytiq_provenance::outcome::OutcomeReason::Incomplete
-        } else if status == CheckStatus::Fail {
+        } else if self.status == CheckStatus::Fail {
             cytiq_provenance::outcome::OutcomeReason::ChecksFailed
         } else {
             cytiq_provenance::outcome::OutcomeReason::Success
-        };
-        require(
-            outcome.reason == reason,
-            "outcome and specimen result disagree",
-        )?;
-        Ok(result)
+        }
     }
 }
 

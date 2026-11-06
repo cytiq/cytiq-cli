@@ -1,0 +1,828 @@
+//! Streaming adapters for existing membership and classifier Parquet files.
+
+use arrow_array::{Array, BooleanArray, RecordBatch, StringArray, UInt64Array};
+use cytiq_provenance::{RunRecord, hash_file};
+mod definition;
+use definition::validate_classifier_definition;
+use parquet::arrow::{ProjectionMask, arrow_reader::ParquetRecordBatchReaderBuilder};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    path::{Path, PathBuf},
+};
+
+use crate::{
+    ArtifactRef, Denominator, Measure, Method, ObservationStatus, PopulationObservation, Result,
+    Target, TargetKind, knowledge::KnowledgeArtifact, observation::Lineage, require, serialization,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationFormat {
+    GateMembership,
+    ClassifyPredictions,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Binding {
+    pub label: String,
+    pub target: Target,
+    /// Gate label in the same source; None means all assessed scope events.
+    #[serde(default)]
+    pub denominator: Option<String>,
+}
+
+/// Semantic identity of a knowledge artifact, independent of JSON/YAML bytes.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeRef {
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+impl KnowledgeRef {
+    /// # Errors
+    /// Rejects invalid or changed knowledge artifacts.
+    pub fn load(&self) -> Result<KnowledgeArtifact> {
+        let artifact = KnowledgeArtifact::load(&self.path)?;
+        require(
+            artifact.sha256 == self.sha256,
+            "knowledge reference checksum mismatch",
+        )?;
+        Ok(artifact)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceDefinition {
+    pub format: AnnotationFormat,
+    /// Gating-ML file or model.onnx; always a byte digest.
+    pub definition: ArtifactRef,
+    #[serde(default)]
+    pub bundle_manifest: Option<ArtifactRef>,
+    #[serde(default)]
+    pub abstain_margin: f64,
+    #[serde(default)]
+    pub vocabulary: Option<KnowledgeRef>,
+    #[serde(default)]
+    pub bindings: Vec<Binding>,
+}
+
+impl SourceDefinition {
+    /// Resolve a vocabulary into targets; dataset label mappings are not gate mappings.
+    /// # Errors
+    /// Rejects incompatible projections and ambiguous or invalid bindings.
+    /// # Panics
+    /// Never: knowledge artifacts can only be constructed by validated readers.
+    pub fn resolve(&mut self, projection: &KnowledgeArtifact) -> Result<()> {
+        self.definition.verify()?;
+        require(
+            projection.value["artifact_type"] == "panel_projection",
+            "source requires a panel projection",
+        )?;
+        match self.format {
+            AnnotationFormat::GateMembership => {
+                require(
+                    self.vocabulary.is_none()
+                        && self.bundle_manifest.is_none()
+                        && self.abstain_margin == 0.0
+                        && !self.bindings.is_empty(),
+                    "gating requires explicit bindings and no vocabulary",
+                )?;
+                let ids: BTreeSet<_> = projection.value["tree"]["cells"]
+                    .as_array()
+                    .expect("validated tree")
+                    .iter()
+                    .map(|cell| cell["id"].as_str().expect("validated id"))
+                    .collect();
+                for binding in &self.bindings {
+                    binding.target.validate()?;
+                    require(
+                        binding.target.kind == TargetKind::Population
+                            && ids.contains(binding.target.id.as_str())
+                            && ids.contains(binding.target.scope.as_str()),
+                        "gate binding requires known population and scope",
+                    )?;
+                    require(
+                        projection.value["populations"]
+                            .as_array()
+                            .expect("validated projection")
+                            .iter()
+                            .any(|entry| {
+                                entry["population"] == binding.target.id
+                                    && entry["status"] == "resolvable"
+                            }),
+                        "gate target is not resolvable in the panel projection",
+                    )?;
+                }
+            }
+            AnnotationFormat::ClassifyPredictions => {
+                let vocabulary = self
+                    .vocabulary
+                    .as_ref()
+                    .ok_or_else(|| {
+                        crate::PopulationError::Invalid(
+                            "classifier source requires a vocabulary".into(),
+                        )
+                    })?
+                    .load()?;
+                let v = &vocabulary.value;
+                validate_classifier_definition(self, projection, &vocabulary)?;
+                require(
+                    v["artifact_type"] == "class_vocabulary"
+                        && v["projection_sha256"] == projection.sha256
+                        && v["panel_sha256"] == projection.value["panel_sha256"]
+                        && v["tree_sha256"] == projection.value["tree_sha256"]
+                        && v["registry_sha256"]
+                            == serialization::digest(&projection.value["tree"]["registry"]),
+                    "classifier/projection knowledge mismatch",
+                )?;
+                let bindings = v["classes"]
+                    .as_array()
+                    .expect("validated classes")
+                    .iter()
+                    .map(|class| {
+                        Ok(Binding {
+                            label: class["id"].as_str().expect("validated id").to_owned(),
+                            target: Target {
+                                kind: serde_json::from_value(class["kind"].clone())?,
+                                id: if class["kind"] == "residual" {
+                                    class["id"].as_str()
+                                } else {
+                                    class["target"].as_str()
+                                }
+                                .expect("validated target")
+                                .to_owned(),
+                                scope: v["scope"].as_str().expect("validated scope").to_owned(),
+                                state: class["state"].as_bool(),
+                            },
+                            denominator: None,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                require(
+                    self.bindings.is_empty() || self.bindings == bindings,
+                    "classifier bindings must match the vocabulary",
+                )?;
+                self.bindings = bindings;
+            }
+        }
+        validate_bindings(&self.bindings)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationContext {
+    pub specimen_id: String,
+    pub manifest_sha256: String,
+    pub panel_id: String,
+    pub acquisition_id: String,
+    pub acquisition_sha256: String,
+    pub raw_events: u64,
+    pub source_id: String,
+    pub projection: KnowledgeRef,
+    pub source: SourceDefinition,
+}
+
+#[derive(Clone, Debug)]
+pub struct ObserveConfig {
+    pub context: ObservationContext,
+    pub annotations: PathBuf,
+    pub producer_provenance: PathBuf,
+    pub mask: PathBuf,
+    pub qc_report: PathBuf,
+    pub qc_provenance: PathBuf,
+}
+
+impl ObserveConfig {
+    #[must_use]
+    pub fn input_files(&self) -> Vec<PathBuf> {
+        let mut paths = vec![
+            self.annotations.clone(),
+            self.producer_provenance.clone(),
+            self.mask.clone(),
+            self.qc_report.clone(),
+            self.qc_provenance.clone(),
+            self.context.projection.path.clone(),
+            self.context.source.definition.path.clone(),
+        ];
+        paths.extend(
+            self.context
+                .source
+                .vocabulary
+                .iter()
+                .map(|v| v.path.clone()),
+        );
+        paths.extend(
+            self.context
+                .source
+                .bundle_manifest
+                .iter()
+                .map(|v| v.path.clone()),
+        );
+        paths
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventAnnotations {
+    pub schema_version: u32,
+    pub context: ObservationContext,
+    pub data: ArtifactRef,
+    pub producer_provenance: ArtifactRef,
+    pub analysis_mask: ArtifactRef,
+    pub technical_qc: ArtifactRef,
+    pub technical_qc_provenance: ArtifactRef,
+    pub technical_status: String,
+    pub assessed_events: u64,
+    pub unknown_events: u64,
+}
+
+/// Produce per-source observations without changing or materializing annotation files.
+/// # Errors
+/// Rejects broken provenance, wrong acquisitions, incomplete coverage and invalid memberships.
+pub fn observe(config: &ObserveConfig) -> Result<(EventAnnotations, Vec<PopulationObservation>)> {
+    let projection = config.context.projection.load()?;
+    let mut context = config.context.clone();
+    context.source.resolve(&projection)?;
+    require(
+        context.raw_events > 0 && context.raw_events <= 1_000_000_000,
+        "invalid or excessive raw event count",
+    )?;
+    let data = ArtifactRef::of(&config.annotations)?;
+    let mask = ArtifactRef::of(&config.mask)?;
+    let producer_ref = ArtifactRef::of(&config.producer_provenance)?;
+    let producer = producer_record(&config.producer_provenance)?;
+    let expected_tool = match context.source.format {
+        AnnotationFormat::GateMembership => "cytiq gate",
+        AnnotationFormat::ClassifyPredictions => "cytiq classify",
+    };
+    require(
+        producer.tool == expected_tool && producer.outputs.iter().any(|f| f.sha256 == data.sha256),
+        "producer does not describe annotations",
+    )?;
+    require(
+        producer
+            .inputs
+            .iter()
+            .any(|f| f.sha256 == context.source.definition.sha256),
+        "producer definition checksum mismatch",
+    )?;
+    check_single_mask(&producer, &mask)?;
+    if let Some(bundle) = &context.source.bundle_manifest {
+        require(
+            producer
+                .inputs
+                .iter()
+                .any(|f| f.role.as_deref() == Some("model") && f.sha256 == bundle.sha256)
+                && producer.config["abstain_margin"].as_f64()
+                    == Some(context.source.abstain_margin),
+            "classifier bundle or abstain configuration differs from the plan",
+        )?;
+    }
+    let qc_ref = ArtifactRef::of(&config.qc_report)?;
+    let qc_provenance = ArtifactRef::of(&config.qc_provenance)?;
+    let qc_record = producer_record(&config.qc_provenance)?;
+    require(
+        qc_record.tool == "cytiq qc" && qc_record.outputs.iter().any(|f| f.sha256 == qc_ref.sha256),
+        "QC provenance mismatch",
+    )?;
+    check_single_mask(&qc_record, &mask)?;
+    require(
+        qc_record
+            .inputs
+            .iter()
+            .any(|f| f.role.as_deref() == Some("manifest") && f.sha256 == context.manifest_sha256),
+        "technical QC used a different manifest from the specimen plan",
+    )?;
+    let qc = serialization::read(&config.qc_report)?;
+    let status = qc_status(&qc, &context)?;
+    let eligible = read_mask(&config.mask, &context)?;
+    let (counts, assessed, unknown) = count_annotations(&config.annotations, &context, &eligible)?;
+    require(
+        qc["metrics"]["kept"].as_u64() == Some(assessed),
+        "QC and annotation assessment counts disagree",
+    )?;
+    let descriptor = EventAnnotations {
+        schema_version: 1,
+        context,
+        data,
+        producer_provenance: producer_ref,
+        analysis_mask: mask,
+        technical_qc: qc_ref,
+        technical_qc_provenance: qc_provenance,
+        technical_status: status.to_owned(),
+        assessed_events: assessed,
+        unknown_events: unknown,
+    };
+    let observations = observations(&descriptor, &projection, &counts)?;
+    Ok((descriptor, observations))
+}
+
+fn producer_record(path: &Path) -> Result<RunRecord> {
+    let record: RunRecord = serde_json::from_value(serialization::read(path)?)?;
+    require(record.schema_version == 2, "producer provenance must be v2")?;
+    Ok(record)
+}
+
+fn check_single_mask(record: &RunRecord, mask: &ArtifactRef) -> Result<()> {
+    let masks = record
+        .inputs
+        .iter()
+        .filter(|f| f.role.as_deref() == Some("mask"))
+        .collect::<Vec<_>>();
+    require(
+        masks.len() == 1 && masks[0].sha256 == mask.sha256,
+        "P1 requires one identical final combined mask for annotations and technical QC",
+    )
+}
+
+fn metadata(
+    builder: &ParquetRecordBatchReaderBuilder<File>,
+    context: &ObservationContext,
+) -> Result<()> {
+    require(
+        builder.schema().metadata().get("cytiq.acquisition_sha256")
+            == Some(&context.acquisition_sha256)
+            && builder
+                .schema()
+                .metadata()
+                .get("cytiq.event_id_base")
+                .map(String::as_str)
+                == Some("0"),
+        "annotation acquisition or event-base mismatch",
+    )
+}
+
+struct Bitmap {
+    words: Vec<u64>,
+    len: usize,
+}
+
+impl Bitmap {
+    fn get(&self, index: usize) -> bool {
+        self.words[index / 64] & (1_u64 << (index % 64)) != 0
+    }
+    fn set(&mut self, index: usize, value: bool) {
+        let bit = 1_u64 << (index % 64);
+        if value {
+            self.words[index / 64] |= bit;
+        } else {
+            self.words[index / 64] &= !bit;
+        }
+    }
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+fn booleans(size: usize) -> Result<Bitmap> {
+    let mut values = Vec::new();
+    let words = size.div_ceil(64);
+    values.try_reserve_exact(words).map_err(|_| {
+        crate::PopulationError::Invalid("lineage bitmap exceeds memory budget".into())
+    })?;
+    values.resize(words, 0_u64);
+    Ok(Bitmap {
+        words: values,
+        len: size,
+    })
+}
+
+fn read_mask(path: &Path, context: &ObservationContext) -> Result<Bitmap> {
+    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?;
+    metadata(&builder, context)?;
+    require(
+        builder
+            .schema()
+            .metadata()
+            .get("cytiq.mask.schema_version")
+            .map(String::as_str)
+            == Some("2")
+            && builder.metadata().file_metadata().num_rows()
+                == i64::try_from(context.raw_events).unwrap_or(-1),
+        "QC mask must cover every raw event with schema v2",
+    )?;
+    let size = usize::try_from(context.raw_events).map_err(|_| {
+        crate::PopulationError::Invalid("raw event count overflows platform".into())
+    })?;
+    let mut seen = booleans(size)?;
+    let mut eligible = booleans(size)?;
+    for batch in projected(builder, &["source_event_id".into(), "keep".into()])? {
+        let batch = batch?;
+        let sources = uint(&batch, "source_event_id")?;
+        let keep = boolean(&batch, "keep")?;
+        for i in 0..batch.num_rows() {
+            require(
+                !sources.is_null(i) && !keep.is_null(i),
+                "null mask lineage or eligibility",
+            )?;
+            let source = usize::try_from(sources.value(i))
+                .map_err(|_| crate::PopulationError::Invalid("invalid event id".into()))?;
+            require(
+                source < size && !seen.get(source),
+                "duplicate or out-of-range raw mask id",
+            )?;
+            seen.set(source, true);
+            eligible.set(source, keep.value(i));
+        }
+    }
+    require((0..size).all(|i| seen.get(i)), "incomplete raw mask")?;
+    Ok(eligible)
+}
+
+fn count_annotations(
+    path: &Path,
+    context: &ObservationContext,
+    eligible: &Bitmap,
+) -> Result<(BTreeMap<String, u64>, u64, u64)> {
+    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?;
+    metadata(&builder, context)?;
+    let classifier = validate_source_metadata(&builder, context)?;
+    let mut columns = vec!["event_id".into(), "source_event_id".into()];
+    columns.push(if classifier { "assessed" } else { "keep" }.into());
+    if classifier {
+        columns.push("label".into());
+    } else {
+        columns.extend(context.source.bindings.iter().map(|b| b.label.clone()));
+    }
+    let mut counts: BTreeMap<_, _> = context
+        .source
+        .bindings
+        .iter()
+        .map(|b| (b.label.clone(), 0_u64))
+        .collect();
+    let parents = denominator_indices(&context.source.bindings);
+    let mut seen = booleans(eligible.len())?;
+    let mut assessed = 0_u64;
+    let mut unknown = 0;
+    let mut rows = 0_u64;
+    for batch in projected(builder, &columns)? {
+        let batch = batch?;
+        let ids = uint(&batch, "event_id")?;
+        let sources = uint(&batch, "source_event_id")?;
+        let keep = boolean(&batch, if classifier { "assessed" } else { "keep" })?;
+        let labels = if classifier {
+            Some(strings(&batch, "label")?)
+        } else {
+            None
+        };
+        let gates = if classifier {
+            Vec::new()
+        } else {
+            context
+                .source
+                .bindings
+                .iter()
+                .map(|b| boolean(&batch, &b.label))
+                .collect::<Result<Vec<_>>>()?
+        };
+        for i in 0..batch.num_rows() {
+            require(
+                !ids.is_null(i) && !sources.is_null(i) && !keep.is_null(i) && ids.value(i) == rows,
+                "null or invalid annotation event id",
+            )?;
+            rows += 1;
+            let source = usize::try_from(sources.value(i))
+                .map_err(|_| crate::PopulationError::Invalid("invalid source event id".into()))?;
+            require(
+                source < seen.len() && !seen.get(source),
+                "duplicate or out-of-range annotation source_event_id",
+            )?;
+            seen.set(source, true);
+            require(
+                keep.value(i) == eligible.get(source),
+                "annotation eligibility disagrees with QC mask",
+            )?;
+            if keep.value(i) {
+                assessed += 1;
+            }
+            if let Some(labels) = labels {
+                require(
+                    labels.is_null(i) != keep.value(i),
+                    "classification assessment/label mismatch",
+                )?;
+                if keep.value(i) {
+                    let label = labels.value(i);
+                    if label == "unknown" {
+                        require(
+                            context
+                                .source
+                                .bindings
+                                .iter()
+                                .all(|b| b.target.kind == TargetKind::Phenotype),
+                            "unknown is unsupported for multiclass predictions",
+                        )?;
+                        unknown += 1;
+                    } else {
+                        *counts.get_mut(label).ok_or_else(|| {
+                            crate::PopulationError::Invalid("unknown classifier label".into())
+                        })? += 1;
+                    }
+                }
+            } else {
+                count_gate_row(context, &gates, &parents, &mut counts, i, keep.value(i))?;
+            }
+        }
+    }
+    require(
+        (0..eligible.len()).all(|i| !eligible.get(i) || seen.get(i)),
+        "annotations omit eligible raw events",
+    )?;
+    Ok((counts, assessed, unknown))
+}
+
+fn projected(
+    builder: ParquetRecordBatchReaderBuilder<File>,
+    names: &[String],
+) -> Result<parquet::arrow::arrow_reader::ParquetRecordBatchReader> {
+    let indexes = names
+        .iter()
+        .map(|name| builder.schema().index_of(name))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let projection = ProjectionMask::roots(builder.parquet_schema(), indexes);
+    Ok(builder
+        .with_projection(projection)
+        .with_batch_size(crate::DEFAULT_BATCH_SIZE)
+        .build()?)
+}
+
+fn uint<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a UInt64Array> {
+    batch
+        .column_by_name(name)
+        .and_then(|c| c.as_any().downcast_ref())
+        .ok_or_else(|| crate::PopulationError::Invalid(format!("expected UInt64: {name}")))
+}
+fn boolean<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a BooleanArray> {
+    batch
+        .column_by_name(name)
+        .and_then(|c| c.as_any().downcast_ref())
+        .ok_or_else(|| crate::PopulationError::Invalid(format!("expected Boolean: {name}")))
+}
+fn strings<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArray> {
+    batch
+        .column_by_name(name)
+        .and_then(|c| c.as_any().downcast_ref())
+        .ok_or_else(|| crate::PopulationError::Invalid(format!("expected Utf8: {name}")))
+}
+
+fn observations(
+    descriptor: &EventAnnotations,
+    projection: &KnowledgeArtifact,
+    counts: &BTreeMap<String, u64>,
+) -> Result<Vec<PopulationObservation>> {
+    let context = &descriptor.context;
+    let mut result = Vec::new();
+    for binding in &context.source.bindings {
+        let count = counts[&binding.label];
+        let denominator_count = binding
+            .denominator
+            .as_ref()
+            .map_or(descriptor.assessed_events, |label| counts[label]);
+        let denominator_target = binding.denominator.as_ref().map(|label| {
+            context
+                .source
+                .bindings
+                .iter()
+                .find(|b| &b.label == label)
+                .expect("resolved denominator")
+                .target
+                .clone()
+        });
+        let status = if descriptor.technical_status == "fail" {
+            ObservationStatus::QcRejected
+        } else if descriptor.assessed_events == 0 {
+            ObservationStatus::NotMeasured
+        } else {
+            ObservationStatus::Measured
+        };
+        let mut observation = PopulationObservation {
+            schema_version: 1,
+            observation_id: String::new(),
+            specimen_id: context.specimen_id.clone(),
+            panel_id: context.panel_id.clone(),
+            acquisition_id: Some(context.acquisition_id.clone()),
+            source_id: context.source_id.clone(),
+            target: binding.target.clone(),
+            measure: Measure::ObservedCount,
+            unit: "events".into(),
+            status,
+            value_u64: (status == ObservationStatus::Measured).then_some(count),
+            value_f64: None,
+            denominator: Some(Denominator {
+                target: denominator_target,
+                scope: binding.target.scope.clone(),
+                observed_count: denominator_count,
+            }),
+            method: Method {
+                name: match context.source.format {
+                    AnnotationFormat::GateMembership => "gating",
+                    AnnotationFormat::ClassifyPredictions => "classify",
+                }
+                .into(),
+                version: "1".into(),
+                definition_sha256: context.source.definition.sha256.clone(),
+                experimental: false,
+                source_observation_ids: Vec::new(),
+            },
+            lineage: Lineage {
+                acquisition_sha256: Some(context.acquisition_sha256.clone()),
+                tree_sha256: projection.value["tree_sha256"]
+                    .as_str()
+                    .expect("validated hash")
+                    .into(),
+                panel_profile_sha256: projection.value["panel_sha256"]
+                    .as_str()
+                    .expect("validated hash")
+                    .into(),
+                projection_sha256: projection.sha256.clone(),
+                annotations_sha256: Some(descriptor.data.sha256.clone()),
+                producer_provenance_sha256: Some(descriptor.producer_provenance.sha256.clone()),
+                analysis_mask_sha256: Some(descriptor.analysis_mask.sha256.clone()),
+            },
+            n_events: descriptor.assessed_events,
+            supporting_count: (status != ObservationStatus::Measured).then_some(count),
+            reason: match status {
+                ObservationStatus::QcRejected => Some("technical_qc_failed".into()),
+                ObservationStatus::NotMeasured => Some("no_assessed_events".into()),
+                _ => None,
+            },
+        };
+        observation.seal()?;
+        result.push(observation.clone());
+        observation.measure = Measure::Fraction;
+        observation.unit = "fraction".into();
+        observation.value_u64 = None;
+        if status == ObservationStatus::Measured && denominator_count > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            {
+                observation.value_f64 = Some(count as f64 / denominator_count as f64);
+            }
+        } else if status == ObservationStatus::Measured {
+            observation.status = ObservationStatus::NotApplicable;
+            observation.reason = Some("zero_denominator".into());
+        }
+        observation.seal()?;
+        result.push(observation);
+    }
+    Ok(result)
+}
+
+fn validate_bindings(bindings: &[Binding]) -> Result<()> {
+    let mut labels = BTreeSet::new();
+    let mut targets = BTreeSet::new();
+    for binding in bindings {
+        binding.target.validate()?;
+        require(
+            !binding.label.is_empty()
+                && !["event_id", "source_event_id", "keep", "assessed", "unknown"]
+                    .contains(&binding.label.as_str())
+                && labels.insert(&binding.label)
+                && targets.insert(&binding.target),
+            "duplicate or reserved annotation binding",
+        )?;
+        if let Some(parent) = &binding.denominator {
+            require(
+                parent != &binding.label && bindings.iter().any(|b| &b.label == parent),
+                "denominator must name a different bound gate",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_source_metadata(
+    builder: &ParquetRecordBatchReaderBuilder<File>,
+    context: &ObservationContext,
+) -> Result<bool> {
+    let classifier = context.source.format == AnnotationFormat::ClassifyPredictions;
+    if classifier {
+        let version = builder
+            .schema()
+            .metadata()
+            .get("cytiq.classify.schema_version")
+            .and_then(|s| s.parse::<u32>().ok());
+        require(
+            matches!(version, Some(2..=4)),
+            "specimen classifier import requires bundle v2-v4",
+        )?;
+        let vocabulary = context
+            .source
+            .vocabulary
+            .as_ref()
+            .expect("resolved classifier vocabulary");
+        let expected = if version == Some(4) {
+            vocabulary.sha256.clone()
+        } else {
+            hash_file(&vocabulary.path)?.1
+        };
+        require(
+            builder
+                .schema()
+                .metadata()
+                .get("cytiq.classify.vocabulary_sha256")
+                == Some(&expected),
+            "prediction vocabulary mismatch",
+        )?;
+        let classes = context
+            .source
+            .bindings
+            .iter()
+            .map(|b| &b.label)
+            .collect::<Vec<_>>();
+        require(
+            builder.schema().metadata().get("cytiq.classify.classes")
+                == Some(&serde_json::to_string(&classes)?),
+            "prediction class order mismatch",
+        )?;
+    } else {
+        require(
+            builder
+                .schema()
+                .metadata()
+                .get("cytiq.mask.schema_version")
+                .map(String::as_str)
+                == Some("2"),
+            "unsupported membership schema",
+        )?;
+    }
+    Ok(classifier)
+}
+
+fn count_gate_row(
+    context: &ObservationContext,
+    gates: &[&BooleanArray],
+    parents: &[Option<usize>],
+    counts: &mut BTreeMap<String, u64>,
+    i: usize,
+    kept: bool,
+) -> Result<()> {
+    for ((binding, gate), parent) in context.source.bindings.iter().zip(gates).zip(parents) {
+        require(
+            gate.is_null(i) != kept,
+            "membership assessment/keep mismatch",
+        )?;
+        if kept && gate.value(i) {
+            if let Some(parent) = parent {
+                require(
+                    !gates[*parent].is_null(i) && gates[*parent].value(i),
+                    "gate membership exceeds its denominator",
+                )?;
+            }
+            *counts.get_mut(&binding.label).expect("binding counter") += 1;
+        }
+    }
+    Ok(())
+}
+
+fn qc_status<'a>(qc: &'a serde_json::Value, context: &ObservationContext) -> Result<&'a str> {
+    require(
+        qc["acquisition"] == context.acquisition_sha256
+            && qc["sample"] == context.acquisition_id
+            && qc["panel"] == context.panel_id
+            && qc["metrics"]["events"].as_u64() == Some(context.raw_events),
+        "QC acquisition, panel, sample or event-count mismatch",
+    )?;
+    let status = qc["status"]
+        .as_str()
+        .ok_or_else(|| crate::PopulationError::Invalid("missing QC status".into()))?;
+    let checks = qc["checks"]
+        .as_array()
+        .ok_or_else(|| crate::PopulationError::Invalid("missing QC checks".into()))?;
+    let failures = checks.iter().filter(|c| c["status"] == "fail").count();
+    let warnings = checks.iter().filter(|c| c["status"] == "warn").count();
+    let expected_status = if failures > 0 {
+        "fail"
+    } else if warnings > 0 {
+        "warn"
+    } else {
+        "pass"
+    };
+    require(
+        status == expected_status
+            && qc["failures"].as_u64() == Some(failures as u64)
+            && qc["warnings"].as_u64() == Some(warnings as u64)
+            && checks
+                .iter()
+                .all(|c| ["pass", "warn", "fail"].contains(&c["status"].as_str().unwrap_or(""))),
+        "inconsistent QC summary",
+    )?;
+    Ok(status)
+}
+
+fn denominator_indices(bindings: &[Binding]) -> Vec<Option<usize>> {
+    let indices: BTreeMap<_, _> = bindings
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.label.as_str(), i))
+        .collect();
+    bindings
+        .iter()
+        .map(|b| b.denominator.as_ref().map(|label| indices[label.as_str()]))
+        .collect()
+}

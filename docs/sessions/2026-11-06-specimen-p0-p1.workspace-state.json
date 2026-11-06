@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "saved_at_utc": "2026-11-06T09:48:34.338666+00:00",
+  "repository": "cytiq/cytiq-engine",
+  "branch": "main",
+  "base_head": "a1860e0b3bc2590cc6351888c8bc4356a2dbafbf",
+  "changes_committed": false,
+  "snapshot_excludes": [
+    "docs/sessions/"
+  ],
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "git_status": " M",
+      "bytes": 67619,
+      "sha256": "ec34111dbd188db880a5e1464a70babf6d54d81905eee23de006fef017a5f146"
+    },
+    {
+      "path": "Cargo.toml",
+      "git_status": " M",
+      "bytes": 3299,
+      "sha256": "fb67267c06cf0cb816a87e2c5a6fea91b233c74bad6972ede14c802e05997df9"
+    },
+    {
+      "path": "README.md",
+      "git_status": " M",
+      "bytes": 7924,
+      "sha256": "995975340fabd8ac1e4c1606ab13cec038e7db185f7ae760e9ae9dcc82344578"
+    },
+    {
+      "path": "crates/cytiq-classify/Cargo.toml",
+      "git_status": " M",
+      "bytes": 961,
+      "sha256": "323ef988fa41a1ebf240ad8c6e573f1f62454bf1071322185516af17e0c958b4"
+    },
+    {
+      "path": "crates/cytiq-classify/src/serialization.rs",
+      "git_status": " M",
+      "bytes": 595,
+      "sha256": "356aeb079e77180651b0eb66ddc03a3efc19ac5615fa22874d9e5fdf78ec5607"
+    },
+    {
+      "path": "crates/cytiq-engine/CONTRIBUTING.md",
+      "git_status": " M",
+      "bytes": 6771,
+      "sha256": "aa7a7acda2b548a4c4c074b8ae3b5002781fdff95f341adb0a3ad1fa0fc60575"
+    },
+    {
+      "path": "crates/cytiq-engine/Cargo.toml",
+      "git_status": " M",
+      "bytes": 1407,
+      "sha256": "45b48d9f3ec69ec30b2b6e4e1c0c23483a40c8322031d9246bf21e8472bf94d3"
+    },
+    {
+      "path": "crates/cytiq-engine/PIPELINE.md",
+      "git_status": " M",
+      "bytes": 6692,
+      "sha256": "d203ddec7b06516c22a0c9fbaa46e91e2d2c86df656af215e81bcac06f1407bb"
+    },
+    {
+      "path": "crates/cytiq-engine/README.md",
+      "git_status": " M",
+      "bytes": 7499,
+      "sha256": "8fbb62e540a1992600bc4fc5e4cb495da48f8f113022e0119d436feb1a6f2705"
+    },
+    {
+      "path": "crates/cytiq-engine/src/cli.rs",
+      "git_status": " M",
+      "bytes": 14943,
+      "sha256": "89db127b972a2a9c6d17fbbbecdd3f798aa521fb9d6d0745b22bec22f60a0e5a"
+    },
+    {
+      "path": "crates/cytiq-engine/src/commands/mod.rs",
+      "git_status": " M",
+      "bytes": 579,
+      "sha256": "57ab82203d2565ca8860cdf86bb219db85c041e0bc46cab00b6488ef76502bd4"
+    },
+    {
+      "path": "crates/cytiq-engine/src/commands/population.rs",
+      "git_status": "??",
+      "bytes": 2146,
+      "sha256": "9155bef022d25ed76929bd8561ddb6191d5db290b8afcbabdf1d619b00c8272a"
+    },
+    {
+      "path": "crates/cytiq-engine/src/commands/specimen.rs",
+      "git_status": "??",
+      "bytes": 3404,
+      "sha256": "68e0154ff02c0ee5be480dffe8058ba0025bfb065f4c67607e633f05d74039a1"
+    },
+    {
+      "path": "crates/cytiq-engine/src/main.rs",
+      "git_status": " M",
+      "bytes": 2787,
+      "sha256": "16c9682ad116fa0c41f671df83cdea7d1730024fa0b4b8521ad8c6eea142ecae"
+    },
+    {
+      "path": "crates/cytiq-engine/tests/specimen_cli.rs",
+      "git_status": "??",
+      "bytes": 21471,
+      "sha256": "ca702bcf6f0940b8359eb32568129e4047790933f1fd3e65f4d2510344622e65"
+    },
+    {
+      "path": "crates/cytiq-manifest/README.md",
+      "git_status": " M",
+      "bytes": 3927,
+      "sha256": "3b4e68da70ef8fef92f485b4bf91a9d81041917c8c2010c3ebf4df6148617a51"
+    },
+    {
+      "path": "crates/cytiq-manifest/src/lib.rs",
+      "git_status": " M",
+      "bytes": 35802,
+      "sha256": "72b3be221bca9e906c4728a3ee1ff29b25cd55914ad4b4b83530f8d503948f7f"
+    },
+    {
+      "path": "crates/cytiq-population/AGENTS.md",
+      "git_status": "??",
+      "bytes": 95,
+      "sha256": "8c89a2c2dac1e6b01c1df0d3528ff7ec31abf92a243af0490b54736e9e59e4e3"
+    },
+    {
+      "path": "crates/cytiq-population/CLAUDE.md",
+      "git_status": "??",
+      "bytes": 66,
+      "sha256": "fe1bc2da5d9de9538e07c5cd9b341076fe7588de73f2a5c0f403591ddbb43641"
+    },
+    {
+      "path": "crates/cytiq-population/CONTRIBUTING.md",
+      "git_status": "??",
+      "bytes": 403,
+      "sha256": "f12f63fbeb35d74656f51d556954d570c024ad91c09a6cffc00fcda857002ae7"
+    },
+    {
+      "path": "crates/cytiq-population/Cargo.toml",
+      "git_status": "??",
+      "bytes": 756,
+      "sha256": "1fff8deda2718f708a1ded2323698bcfc1cfb0f5f1a61cfd670e8d348957e34c"
+    },
+    {
+      "path": "crates/cytiq-population/README.md",
+      "git_status": "??",
+      "bytes": 3787,
+      "sha256": "2ecdb628cda1dca20733da0232fb40869023fd8565e6dfd73151fa634af26b5d"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/cytiq-tree.lock.json",
+      "git_status": "??",
+      "bytes": 1370,
+      "sha256": "d1ee13cc01bffd52cf6e02387ab9665395e07e19262251464dd66fb909777d3d"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/serialization-vectors.json",
+      "git_status": "??",
+      "bytes": 9020,
+      "sha256": "c263a0029f4aaad86da884f7f0164f096e6b7c8f24d8b076a514f8c29da219ab"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/class_vocabulary.schema.json",
+      "git_status": "??",
+      "bytes": 6141,
+      "sha256": "e46a008e8d729a4b51b277b8425bddbb58b82cf28613ff4fd8af101712cb6247"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/curated_tree.schema.json",
+      "git_status": "??",
+      "bytes": 13416,
+      "sha256": "4e6dfa02b8e90d507823c68ee8dd652f92125268e84ad33181c898f3846f0db0"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/label_mapping.schema.json",
+      "git_status": "??",
+      "bytes": 1298,
+      "sha256": "e73d4ef18fc63249ea13328b629c2615d1661dae4b8af1010219747284cb62c8"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/marker_registry.schema.json",
+      "git_status": "??",
+      "bytes": 1561,
+      "sha256": "39aeb2d8317b13c884ad828b83b7fdaac6c607c9b47691657d3e0fe9a906ef4d"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/panel_profile.schema.json",
+      "git_status": "??",
+      "bytes": 5112,
+      "sha256": "d99e49da07dd6ceaea2008c56e1701f8e15e80f919ebd6f2852401c97e189f66"
+    },
+    {
+      "path": "crates/cytiq-population/contracts/v2/panel_projection.schema.json",
+      "git_status": "??",
+      "bytes": 19509,
+      "sha256": "e5d445511962b6f2e68897ee91854fb04517e1ef1d62ee2cc504752121278c9c"
+    },
+    {
+      "path": "crates/cytiq-population/src/annotations.rs",
+      "git_status": "??",
+      "bytes": 30512,
+      "sha256": "902c1cd1fdedddf77ddeae2fe25c532d915df2f4a16178a07abffac145f6c811"
+    },
+    {
+      "path": "crates/cytiq-population/src/annotations/definition.rs",
+      "git_status": "??",
+      "bytes": 2908,
+      "sha256": "3e9cc5c44b968b6a70fa1b83eb70f641acecacc163775fd82f04fb38905c2531"
+    },
+    {
+      "path": "crates/cytiq-population/src/artifact.rs",
+      "git_status": "??",
+      "bytes": 5739,
+      "sha256": "46a09a980f4c619f5813486d22606c2d53edb227173eb119a3ca6c8ba1188671"
+    },
+    {
+      "path": "crates/cytiq-population/src/knowledge.rs",
+      "git_status": "??",
+      "bytes": 20140,
+      "sha256": "285dd4d5e45ca55ed8b52135678130629c686d421910e2d67bdcd4cc22ee7e1d"
+    },
+    {
+      "path": "crates/cytiq-population/src/knowledge/schema.rs",
+      "git_status": "??",
+      "bytes": 5621,
+      "sha256": "1875e497b06da759c5f1d5c33b1b8c62c4379e2f9aff6276aec3ff9b47e104b9"
+    },
+    {
+      "path": "crates/cytiq-population/src/lib.rs",
+      "git_status": "??",
+      "bytes": 1589,
+      "sha256": "c829c861a0afcc97029e0fe3e013fd4b0862736078e93eedec9ccc1110b9cbc6"
+    },
+    {
+      "path": "crates/cytiq-population/src/observation.rs",
+      "git_status": "??",
+      "bytes": 8455,
+      "sha256": "703b00edf4c3aa9d5bd2784464f33b9626282f58e1e9bf353f1d31eac36a11c4"
+    },
+    {
+      "path": "crates/cytiq-population/src/serialization.rs",
+      "git_status": "??",
+      "bytes": 10010,
+      "sha256": "07d4b60b154c2f84f0bf2b7a8c52286f653a9c36a415b8bc4135324b66168d4b"
+    },
+    {
+      "path": "crates/cytiq-population/src/serialization/unique.rs",
+      "git_status": "??",
+      "bytes": 2926,
+      "sha256": "69281829a984a4333c234d3e3ec941f6ceca6c1450a971b0423d2de800a45c9f"
+    },
+    {
+      "path": "crates/cytiq-population/src/table.rs",
+      "git_status": "??",
+      "bytes": 7397,
+      "sha256": "9b765a9d5419c7d6e966bbcbbbf8591804d493cd121a8d8125cdf659da799630"
+    },
+    {
+      "path": "crates/cytiq-population/tests/annotations.rs",
+      "git_status": "??",
+      "bytes": 8377,
+      "sha256": "c6dea79b52f3a6a6c4dbd3bd1511cef6ca95bc07de0a4362927ecd657081543c"
+    },
+    {
+      "path": "crates/cytiq-population/tests/contracts.rs",
+      "git_status": "??",
+      "bytes": 7090,
+      "sha256": "c41531e8d9e63546de8a5905ee809780e093ac2b62e6256c702f54b463b15448"
+    },
+    {
+      "path": "crates/cytiq-preflight/README.md",
+      "git_status": " M",
+      "bytes": 4948,
+      "sha256": "bab1c14edd9119fe4a5fac834cc2d37ab2ecab5dcd83486c4c654aae2dae9647"
+    },
+    {
+      "path": "crates/cytiq-preflight/src/runner.rs",
+      "git_status": " M",
+      "bytes": 12911,
+      "sha256": "39623516de1473e6b0d05c35294741f167ed51b32e65abde268967b1d81d8825"
+    },
+    {
+      "path": "crates/cytiq-provenance/README.md",
+      "git_status": " M",
+      "bytes": 4703,
+      "sha256": "4f63aa118072bf8cb300d9891ca2b26335fba6b8de1b849041a823aa236b7379"
+    },
+    {
+      "path": "crates/cytiq-provenance/src/lib.rs",
+      "git_status": " M",
+      "bytes": 23302,
+      "sha256": "32a002e4705689ae6ddd17a0b7770bd77cfe42268e3ddb7214e60039503a3328"
+    },
+    {
+      "path": "crates/cytiq-provenance/src/outcome.rs",
+      "git_status": "??",
+      "bytes": 1482,
+      "sha256": "ae9aa56a2619a4b70285eb1536ee2ac4ed17fcb7474611b1f23e31db68260731"
+    },
+    {
+      "path": "crates/cytiq-qc/src/policy.rs",
+      "git_status": " M",
+      "bytes": 19470,
+      "sha256": "781443d40a3369219e36500a3415bba9cc04c4bac1c0710a4a350df16ed0ff10"
+    },
+    {
+      "path": "crates/cytiq-specimen/AGENTS.md",
+      "git_status": "??",
+      "bytes": 95,
+      "sha256": "8c89a2c2dac1e6b01c1df0d3528ff7ec31abf92a243af0490b54736e9e59e4e3"
+    },
+    {
+      "path": "crates/cytiq-specimen/CLAUDE.md",
+      "git_status": "??",
+      "bytes": 66,
+      "sha256": "fe1bc2da5d9de9538e07c5cd9b341076fe7588de73f2a5c0f403591ddbb43641"
+    },
+    {
+      "path": "crates/cytiq-specimen/CONTRIBUTING.md",
+      "git_status": "??",
+      "bytes": 401,
+      "sha256": "988dae1558540f4424158e5c33e5602dd31ac9453f12e336d83653225ae7b238"
+    },
+    {
+      "path": "crates/cytiq-specimen/Cargo.toml",
+      "git_status": "??",
+      "bytes": 642,
+      "sha256": "2e2e5f6be78924fbfec425079d7b84a30034b4e6923a209f88efeecf9a06e8f0"
+    },
+    {
+      "path": "crates/cytiq-specimen/README.md",
+      "git_status": "??",
+      "bytes": 7708,
+      "sha256": "3f8044aa593e5444a23e95bc3a07ef96a01d72b818b666fa065e372e6ff03458"
+    },
+    {
+      "path": "crates/cytiq-specimen/src/layout.rs",
+      "git_status": "??",
+      "bytes": 7420,
+      "sha256": "10ea14d039f25c52e3ed007dc16501cab04f69676a63704604c79dbdb0eb44ef"
+    },
+    {
+      "path": "crates/cytiq-specimen/src/lib.rs",
+      "git_status": "??",
+      "bytes": 1104,
+      "sha256": "02969b70ab8483531b5d19347350e3454116fb3a39a2b2696b50f1c3ea704c35"
+    },
+    {
+      "path": "crates/cytiq-specimen/src/plan.rs",
+      "git_status": "??",
+      "bytes": 10261,
+      "sha256": "f9d2424d55c4f3498a700f6cda89cb35cab45cad25913d5e9a8e2fd6959cdb32"
+    },
+    {
+      "path": "crates/cytiq-specimen/src/reconcile.rs",
+      "git_status": "??",
+      "bytes": 23876,
+      "sha256": "26899cd61084efdfe0ce6e47deb134dde76d51976450aace33ff9ebc8d31a27d"
+    },
+    {
+      "path": "crates/cytiq-specimen/src/runner.rs",
+      "git_status": "??",
+      "bytes": 9641,
+      "sha256": "4da7f6551734424c1669e106a668bdc6df2f2a85a248884d78863b2ff69be264"
+    },
+    {
+      "path": "crates/cytiq-specimen/tests/reconciliation.rs",
+      "git_status": "??",
+      "bytes": 11004,
+      "sha256": "4db528a060d4e0f5ce150e00ea71b1ae829968129712593cf6f6ddcc1c427124"
+    },
+    {
+      "path": "data/fixtures/specimen/P1.projection.json",
+      "git_status": "??",
+      "bytes": 5501,
+      "sha256": "3df43747d460bf116a54999f00cfb91a090f45992c54549b164077c95cc6bf11"
+    },
+    {
+      "path": "data/fixtures/specimen/P2.projection.json",
+      "git_status": "??",
+      "bytes": 5501,
+      "sha256": "08c8804ad96ebaa09b4d80a2cd5cde2929dcf77a5736661a2a9b967d7b64b3de"
+    },
+    {
+      "path": "data/fixtures/specimen/README.md",
+      "git_status": "??",
+      "bytes": 1198,
+      "sha256": "c81c3f3567ea2dda2ae29f58b4340487589a5a85e4d492719adb7ae69ab90d43"
+    },
+    {
+      "path": "data/fixtures/specimen/facscanto2-p1.projection.json",
+      "git_status": "??",
+      "bytes": 13278,
+      "sha256": "f2edd531fbba48e80de8e82cc80dce03e6877dd33ee15f33c2a5e4047f92ec26"
+    },
+    {
+      "path": "data/fixtures/specimen/flowcyt-bm.projection.json",
+      "git_status": "??",
+      "bytes": 19599,
+      "sha256": "d60ec31e2ff4ba17d6f4e3bd8159cf57fa82b39125a7c466ae927f8aab6ec68e"
+    },
+    {
+      "path": "data/fixtures/specimen/gates.xml",
+      "git_status": "??",
+      "bytes": 1098,
+      "sha256": "c8d4fbe20b7c917400739c7817065c46134e6e4cf1c0b0a900a4c39ecbf4e421"
+    },
+    {
+      "path": "data/fixtures/specimen/tree.json",
+      "git_status": "??",
+      "bytes": 2240,
+      "sha256": "d895452a11a32e224410e3a62331bc2ff620c4debd2feb83c6b5a36917dad347"
+    }
+  ]
+}

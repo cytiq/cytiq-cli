@@ -1,0 +1,101 @@
+{
+  "artifact_type": "curated_tree",
+  "cells": [
+    {
+      "aliases": [],
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "software-contract-only",
+          "snapshot_id": null,
+          "source": "synthetic_fixture",
+          "status": "source_adopted"
+        }
+      ],
+      "id": "cells",
+      "marker_signature": [],
+      "name": "cells",
+      "ontology_ids": [],
+      "parent": null
+    },
+    {
+      "aliases": [],
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "software-contract-only",
+          "snapshot_id": null,
+          "source": "synthetic_fixture",
+          "status": "source_adopted"
+        }
+      ],
+      "id": "t_cells",
+      "marker_signature": [],
+      "name": "t_cells",
+      "ontology_ids": [],
+      "parent": "cells"
+    },
+    {
+      "aliases": [],
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "software-contract-only",
+          "snapshot_id": null,
+          "source": "synthetic_fixture",
+          "status": "source_adopted"
+        }
+      ],
+      "id": "activated",
+      "marker_signature": [],
+      "name": "activated",
+      "ontology_ids": [],
+      "parent": "cells"
+    },
+    {
+      "aliases": [],
+      "evidence": [
+        {
+          "record_id": null,
+          "reference": "software-contract-only",
+          "snapshot_id": null,
+          "source": "synthetic_fixture",
+          "status": "source_adopted"
+        }
+      ],
+      "id": "zero",
+      "marker_signature": [],
+      "name": "zero",
+      "ontology_ids": [],
+      "parent": "cells"
+    }
+  ],
+  "context": {
+    "cohort": "synthetic_contract",
+    "organism": "Homo sapiens",
+    "specimen": "whole_blood",
+    "tissue": "blood"
+  },
+  "decisions": [],
+  "generated_at": "2026-11-06T00:00:00Z",
+  "mappings": [],
+  "ontology_edges": [],
+  "phenotypes": [],
+  "registry": {
+    "artifact_type": "marker_registry",
+    "markers": [
+      {
+        "aliases": [],
+        "external_ids": [],
+        "id": "CD3",
+        "measurement_kind": "protein"
+      }
+    ],
+    "schema_version": 2,
+    "version": "0.1.0"
+  },
+  "schema_version": 2,
+  "snapshots": {},
+  "tasks": [],
+  "version": "0.1.0"
+}

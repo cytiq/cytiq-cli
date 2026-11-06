@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod outcome;
+
 /// Version 2 added `build`, `platform`, `config`, `constants`, `algorithms`
 /// and input `role`s, and hashes inputs before the run.
 pub const SCHEMA_VERSION: u32 = 2;
@@ -171,6 +173,51 @@ struct InputSnapshot {
 }
 
 impl RunRecorder {
+    /// Build a v2 record for staged files without publishing anything.
+    /// Each pair contains the final path and the file to hash before commit.
+    ///
+    /// # Errors
+    /// Rejects changed inputs, missing staged files and hashing failures.
+    pub fn prepare_staged(
+        self,
+        outputs: &[(PathBuf, PathBuf)],
+    ) -> Result<RunRecord, ProvenanceError> {
+        for input in &self.inputs {
+            let current = hash_file(&input.path).map_err(|source| ProvenanceError::Hash {
+                path: input.path.clone(),
+                source,
+            })?;
+            if current != (input.record.bytes, input.record.sha256.clone()) {
+                return Err(ProvenanceError::InputChanged {
+                    path: input.path.clone(),
+                });
+            }
+        }
+        let outputs = outputs
+            .iter()
+            .map(|(target, staged)| {
+                let mut record = FileRecord::of(staged)?;
+                record.path = target.display().to_string();
+                Ok(record)
+            })
+            .collect::<Result<Vec<_>, ProvenanceError>>()?;
+        Ok(RunRecord {
+            schema_version: SCHEMA_VERSION,
+            tool: self.tool,
+            version: self.version,
+            build: self.build,
+            platform: Platform::current(),
+            arguments: self.arguments,
+            config: self.config,
+            constants: self.constants,
+            algorithms: self.algorithms,
+            started_at_unix_ms: self.started_at_unix_ms,
+            finished_at_unix_ms: unix_ms(),
+            inputs: self.inputs.into_iter().map(|input| input.record).collect(),
+            outputs,
+        })
+    }
+
     #[must_use]
     pub fn start(
         tool: impl Into<String>,
@@ -446,6 +493,27 @@ mod tests {
     }
 
     const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn staged_records_hash_staged_bytes_but_name_final_outputs() {
+        let directory = temp_dir("staged-record");
+        let input = directory.join("input");
+        fs::write(&input, b"input").unwrap();
+        let staged = directory.join("staged.tmp");
+        fs::write(&staged, b"abc").unwrap();
+        let target = directory.join("not-yet-published.json");
+        let mut recorder = RunRecorder::start("test", "1", vec![]);
+        recorder
+            .snapshot_inputs("input", std::slice::from_ref(&input))
+            .unwrap();
+        let record = recorder
+            .prepare_staged(&[(target.clone(), staged)])
+            .unwrap();
+        assert_eq!(record.schema_version, 2);
+        assert_eq!(record.outputs[0].path, target.display().to_string());
+        assert_eq!(record.outputs[0].sha256, ABC_SHA256);
+        assert!(!target.exists());
+    }
 
     #[test]
     fn files_under_skips_records_and_staged_outputs() {

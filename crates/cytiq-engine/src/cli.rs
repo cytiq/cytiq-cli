@@ -42,6 +42,12 @@ pub(crate) struct Cli {
 #[derive(Debug, Serialize, Subcommand)]
 #[serde(untagged)]
 pub(crate) enum Commands {
+    /// Validate and summarize event annotations with typed measurement status.
+    #[command(subcommand)]
+    Population(crate::commands::population::PopulationCommand),
+    /// Plan and reconcile panels belonging to a biological specimen.
+    #[command(subcommand)]
+    Specimen(crate::commands::specimen::SpecimenCommand),
     /// Learn and apply population-specific batch normalization after transform.
     #[command(subcommand)]
     Cytonorm(CytoNormCommand),
@@ -389,6 +395,17 @@ impl From<CliPeacoQcMethod> for PeacoQcMethod {
 
 pub(crate) const fn command_name(command: &Commands) -> &'static str {
     match command {
+        Commands::Population(crate::commands::population::PopulationCommand::Validate(_)) => {
+            "population validate"
+        }
+        Commands::Population(crate::commands::population::PopulationCommand::Observe(_)) => {
+            "population observe"
+        }
+        Commands::Specimen(crate::commands::specimen::SpecimenCommand::Validate(_)) => {
+            "specimen validate"
+        }
+        Commands::Specimen(crate::commands::specimen::SpecimenCommand::Plan(_)) => "specimen plan",
+        Commands::Specimen(crate::commands::specimen::SpecimenCommand::Run(_)) => "specimen run",
         Commands::Autospill(_) => "autospill",
         Commands::Autospread(_) => "autospread",
         Commands::Autospectral(_) => "autospectral",

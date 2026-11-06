@@ -10,6 +10,10 @@ cytiq preflight --manifest run.yaml --output preflight.json
 The report is always written. The command exits with `1` when any check
 fails; failures and warnings are also logged.
 
+Manifest v2 also accepts `cytometry: cytof`. These panels require raw ion counts
+and no compensation. Preflight checks FCS, markers, linearity and acquisition
+metadata without assigning fluorescence spillover or spectral control coverage.
+
 ## Checks
 
 | Check | Scope | Fails when | Warns when |

@@ -1,0 +1,224 @@
+{
+  "artifact_type": "panel_projection",
+  "panel": {
+    "artifact_type": "panel_profile",
+    "cofactor": 150.0,
+    "context": {
+      "cohort": "synthetic_contract",
+      "organism": "Homo sapiens",
+      "specimen": "whole_blood",
+      "tissue": "blood"
+    },
+    "features": [
+      {
+        "channel": "FL1-A",
+        "fluorescence": true,
+        "labels": [],
+        "marker_id": "CD3",
+        "name": "CD3"
+      }
+    ],
+    "instrument": "synthetic",
+    "panel": "P2",
+    "recipe": "cytiq-fcm-arcsinh-v1",
+    "resolution_rules": [
+      {
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "population": "cells",
+        "required_features": [
+          "CD3"
+        ]
+      },
+      {
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "population": "t_cells",
+        "required_features": [
+          "CD3"
+        ]
+      },
+      {
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "population": "activated",
+        "required_features": [
+          "CD3"
+        ]
+      },
+      {
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "population": "zero",
+        "required_features": [
+          "CD3"
+        ]
+      }
+    ],
+    "schema_version": 2,
+    "version": "0.1.0"
+  },
+  "panel_sha256": "7f790c8ce54aa38e0186e966bf3a018c2eb6bc78a0bab64e5e97cd4b76a6ffcd",
+  "populations": [
+    {
+      "missing_features": [],
+      "population": "cells",
+      "reason": "accepted panel-specific rule covered",
+      "resolved_parent": null,
+      "status": "resolvable"
+    },
+    {
+      "missing_features": [],
+      "population": "t_cells",
+      "reason": "accepted panel-specific rule covered",
+      "resolved_parent": null,
+      "status": "resolvable"
+    },
+    {
+      "missing_features": [],
+      "population": "activated",
+      "reason": "accepted panel-specific rule covered",
+      "resolved_parent": null,
+      "status": "resolvable"
+    },
+    {
+      "missing_features": [],
+      "population": "zero",
+      "reason": "accepted panel-specific rule covered",
+      "resolved_parent": null,
+      "status": "resolvable"
+    }
+  ],
+  "schema_version": 2,
+  "tree": {
+    "artifact_type": "curated_tree",
+    "cells": [
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "cells",
+        "marker_signature": [],
+        "name": "cells",
+        "ontology_ids": [],
+        "parent": null
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "t_cells",
+        "marker_signature": [],
+        "name": "t_cells",
+        "ontology_ids": [],
+        "parent": "cells"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "activated",
+        "marker_signature": [],
+        "name": "activated",
+        "ontology_ids": [],
+        "parent": "cells"
+      },
+      {
+        "aliases": [],
+        "evidence": [
+          {
+            "record_id": null,
+            "reference": "software-contract-only",
+            "snapshot_id": null,
+            "source": "synthetic_fixture",
+            "status": "source_adopted"
+          }
+        ],
+        "id": "zero",
+        "marker_signature": [],
+        "name": "zero",
+        "ontology_ids": [],
+        "parent": "cells"
+      }
+    ],
+    "context": {
+      "cohort": "synthetic_contract",
+      "organism": "Homo sapiens",
+      "specimen": "whole_blood",
+      "tissue": "blood"
+    },
+    "decisions": [],
+    "generated_at": "2026-11-06T00:00:00Z",
+    "mappings": [],
+    "ontology_edges": [],
+    "phenotypes": [],
+    "registry": {
+      "artifact_type": "marker_registry",
+      "markers": [
+        {
+          "aliases": [],
+          "external_ids": [],
+          "id": "CD3",
+          "measurement_kind": "protein"
+        }
+      ],
+      "schema_version": 2,
+      "version": "0.1.0"
+    },
+    "schema_version": 2,
+    "snapshots": {},
+    "tasks": [],
+    "version": "0.1.0"
+  },
+  "tree_sha256": "d895452a11a32e224410e3a62331bc2ff620c4debd2feb83c6b5a36917dad347",
+  "version": "0.1.0"
+}

@@ -56,6 +56,12 @@ The package is `cytiq-engine`; the binary is `cytiq` (`[[bin]]` in `Cargo.toml`)
   and exits with code `1`. Channel-list errors are wrapped as
   `io::ErrorKind::InvalidInput`. Do not `panic!` or call `process::exit` in a
   command arm.
+
+- The new `population`/`specimen` families wrap their typed outcome in
+  `OutcomeExit`, which `main` maps to 0–4. They print one JSON outcome after
+  argument parsing. Existing commands keep their exit behavior. Package layout,
+  validation and publication stay in `cytiq-specimen::runner` and
+  `cytiq-population::artifact`.
 - `--overwrite` is passed through to the library, which enforces it
   (`transform`, `meta`, `compensate`, `mask combine`, `plot`). `meta` maps
   `--output -` to stdout before building `MetaConfig`.

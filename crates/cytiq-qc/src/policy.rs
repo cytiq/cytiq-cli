@@ -2,9 +2,9 @@
 
 use cytiq_manifest::{AssessedOf, FilterPolicy, QcPolicy, Severity};
 use cytiq_mask::EventMask;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckStatus {
     Pass,

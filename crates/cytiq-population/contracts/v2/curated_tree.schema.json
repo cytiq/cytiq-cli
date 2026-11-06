@@ -1,0 +1,622 @@
+{
+  "$defs": {
+    "ClassTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "population",
+          "enum": [
+            "population",
+            "phenotype",
+            "residual"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "residual_definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResidualDefinition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target"
+      ],
+      "title": "ClassTarget",
+      "type": "object"
+    },
+    "Context": {
+      "additionalProperties": false,
+      "properties": {
+        "cohort": {
+          "minLength": 1,
+          "title": "Cohort",
+          "type": "string"
+        },
+        "organism": {
+          "minLength": 1,
+          "title": "Organism",
+          "type": "string"
+        },
+        "specimen": {
+          "minLength": 1,
+          "title": "Specimen",
+          "type": "string"
+        },
+        "tissue": {
+          "minLength": 1,
+          "title": "Tissue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organism",
+        "tissue",
+        "specimen",
+        "cohort"
+      ],
+      "title": "Context",
+      "type": "object"
+    },
+    "CurationDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "record_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Record Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "unresolved"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_id",
+        "status",
+        "reason"
+      ],
+      "title": "CurationDecision",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Id"
+        },
+        "reference": {
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshot Id"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "default": "source_adopted",
+          "enum": [
+            "source_adopted",
+            "expert_reviewed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "reference"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "MappingDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "minLength": 1,
+          "title": "Dataset",
+          "type": "string"
+        },
+        "dataset_version": {
+          "minLength": 1,
+          "title": "Dataset Version",
+          "type": "string"
+        },
+        "ignored_labels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignored Labels",
+          "type": "array"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "task": {
+          "minLength": 1,
+          "title": "Task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "dataset_version",
+        "task",
+        "labels"
+      ],
+      "title": "MappingDefinition",
+      "type": "object"
+    },
+    "MarkerDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "external_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "External Ids",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "measurement_kind": {
+          "enum": [
+            "protein",
+            "gene",
+            "derived",
+            "flag"
+          ],
+          "title": "Measurement Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "measurement_kind"
+      ],
+      "title": "MarkerDefinition",
+      "type": "object"
+    },
+    "MarkerRegistry": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_type": {
+          "const": "marker_registry",
+          "default": "marker_registry",
+          "title": "Artifact Type",
+          "type": "string"
+        },
+        "markers": {
+          "items": {
+            "$ref": "#/$defs/MarkerDefinition"
+          },
+          "title": "Markers",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 2,
+          "default": 2,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "markers"
+      ],
+      "title": "MarkerRegistry",
+      "type": "object"
+    },
+    "MarkerState": {
+      "enum": [
+        "positive",
+        "negative",
+        "dim",
+        "bright",
+        "unknown"
+      ],
+      "title": "MarkerState",
+      "type": "string"
+    },
+    "OntologyEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "child": {
+          "minLength": 1,
+          "title": "Child",
+          "type": "string"
+        },
+        "parent": {
+          "minLength": 1,
+          "title": "Parent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "child",
+        "parent"
+      ],
+      "title": "OntologyEdge",
+      "type": "object"
+    },
+    "PhenotypeDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "evidence"
+      ],
+      "title": "PhenotypeDefinition",
+      "type": "object"
+    },
+    "Population": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "marker_signature": {
+          "items": {
+            "$ref": "#/$defs/SignatureItem"
+          },
+          "title": "Marker Signature",
+          "type": "array"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "ontology_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ontology Ids",
+          "type": "array"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent"
+        }
+      },
+      "required": [
+        "id",
+        "parent",
+        "name",
+        "evidence"
+      ],
+      "title": "Population",
+      "type": "object"
+    },
+    "ResidualDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "excluded_populations": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Excluded Populations",
+          "type": "array"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "excluded_populations",
+        "evidence"
+      ],
+      "title": "ResidualDefinition",
+      "type": "object"
+    },
+    "SignatureItem": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "inherited": {
+          "default": false,
+          "title": "Inherited",
+          "type": "boolean"
+        },
+        "marker": {
+          "minLength": 1,
+          "title": "Marker",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/MarkerState"
+        }
+      },
+      "required": [
+        "marker",
+        "state",
+        "evidence"
+      ],
+      "title": "SignatureItem",
+      "type": "object"
+    },
+    "TaskDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "classes": {
+          "items": {
+            "$ref": "#/$defs/ClassTarget"
+          },
+          "minItems": 2,
+          "title": "Classes",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "multiclass",
+            "binary_phenotype"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "partition_complete": {
+          "default": false,
+          "title": "Partition Complete",
+          "type": "boolean"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "classes",
+        "scope"
+      ],
+      "title": "TaskDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "const": "curated_tree",
+      "default": "curated_tree",
+      "title": "Artifact Type",
+      "type": "string"
+    },
+    "cells": {
+      "items": {
+        "$ref": "#/$defs/Population"
+      },
+      "minItems": 1,
+      "title": "Cells",
+      "type": "array"
+    },
+    "context": {
+      "$ref": "#/$defs/Context"
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/CurationDecision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "mappings": {
+      "items": {
+        "$ref": "#/$defs/MappingDefinition"
+      },
+      "title": "Mappings",
+      "type": "array"
+    },
+    "ontology_edges": {
+      "items": {
+        "$ref": "#/$defs/OntologyEdge"
+      },
+      "title": "Ontology Edges",
+      "type": "array"
+    },
+    "phenotypes": {
+      "items": {
+        "$ref": "#/$defs/PhenotypeDefinition"
+      },
+      "title": "Phenotypes",
+      "type": "array"
+    },
+    "registry": {
+      "$ref": "#/$defs/MarkerRegistry"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshots": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Snapshots",
+      "type": "object"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/TaskDefinition"
+      },
+      "title": "Tasks",
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "generated_at",
+    "context",
+    "registry",
+    "cells"
+  ],
+  "title": "CuratedCellTree",
+  "type": "object"
+}

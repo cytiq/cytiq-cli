@@ -66,11 +66,14 @@ pub enum Cytometry {
     Conventional,
     /// Spectral unmixing with reference controls.
     Spectral,
+    /// Mass cytometry with an explicitly selected ion-count recipe.
+    Cytof,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "ManifestDocument")]
 pub struct RunManifest {
+    pub schema_version: u32,
     pub cytometry: Cytometry,
     /// One or more panels; a manifest with a single `panel` has one entry.
     pub panels: Vec<Panel>,
@@ -83,6 +86,8 @@ pub struct RunManifest {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ManifestDocument {
+    #[serde(default = "manifest_v1")]
+    schema_version: u32,
     cytometry: Cytometry,
     #[serde(default)]
     panel: Option<Panel>,
@@ -91,6 +96,10 @@ struct ManifestDocument {
     samples: Vec<SampleEntry>,
     #[serde(default)]
     controls: Vec<ControlEntry>,
+}
+
+const fn manifest_v1() -> u32 {
+    1
 }
 
 impl TryFrom<ManifestDocument> for RunManifest {
@@ -106,6 +115,7 @@ impl TryFrom<ManifestDocument> for RunManifest {
             (None, None) => return Err("missing field `panels` (or `panel`)".to_owned()),
         };
         Ok(Self {
+            schema_version: document.schema_version,
             cytometry: document.cytometry,
             panels,
             samples: document.samples,
@@ -403,6 +413,12 @@ impl RunManifest {
     }
 
     fn check(&self) -> Result<(), String> {
+        if !matches!(self.schema_version, 1 | 2) {
+            return Err("unsupported manifest schema_version".to_owned());
+        }
+        if self.cytometry == Cytometry::Cytof && self.schema_version != 2 {
+            return Err("cytof requires manifest schema_version 2".to_owned());
+        }
         if self.samples.is_empty() {
             return Err("`samples` must list at least one sample".to_owned());
         }
@@ -426,12 +442,21 @@ impl RunManifest {
                 });
             };
             if let Some(specimen) = &sample.specimen
+                && self.schema_version == 1
                 && !specimens.insert((specimen.trim(), panel.label()))
             {
                 return Err(format!(
                     "specimen `{specimen}` has more than one file in panel `{}`",
                     panel.label()
                 ));
+            }
+            if self.schema_version == 2
+                && sample
+                    .specimen
+                    .as_ref()
+                    .is_some_and(|id| id.trim().is_empty())
+            {
+                return Err("specimen ids must not be empty".to_owned());
             }
         }
         for control in &self.controls {
@@ -507,6 +532,15 @@ impl RunManifest {
 
     fn check_calibration(&self, panel: &Panel) -> Result<(), String> {
         let label = panel.label();
+        if self.cytometry == Cytometry::Cytof {
+            return if panel.signal_state == SignalState::Raw && panel.compensation.is_none() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "panel `{label}`: CyTOF requires raw ion counts and no compensation"
+                ))
+            };
+        }
         match (self.cytometry, panel.signal_state) {
             (Cytometry::Conventional, SignalState::Unmixed) => {
                 return Err(format!(
@@ -795,6 +829,32 @@ controls:
                 .contains("more than one file in panel `T`"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn v2_keeps_repeat_acquisition_ids_and_rejects_unknown_versions() {
+        let twice = MULTI.replace("panel: B, specimen: S01", "panel: T, specimen: S01");
+        let path = write("repeat-v2.yaml", &format!("schema_version: 2\n{twice}"));
+        assert_eq!(RunManifest::load(&path).unwrap().samples.len(), 2);
+        let path = write("future.yaml", &format!("schema_version: 99\n{MULTI}"));
+        assert!(RunManifest::load(&path).is_err());
+    }
+
+    #[test]
+    fn cytof_v2_does_not_allow_fluorescence_compensation() {
+        let document = "schema_version: 2\ncytometry: cytof\npanel:\n  markers: [{marker: CD3}]\nsamples: [{id: A01, file: sample.fcs}]\n";
+        let path = write("mass.yaml", document);
+        assert_eq!(
+            RunManifest::load(&path).unwrap().cytometry,
+            Cytometry::Cytof
+        );
+        let path = write("mass-v1.yaml", &document.replace("schema_version: 2\n", ""));
+        assert!(RunManifest::load(&path).is_err());
+        let path = write(
+            "mass-compensation.yaml",
+            &document.replace("  markers:", "  compensation: {source: fcs}\n  markers:"),
+        );
+        assert!(RunManifest::load(&path).is_err());
     }
 
     #[test]

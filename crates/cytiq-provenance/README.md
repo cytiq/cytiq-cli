@@ -49,6 +49,11 @@ Schema version 2 added `build`, `platform`, `config`, `constants`,
 
 ## Public API
 
+`RunRecorder::prepare_staged` builds a v2 record from `(final_path, staged_path)`
+pairs, verifying input byte identities before publication. It writes nothing;
+the caller publishes it with data and an `outcome::CommandOutcome` v1 in one
+directory transaction. Existing `finish` and RunRecord v2 retain their contracts.
+
 | Item | Purpose |
 | --- | --- |
 | `RunRecorder::start` / `snapshot_inputs` / `snapshot_roles` / `finish` | Start a record and hash the inputs, with their role, before a command runs; hash its outputs and write the record afterwards |

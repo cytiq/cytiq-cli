@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "MarkerDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "external_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "External Ids",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "measurement_kind": {
+          "enum": [
+            "protein",
+            "gene",
+            "derived",
+            "flag"
+          ],
+          "title": "Measurement Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "measurement_kind"
+      ],
+      "title": "MarkerDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "const": "marker_registry",
+      "default": "marker_registry",
+      "title": "Artifact Type",
+      "type": "string"
+    },
+    "markers": {
+      "items": {
+        "$ref": "#/$defs/MarkerDefinition"
+      },
+      "title": "Markers",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "markers"
+  ],
+  "title": "MarkerRegistry",
+  "type": "object"
+}

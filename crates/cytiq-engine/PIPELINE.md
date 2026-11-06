@@ -14,6 +14,10 @@ provenance record of every command (see [cytiq-provenance](../cytiq-provenance/R
 
 ## Conventional chain
 
+After per-acquisition annotation, [specimen planning and reconciliation](../cytiq-specimen/README.md)
+provide a summary layer: `specimen plan` → existing QC/gate/classify →
+`population observe` → `specimen run`. The final step reads summary packages only.
+
 ```bash
 cytiq meta       --input sample.fcs --output sample.meta.json
 cytiq stats      --input sample.fcs --output sample.stats.json

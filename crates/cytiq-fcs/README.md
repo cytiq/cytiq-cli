@@ -158,3 +158,11 @@ cargo test -p cytiq-fcs
 `tests/reader.rs` reads the fixtures in `data/fixtures/fcs/` and synthetic
 files built in the test, and round-trips the writer. Spillover and inversion
 unit tests live in `src/compensation.rs`.
+
+## Optional input resolution
+
+Enable the `inputs` feature for `cytiq_fcs::inputs::resolve_inputs`. It accepts
+explicit files, nonrecursive directories and filename-only `*`/`?` patterns,
+rejects duplicate canonical paths, and preserves original path spellings.
+`ResolveOptions` selects global or per-input-group ordering and whether explicit
+paths must be regular files. Directory-entry read failures are reported.

@@ -445,3 +445,196 @@ fn vendored_cytiq_tree_schemas_match_lock() {
         "every vendored schema is locked, and only those"
     );
 }
+
+#[test]
+fn all_knowledge_kinds_preserve_defaults_and_integer_representation() {
+    let projection = serialization::read(&fixture("P1.projection.json")).unwrap();
+    let sha = "a".repeat(64);
+    let vocabulary = json!({
+        "artifact_type":"class_vocabulary", "version":"1", "tree_version":"1",
+        "tree_sha256":sha,"panel_sha256":sha,"registry_sha256":sha,"projection_sha256":sha,
+        "panel_id":"P1","task":"task","task_kind":"multiclass","scope":"cells",
+        "classes":[{"id":"a","target":"a","index":0,"parent":"cells"},{"id":"b","target":"b","index":1,"parent":"cells"}],
+        "hierarchy":{"cells":null,"a":"cells","b":"cells"},"partition_complete":true,"decision_rule":"argmax"
+    });
+    let mapping = json!({"artifact_type":"label_mapping","version":"1","dataset":"test","dataset_version":"1","task":"task","vocabulary_sha256":sha,"labels":{"A":"a"}});
+    for value in [
+        projection.clone(),
+        projection["tree"].clone(),
+        projection["tree"]["registry"].clone(),
+        projection["panel"].clone(),
+        vocabulary,
+        mapping,
+    ] {
+        let expanded = KnowledgeArtifact::from_value(value.clone()).unwrap();
+        let mut compact = expanded.value().clone();
+        compact.as_object_mut().unwrap().remove("schema_version");
+        assert_eq!(
+            KnowledgeArtifact::from_value(compact).unwrap().sha256(),
+            expanded.sha256()
+        );
+        let mut invalid = value.clone();
+        invalid["schema_version"] = json!(2.0);
+        assert!(KnowledgeArtifact::from_value(invalid).is_err());
+        let mut invalid = value;
+        invalid["unexpected"] = json!(true);
+        assert!(KnowledgeArtifact::from_value(invalid).is_err());
+    }
+    let mut tree = projection["tree"].clone();
+    tree["generated_at"] = json!("historically-unchecked-date");
+    KnowledgeArtifact::from_value(tree).unwrap();
+}
+
+#[test]
+fn observation_table_keeps_physical_schema_and_structured_json() {
+    use arrow_array::{Array, StringArray};
+    use parquet::arrow::{ArrowWriter, arrow_reader::ParquetRecordBatchReaderBuilder};
+    use std::{fs::File, sync::Arc};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("rows.parquet");
+    let mut row = count((1_u64 << 53) + 1);
+    row.acquisition_id = None;
+    row.denominator = None;
+    row.seal().unwrap();
+    table::write(&path, &[row.clone()]).unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(&path).unwrap()).unwrap();
+    let schema = builder.schema().clone();
+    assert_eq!(schema.metadata()["cytiq.population.schema_version"], "1");
+    assert_eq!(
+        schema
+            .fields()
+            .iter()
+            .map(|f| f.name().as_str())
+            .collect::<Vec<_>>(),
+        [
+            "schema_version",
+            "observation_id",
+            "specimen_id",
+            "panel_id",
+            "acquisition_id",
+            "source_id",
+            "target_id",
+            "target_kind",
+            "measure",
+            "unit",
+            "status",
+            "reason",
+            "target",
+            "denominator",
+            "method",
+            "lineage",
+            "value_u64",
+            "n_events",
+            "supporting_count",
+            "value_f64"
+        ]
+    );
+    let batch = builder.build().unwrap().next().unwrap().unwrap();
+    let value = serde_json::to_value(&row).unwrap();
+    for name in ["target", "denominator", "method", "lineage"] {
+        let column = batch
+            .column_by_name(name)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(
+            column.value(0),
+            serde_json::to_string(&value[name]).unwrap()
+        );
+    }
+    assert!(batch.column_by_name("acquisition_id").unwrap().is_null(0));
+    let indices = (0..schema.fields().len()).rev().collect::<Vec<_>>();
+    let reordered = batch.project(&indices).unwrap();
+    let reordered_schema = Arc::new(arrow_schema::Schema::new_with_metadata(
+        reordered.schema().fields().clone(),
+        schema.metadata().clone(),
+    ));
+    let reordered = reordered.with_schema(reordered_schema).unwrap();
+    let reordered_path = directory.path().join("reordered.parquet");
+    let mut writer = ArrowWriter::try_new(
+        File::create(&reordered_path).unwrap(),
+        reordered.schema(),
+        None,
+    )
+    .unwrap();
+    writer.write(&reordered).unwrap();
+    writer.close().unwrap();
+    assert_eq!(table::read(&reordered_path).unwrap(), [row]);
+    let mut columns = batch.columns().to_vec();
+    columns[schema.index_of("target_id").unwrap()] = Arc::new(StringArray::from(vec!["wrong"]));
+    let invalid = arrow_array::RecordBatch::try_new(schema.clone(), columns).unwrap();
+    let invalid_path = directory.path().join("invalid.parquet");
+    let mut writer =
+        ArrowWriter::try_new(File::create(&invalid_path).unwrap(), schema, None).unwrap();
+    writer.write(&invalid).unwrap();
+    writer.close().unwrap();
+    assert!(table::read(&invalid_path).is_err());
+}
+
+#[test]
+fn observation_table_handles_empty_and_multiple_batches() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("rows.parquet");
+    table::write(&path, &[]).unwrap();
+    assert_eq!(
+        table::read(&path).unwrap(),
+        Vec::<PopulationObservation>::new()
+    );
+    let rows = vec![count(1); cytiq_population::DEFAULT_BATCH_SIZE + 1];
+    table::write(&path, &rows).unwrap();
+    assert_eq!(table::read(&path).unwrap(), rows);
+}
+
+#[test]
+fn observation_reader_rejects_coerced_types_and_invalid_structured_fields() {
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+    use arrow_schema::{DataType, Schema};
+    use parquet::arrow::{ArrowWriter, arrow_reader::ParquetRecordBatchReaderBuilder};
+    use std::{fs::File, sync::Arc};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("rows.parquet");
+    table::write(&path, &[count(1)]).unwrap();
+    let batch = ParquetRecordBatchReaderBuilder::try_new(File::open(&path).unwrap())
+        .unwrap()
+        .build()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let cases: Vec<(&str, DataType, ArrayRef)> = vec![
+        (
+            "value_u64",
+            DataType::Int64,
+            Arc::new(Int64Array::from(vec![1])),
+        ),
+        (
+            "target",
+            DataType::Utf8,
+            Arc::new(StringArray::from(vec!["invalid json"])),
+        ),
+        (
+            "denominator",
+            DataType::Utf8,
+            Arc::new(StringArray::from(vec![None::<&str>])),
+        ),
+    ];
+    for (name, kind, column) in cases {
+        let index = batch.schema().index_of(name).unwrap();
+        let mut columns = batch.columns().to_vec();
+        columns[index] = column;
+        let mut fields = batch.schema().fields().to_vec();
+        fields[index] = Arc::new(fields[index].as_ref().clone().with_data_type(kind));
+        let schema = Arc::new(Schema::new_with_metadata(
+            fields,
+            batch.schema().metadata().clone(),
+        ));
+        let invalid = RecordBatch::try_new(schema.clone(), columns).unwrap();
+        let output = directory.path().join("invalid.parquet");
+        let mut writer =
+            ArrowWriter::try_new(File::create(&output).unwrap(), schema, None).unwrap();
+        writer.write(&invalid).unwrap();
+        writer.close().unwrap();
+        assert!(table::read(&output).is_err(), "accepted invalid {name}");
+    }
+}

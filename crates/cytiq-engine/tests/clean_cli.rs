@@ -715,3 +715,17 @@ fn rejects_transformed_scatter() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("scatter channel `FSC-A`"), "{stderr}");
 }
+
+#[test]
+fn report_escapes_paths_and_preserves_generated_plot_panels() {
+    let directory = create_temp_dir("cytiq-clean-html");
+    let input = directory.join(r#"sample<&"'>.fcs"#);
+    fs::copy(fixture("sample.fcs"), &input).unwrap();
+    let output = directory.join("result");
+    run(&["clean", "--input", utf8(&input), "--output", utf8(&output)]);
+    let report = fs::read_to_string(output.join("report.html")).unwrap();
+    assert!(!report.contains(input.file_name().unwrap().to_str().unwrap()));
+    assert!(report.contains("sample&#60;") || report.contains("sample&lt;"));
+    assert!(report.contains("Filters") && report.contains("Removed events by filter combination"));
+    assert!(report.contains("plotly") && report.contains("class=\"plot-panel\""));
+}

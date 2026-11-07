@@ -32,6 +32,15 @@ class PerformanceTests(unittest.TestCase):
         self.assertFalse(benchmark.summarize(uncertain, True)["acceptance"])
         self.assertIsNone(benchmark.summarize(pairs(1.0, 800), False)["acceptance"])
 
+    def test_refactor_profile_allows_only_the_specified_regression_budget(self):
+        def pairs(wall, rss):
+            return [{"baseline": {"wall_seconds": 1.0, "peak_rss_bytes": 1000},
+                     "candidate": {"wall_seconds": wall, "peak_rss_bytes": rss}}] * 20
+        self.assertTrue(benchmark.summarize(pairs(1.0, 1040), True, "refactor")["acceptance"])
+        self.assertFalse(benchmark.summarize(pairs(1.06, 1000), True, "refactor")["acceptance"])
+        self.assertFalse(benchmark.summarize(pairs(1.0, 1060), True, "refactor")["acceptance"])
+        self.assertFalse(benchmark.summarize(pairs(1.0, 1040), True)["acceptance"])
+
     def test_bootstrap_is_repeatable(self):
         pairs = [{"baseline": {"wall_seconds": 1, "peak_rss_bytes": 100},
                   "candidate": {"wall_seconds": 0.7 + i / 100, "peak_rss_bytes": 70}}

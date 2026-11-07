@@ -44,7 +44,7 @@ nightly in `CYTIQ_FUZZ_TOOLCHAIN`, which `just fuzz` installs on first use.
 - `just crap` reports CRAP and baseline deltas from that coverage run.
 - `just crap-check` tests report validation without coverage tools.
 - `just mutants` runs mutation tests for the CRAP remediation functions;
-  `just mutants cytiq-fcs` selects one of the twelve supported crates.
+  `just mutants cytiq-fcs` selects one of the eleven supported crates.
 - `just package-check` checks crates.io metadata and internal dependency
   versions and packages every crate without uploading anything.
 - `just verify` runs the standard local quality gate.
@@ -229,7 +229,7 @@ representable sums inside and outside that boundary; the exact exclusion and
 its rationale live in `.cargo/mutants.toml`.
 
 The **Mutation tests** workflow runs manually and on Mondays at 04:00 UTC,
-separately from PR checks. Its twelve-crate matrix runs up to three jobs at once,
+separately from PR checks. Its eleven-crate matrix runs up to three jobs at once,
 with a 120-minute limit per crate and reports retained for 35 days even on
 failure. `just verify` remains the ordinary quality gate. Neither mutation
 testing nor local CRAP analysis rewrites the reviewed Linux CRAP baseline.

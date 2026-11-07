@@ -1,27 +1,37 @@
 //! Long Arrow tables with exact `UInt64` counts and typed metadata.
 
-use crate::{PopulationObservation, Result, require};
-use arrow_array::{Array, ArrayRef, Float64Array, RecordBatch, StringArray, UInt64Array};
+use crate::observation::Lineage;
+use crate::{
+    Denominator, Measure, Method, ObservationStatus, PopulationError, PopulationObservation,
+    Result, Target, TargetKind, require,
+};
 use arrow_schema::{DataType, Field, Schema};
 use parquet::arrow::{ArrowWriter, arrow_reader::ParquetRecordBatchReaderBuilder};
-use serde_json::{Map, Value};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, path::Path, sync::Arc};
 
-const TEXT: &[&str] = &[
-    "observation_id",
-    "specimen_id",
-    "panel_id",
-    "acquisition_id",
-    "source_id",
-    "target_id",
-    "target_kind",
-    "measure",
-    "unit",
-    "status",
-    "reason",
+const COLUMNS: &[(&str, DataType, bool)] = &[
+    ("schema_version", DataType::UInt64, false),
+    ("observation_id", DataType::Utf8, true),
+    ("specimen_id", DataType::Utf8, true),
+    ("panel_id", DataType::Utf8, true),
+    ("acquisition_id", DataType::Utf8, true),
+    ("source_id", DataType::Utf8, true),
+    ("target_id", DataType::Utf8, true),
+    ("target_kind", DataType::Utf8, true),
+    ("measure", DataType::Utf8, true),
+    ("unit", DataType::Utf8, true),
+    ("status", DataType::Utf8, true),
+    ("reason", DataType::Utf8, true),
+    ("target", DataType::Utf8, true),
+    ("denominator", DataType::Utf8, true),
+    ("method", DataType::Utf8, true),
+    ("lineage", DataType::Utf8, true),
+    ("value_u64", DataType::UInt64, true),
+    ("n_events", DataType::UInt64, true),
+    ("supporting_count", DataType::UInt64, true),
+    ("value_f64", DataType::Float64, true),
 ];
-const JSON: &[&str] = &["target", "denominator", "method", "lineage"];
-const COUNTS: &[&str] = &["value_u64", "n_events", "supporting_count"];
 pub const MAX_OBSERVATIONS: usize = 1_000_000;
 
 /// # Errors
@@ -31,18 +41,10 @@ pub fn write(path: &Path, observations: &[PopulationObservation]) -> Result<()> 
         observations.len() <= MAX_OBSERVATIONS,
         "too many observations",
     )?;
-    let mut fields = vec![Field::new("schema_version", DataType::UInt64, false)];
-    fields.extend(
-        TEXT.iter()
-            .chain(JSON)
-            .map(|name| Field::new(*name, DataType::Utf8, true)),
-    );
-    fields.extend(
-        COUNTS
-            .iter()
-            .map(|name| Field::new(*name, DataType::UInt64, true)),
-    );
-    fields.push(Field::new("value_f64", DataType::Float64, true));
+    let fields = COLUMNS
+        .iter()
+        .map(|(name, kind, nullable)| Field::new(*name, kind.clone(), *nullable))
+        .collect::<Vec<_>>();
     let schema = Arc::new(Schema::new_with_metadata(
         fields,
         HashMap::from([("cytiq.population.schema_version".into(), "1".into())]),
@@ -52,38 +54,17 @@ pub fn write(path: &Path, observations: &[PopulationObservation]) -> Result<()> 
         for row in rows {
             row.validate()?;
         }
-        let values = rows
+        let rows = rows
             .iter()
-            .map(serde_json::to_value)
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        let mut columns: Vec<ArrayRef> = vec![Arc::new(UInt64Array::from(vec![1; rows.len()]))];
-        for name in TEXT {
-            let data = values
-                .iter()
-                .map(|v| match *name {
-                    "target_id" => v["target"]["id"].as_str(),
-                    "target_kind" => v["target"]["kind"].as_str(),
-                    _ => v[*name].as_str(),
-                })
-                .collect::<Vec<_>>();
-            columns.push(Arc::new(StringArray::from(data)));
-        }
-        for name in JSON {
-            let data = values
-                .iter()
-                .map(|v| serde_json::to_string(&v[*name]))
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            columns.push(Arc::new(StringArray::from(data)));
-        }
-        for name in COUNTS {
-            columns.push(Arc::new(UInt64Array::from(
-                values.iter().map(|v| v[*name].as_u64()).collect::<Vec<_>>(),
-            )));
-        }
-        columns.push(Arc::new(Float64Array::from(
-            rows.iter().map(|r| r.value_f64).collect::<Vec<_>>(),
-        )));
-        writer.write(&RecordBatch::try_new(schema.clone(), columns)?)?;
+            .map(|observation| ObservationRow {
+                observation,
+                target_id: &observation.target.id,
+                target_kind: observation.target.kind,
+            })
+            .collect::<Vec<_>>();
+        let batch = serde_arrow::to_record_batch(schema.fields(), &rows)
+            .map_err(|e| PopulationError::Invalid(e.to_string()))?;
+        writer.write(&batch.with_schema(schema.clone())?)?;
     }
     writer.close()?;
     Ok(())
@@ -103,7 +84,7 @@ pub fn read_from<R: parquet::file::reader::ChunkReader + 'static>(
 ) -> Result<Vec<PopulationObservation>> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(reader)?;
     require(
-        builder.schema().fields().len() == TEXT.len() + JSON.len() + COUNTS.len() + 2,
+        builder.schema().fields().len() == COLUMNS.len(),
         "unexpected observation columns",
     )?;
     require(
@@ -124,56 +105,25 @@ pub fn read_from<R: parquet::file::reader::ChunkReader + 'static>(
     let mut result = Vec::new();
     for batch in builder.with_batch_size(crate::DEFAULT_BATCH_SIZE).build()? {
         let batch = batch?;
-        for index in 0..batch.num_rows() {
-            let mut row = Map::new();
-            row.insert(
-                "schema_version".into(),
-                Value::from(uint(&batch, "schema_version", index)?.ok_or_else(|| {
-                    crate::PopulationError::Invalid("null schema version".into())
-                })?),
-            );
-            for name in TEXT
-                .iter()
-                .filter(|name| !["target_id", "target_kind"].contains(name))
-            {
-                row.insert(
-                    (*name).into(),
-                    string(&batch, name, index)?
-                        .map_or(Value::Null, |s| Value::String(s.to_owned())),
-                );
-            }
-            for name in JSON {
-                let encoded = string(&batch, name, index)?.ok_or_else(|| {
-                    crate::PopulationError::Invalid("null structured observation field".into())
-                })?;
-                row.insert((*name).into(), serde_json::from_str(encoded)?);
-            }
-            for name in COUNTS {
-                row.insert(
-                    (*name).into(),
-                    uint(&batch, name, index)?.map_or(Value::Null, Value::from),
-                );
-            }
-            let column = batch
-                .column_by_name("value_f64")
-                .and_then(|c| c.as_any().downcast_ref::<Float64Array>())
-                .ok_or_else(|| crate::PopulationError::Invalid("invalid value_f64 type".into()))?;
-            let number = if column.is_null(index) {
-                Value::Null
-            } else {
-                require(
-                    column.value(index).is_finite(),
-                    "nonfinite floating observation",
-                )?;
-                Value::from(column.value(index))
-            };
-            row.insert("value_f64".into(), number);
-            let observation: PopulationObservation = serde_json::from_value(Value::Object(row))?;
+        // serde_arrow can coerce compatible numeric Arrow types. The v1 table
+        // contract deliberately accepts only the original physical types.
+        for (name, expected, _) in COLUMNS {
+            require(
+                batch.schema().field_with_name(name)?.data_type() == expected,
+                format!("invalid observation column: {name}"),
+            )?;
+        }
+        let rows: Vec<ObservationValue> = serde_arrow::from_record_batch(&batch)
+            .map_err(|e| PopulationError::Invalid(e.to_string()))?;
+        for ObservationValue {
+            observation,
+            target_id,
+            target_kind,
+        } in rows
+        {
             observation.validate()?;
             require(
-                string(&batch, "target_id", index)? == Some(observation.target.id.as_str())
-                    && string(&batch, "target_kind", index)?
-                        == serde_json::to_value(observation.target.kind)?.as_str(),
+                target_id == observation.target.id && target_kind == observation.target.kind,
                 "target columns disagree",
             )?;
             result.push(observation);
@@ -182,18 +132,67 @@ pub fn read_from<R: parquet::file::reader::ChunkReader + 'static>(
     Ok(result)
 }
 
-fn string<'a>(batch: &'a RecordBatch, name: &str, row: usize) -> Result<Option<&'a str>> {
-    let column = batch
-        .column_by_name(name)
-        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
-        .ok_or_else(|| crate::PopulationError::Invalid(format!("invalid string column: {name}")))?;
-    Ok((!column.is_null(row)).then(|| column.value(row)))
+// Remote derive keeps the typed observation fields while representing its four
+// structured fields as the JSON strings required by the v1 Parquet contract.
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "PopulationObservation")]
+struct FlatObservation {
+    schema_version: u32,
+    observation_id: String,
+    specimen_id: String,
+    panel_id: String,
+    acquisition_id: Option<String>,
+    source_id: String,
+    #[serde(with = "json_text")]
+    target: Target,
+    measure: Measure,
+    unit: String,
+    status: ObservationStatus,
+    value_u64: Option<u64>,
+    value_f64: Option<f64>,
+    #[serde(with = "json_text")]
+    denominator: Option<Denominator>,
+    #[serde(with = "json_text")]
+    method: Method,
+    #[serde(with = "json_text")]
+    lineage: Lineage,
+    n_events: u64,
+    /// Rejected/below-detection counts are evidence, never a usable value.
+    supporting_count: Option<u64>,
+    reason: Option<String>,
 }
 
-fn uint(batch: &RecordBatch, name: &str, row: usize) -> Result<Option<u64>> {
-    let column = batch
-        .column_by_name(name)
-        .and_then(|c| c.as_any().downcast_ref::<UInt64Array>())
-        .ok_or_else(|| crate::PopulationError::Invalid(format!("invalid UInt64 column: {name}")))?;
-    Ok((!column.is_null(row)).then(|| column.value(row)))
+#[derive(Serialize)]
+struct ObservationRow<'a> {
+    #[serde(flatten, with = "FlatObservation")]
+    observation: &'a PopulationObservation,
+    target_id: &'a str,
+    target_kind: TargetKind,
+}
+
+#[derive(Deserialize)]
+struct ObservationValue {
+    #[serde(flatten, with = "FlatObservation")]
+    observation: PopulationObservation,
+    target_id: String,
+    target_kind: TargetKind,
+}
+
+mod json_text {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
+    pub fn serialize<T: Serialize, S: Serializer>(
+        value: &T,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let json = serde_json::to_value(value)
+            .and_then(|value| serde_json::to_string(&value))
+            .map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&json)
+    }
+    pub fn deserialize<'de, T: DeserializeOwned, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<T, D::Error> {
+        let encoded = String::deserialize(deserializer)?;
+        serde_json::from_str(&encoded).map_err(serde::de::Error::custom)
+    }
 }

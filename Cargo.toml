@@ -67,6 +67,29 @@ cytiq-spillqc = { path = "crates/cytiq-spillqc", version = "0.4.0" }
 cytiq-stats = { path = "crates/cytiq-stats", version = "0.4.0" }
 cytiq-transform = { path = "crates/cytiq-transform", version = "0.4.0" }
 
+askama = { version = "0.16.1", default-features = false, features = ["std", "derive"] }
+globset = "0.4.21"
+serde_arrow = { version = "0.15.1", default-features = false, features = ["arrow-60"] }
+
+# Shared external versions; consumers retain their extra features.
+arrow-array = "60.1.0"
+arrow-schema = "60.1.0"
+csv = "1.3.1"
+log = "0.4.30"
+nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
+parquet = { version = "60.1.0", default-features = false, features = ["arrow"] }
+plotly = "0.14.1"
+proptest = "1.12.0"
+rayon = "1.10.0"
+roxmltree = "0.21.1"
+ryu = "1.0.23"
+serde = { version = "1.0.228", features = ["derive"] }
+serde-saphyr = "2.0.0"
+serde_json = "1.0.150"
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.17"
+
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"

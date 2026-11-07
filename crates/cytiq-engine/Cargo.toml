@@ -21,7 +21,7 @@ cytiq-autospill.workspace = true
 cytiq-clean.workspace = true
 cytiq-compensate.workspace = true
 cytiq-cytoscan.workspace = true
-csv = "1.3.1"
+csv.workspace = true
 cytiq-fcs.workspace = true
 cytiq-flowsom.workspace = true
 cytiq-gating.workspace = true
@@ -39,18 +39,18 @@ cytiq-qc.workspace = true
 cytiq-spillqc.workspace = true
 cytiq-stats.workspace = true
 cytiq-transform.workspace = true
-log = "0.4.30"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [build-dependencies]
-sha2 = "0.11.1"
+sha2.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
-arrow-array = "60.1.0"
-parquet = { version = "60.1.0", default-features = false, features = ["arrow"] }
-sha2 = "0.11.1"
+tempfile.workspace = true
+arrow-array.workspace = true
+parquet.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

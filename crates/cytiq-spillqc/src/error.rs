@@ -100,3 +100,20 @@ pub enum SpillQcError {
     #[error("spillqc flagged {pairs} pair(s); review {}", report.display())]
     Flagged { pairs: usize, report: PathBuf },
 }
+
+impl From<cytiq_fcs::inputs::InputError> for SpillQcError {
+    fn from(error: cytiq_fcs::inputs::InputError) -> Self {
+        use cytiq_fcs::inputs::InputError as E;
+        match error {
+            E::EmptyInputs => Self::EmptyInputs,
+            E::MissingInput { path } => Self::MissingInput { path },
+            E::NonFcsInput { path } => Self::NonFcsInput { path },
+            E::EmptyDirectory { path } => Self::EmptyDirectory { path },
+            E::EmptyGlob { pattern } => Self::EmptyGlob { pattern },
+            E::UnsupportedGlob { pattern } => Self::UnsupportedGlob { pattern },
+            E::DirectoryRead { path, source } => Self::DirectoryRead { path, source },
+            E::InputCanonicalize { path, source } => Self::InputCanonicalize { path, source },
+            E::DuplicateInput { path } => Self::DuplicateInput { path },
+        }
+    }
+}

@@ -1,6 +1,6 @@
 //! `report.html`: one panel per gate, plotted on the gate's own dimensions.
 
-use std::fmt::Write as _;
+use askama::Template;
 
 use cytiq_density::sample_indices;
 use cytiq_fcs::FcsDataset;
@@ -21,123 +21,81 @@ const FAIL_COLOR: &str = "#E15759";
 const GATE_COLOR: &str = "#1F2933";
 
 pub(crate) fn report_html(
+    report_path: &std::path::Path,
     metrics: &CleanMetrics,
     strategy: &GatingStrategy,
     dataset: &FcsDataset,
     results: &GatingResults,
 ) -> Result<String, CleanError> {
     let sample = sample_indices(&vec![true; dataset.event_count()], PLOT_EVENTS);
-    let mut panels = String::new();
+    let mut panels = Vec::new();
     for gate in strategy.gates().iter().filter(|gate| gate.id != CLEAN_GATE) {
-        let Some(plot) = gate_plot(gate, strategy, dataset, results, &sample)? else {
-            continue;
-        };
-        let _ = write!(
-            panels,
-            "<section class=\"plot-panel\"><h2>Gate <code>{}</code></h2>{}</section>",
-            escape_html(&gate.id),
-            plot.to_inline_html(Some(&format!("gate-{}", gate.id)))
-        );
+        if let Some(plot) = gate_plot(gate, strategy, dataset, results, &sample)? {
+            panels.push(GatePanel {
+                id: &gate.id,
+                plot: PlotHtml(plot.to_inline_html(Some(&format!("gate-{}", gate.id)))),
+            });
+        }
     }
-
     let rows = [
         ("Debris", &metrics.filters.debris),
         ("Singlets", &metrics.filters.singlets),
         ("Viability", &metrics.filters.viability),
     ]
-    .into_iter()
-    .map(|(name, report)| filter_row(name, report))
-    .collect::<String>();
-    let overlap = if metrics.removal_overlap.is_empty() {
-        "<tr><td colspan=\"2\">No events removed</td></tr>".to_owned()
-    } else {
-        metrics
-            .removal_overlap
-            .iter()
-            .fold(String::new(), |mut rows, (filters, count)| {
-                let _ = write!(
-                    rows,
-                    "<tr><td>{}</td><td>{count}</td></tr>",
-                    escape_html(filters)
-                );
-                rows
-            })
-    };
-
-    let html = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Clean Report</title>
-{plotly_js}
-<style>
-body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2933; }}
-table {{ border-collapse: collapse; margin-top: 1rem; }}
-td, th {{ border: 1px solid #d9e2ec; padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }}
-th {{ background: #f0f4f8; }}
-code {{ background: #f0f4f8; padding: 0.1rem 0.25rem; }}
-.status-applied {{ color: #1b7f3b; }}
-.status-not_assessed {{ color: #b7791f; }}
-.status-disabled {{ color: #616e7c; }}
-.plot-panel {{ margin-top: 1.5rem; border: 1px solid #d9e2ec; padding: 1rem; }}
-.plot-panel h2 {{ margin-top: 0; }}
-.js-plotly-plot, .plotly, .plotly-graph-div {{ width: 100% !important; }}
-</style>
-</head>
-<body>
-<h1>Clean Report</h1>
-<p><strong>Input:</strong> <code>{input}</code></p>
-<p><strong>Gates:</strong> {source}</p>
-<p><strong>Kept:</strong> {kept} of {events} events ({kept_percent:.2}%), rule: <code>{rule}</code></p>
-<h2>Filters</h2>
-<table>
-<tr><th>Filter</th><th>Status</th><th>Method</th><th>Channels</th><th>Removed</th><th>Notes</th></tr>
-{rows}
-</table>
-<h2>Removed events by filter combination</h2>
-<table>
-<tr><th>Removed by</th><th>Events</th></tr>
-{overlap}
-</table>
-{panels}
-</body>
-</html>
-"#,
-        plotly_js = Plot::online_cdn_js(),
-        input = escape_html(&metrics.input),
-        source = escape_html(&metrics.gates_source),
-        kept = metrics.kept,
-        events = metrics.event_count,
-        kept_percent = metrics.kept_fraction * 100.0,
-        rule = escape_html(&metrics.keep_rule),
-    );
-    Ok(html)
+    .map(|(name, report)| FilterRow {
+        name,
+        report,
+        channels: report.channels.join(", "),
+        removed: match (report.removed, report.removed_fraction) {
+            (Some(count), Some(fraction)) => format!("{count} ({:.2}%)", fraction * 100.0),
+            _ => "—".into(),
+        },
+        notes: report.reason.clone().unwrap_or_else(|| {
+            if report.parameters.is_null() {
+                String::new()
+            } else {
+                report.parameters.to_string()
+            }
+        }),
+    });
+    CleanReport {
+        metrics,
+        rows,
+        panels,
+        plotly_js: PlotHtml(Plot::online_cdn_js()),
+    }
+    .render()
+    .map_err(|error| CleanError::OutputWrite {
+        path: report_path.to_path_buf(),
+        source: std::io::Error::other(error),
+    })
 }
 
-fn filter_row(name: &str, report: &FilterReport) -> String {
-    let status = serde_json::to_value(report.status)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_default();
-    let removed = match (report.removed, report.removed_fraction) {
-        (Some(count), Some(fraction)) => format!("{count} ({:.2}%)", fraction * 100.0),
-        _ => "&mdash;".to_owned(),
-    };
-    let notes = report.reason.clone().unwrap_or_else(|| {
-        if report.parameters.is_null() {
-            String::new()
-        } else {
-            report.parameters.to_string()
-        }
-    });
-    format!(
-        "<tr><td>{name}</td><td class=\"status-{status}\">{status}</td><td>{}</td>\
-         <td>{}</td><td>{removed}</td><td><code>{}</code></td></tr>",
-        report.method.unwrap_or("&mdash;"),
-        escape_html(&report.channels.join(", ")),
-        escape_html(&notes)
-    )
+#[derive(Template)]
+#[template(path = "report.html")]
+struct CleanReport<'a> {
+    metrics: &'a CleanMetrics,
+    rows: [FilterRow<'a>; 3],
+    panels: Vec<GatePanel<'a>>,
+    plotly_js: PlotHtml,
+}
+struct FilterRow<'a> {
+    name: &'static str,
+    report: &'a FilterReport,
+    channels: String,
+    removed: String,
+    notes: String,
+}
+struct GatePanel<'a> {
+    id: &'a str,
+    plot: PlotHtml,
+}
+// Only generated Plotly fragments use this private wrapper and template |safe.
+struct PlotHtml(String);
+impl std::fmt::Display for PlotHtml {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
 }
 
 /// Scatter (2-D gates) or overlaid histograms (1-D gates) of the sampled
@@ -261,12 +219,4 @@ fn threshold_line(x: f64) -> plotly::layout::Shape {
         .y1(1)
         .y_ref("paper")
         .line(ShapeLine::new().color(GATE_COLOR).width(2.0))
-}
-
-fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }

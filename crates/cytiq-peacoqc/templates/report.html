@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PeacoQC Report</title>
+{{ plotly_js|safe }}
+<style>
+body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2933; }
+table { border-collapse: collapse; margin-top: 1rem; }
+td, th { border: 1px solid #d9e2ec; padding: 0.45rem 0.65rem; text-align: left; }
+th { background: #f0f4f8; }
+code { background: #f0f4f8; padding: 0.1rem 0.25rem; }
+.plot-panel { margin-top: 1.5rem; border: 1px solid #d9e2ec; padding: 1rem; }
+.plot-panel h2 { margin-top: 0; }
+.js-plotly-plot, .plotly, .plotly-graph-div { width: 100% !important; }
+</style>
+</head>
+<body>
+<h1>PeacoQC Report</h1>
+<p><strong>Status:</strong> {{ summary.status }}</p>
+<p><strong>Input:</strong> <code>{{ summary.input }}</code></p>
+<p><strong>Output:</strong> <code>{{ summary.output }}</code></p>
+<p><strong>Channels:</strong> {{ channels }}</p>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>Events before</td><td>{{ summary.metrics.events_before }}</td></tr>
+<tr><td>Events after</td><td>{{ summary.metrics.events_after }}</td></tr>
+<tr><td>Removed total</td><td>{{ summary.metrics.removed_total }} ({{ "{:.4}"|format(summary.metrics.removed_total_fraction) }})</td></tr>
+<tr><td>Removed by margins</td><td>{{ summary.metrics.margin_removed_count }} ({{ "{:.4}"|format(summary.metrics.margin_removed_fraction) }})</td></tr>
+<tr><td>Removed by MAD</td><td>{{ summary.metrics.mad_removed_event_count }} ({{ "{:.4}"|format(summary.metrics.mad_removed_fraction) }})</td></tr>
+<tr><td>Removed by IT</td><td>{{ summary.metrics.it_removed_event_count }} ({{ "{:.4}"|format(summary.metrics.it_removed_fraction) }})</td></tr>
+<tr><td>Removed by consecutive bins</td><td>{{ summary.metrics.consecutive_removed_event_count }} ({{ "{:.4}"|format(summary.metrics.consecutive_removed_fraction) }})</td></tr>
+<tr><td>Bins</td><td>{{ summary.metrics.n_bins }}</td></tr>
+<tr><td>Events per bin</td><td>{{ summary.metrics.events_per_bin }}</td></tr>
+<tr><td>Peak features</td><td>{{ summary.metrics.peak_feature_count }}</td></tr>
+</table>
+<h2>Warnings</h2>
+<ul>
+{% for warning in summary.warnings %}<li>{{ warning }}</li>{% else %}<li>None</li>{% endfor %}
+</ul>
+<h2>Plots</h2>
+{% for panel in plots %}<section class="plot-panel"><h2>{{ panel.title }}</h2>{{ panel.plot|safe }}</section>{% endfor %}
+</body>
+</html>

@@ -12,10 +12,10 @@ description = "Per-channel statistics of FCS files for technical quality control
 cytiq-fcs.workspace = true
 cytiq-provenance.workspace = true
 cytiq-publish.workspace = true
-log = "0.4.30"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-thiserror = "2.0.17"
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

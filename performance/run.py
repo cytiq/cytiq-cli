@@ -110,7 +110,7 @@ def percentile(values, fraction):
     return values[lower] + (values[upper] - values[lower]) * (position - lower)
 
 
-def summarize(pairs, acceptance):
+def summarize(pairs, acceptance, profile="exact"):
     ratios = [pair["candidate"]["wall_seconds"] / pair["baseline"]["wall_seconds"]
               for pair in pairs]
     rng = random.Random(42)
@@ -123,15 +123,18 @@ def summarize(pairs, acceptance):
     interval = [percentile(bootstraps, 0.025), percentile(bootstraps, 0.975)]
     return {"medians": medians, "median_wall_ratio": statistics.median(ratios),
             "wall_ratio_ci95": interval, "peak_rss_ratio": rss_ratio,
-            "acceptance": (rss_ratio <= 0.90 and interval[1] <= 1.05) if acceptance else None}
+            "acceptance": (rss_ratio <= (1.05 if profile == "refactor" else 0.90) and interval[1] <= 1.05) if acceptance else None}
 
 
 def checked(command):
     subprocess.run([str(part) for part in command], check=True, cwd=ROOT)
 
 
-def verify_outputs(helper, baseline, candidate):
-    checked([helper, "compare", "--baseline", baseline, "--candidate", candidate])
+def verify_outputs(helper, baseline, candidate, profile="exact"):
+    command = [helper, "compare", "--baseline", baseline, "--candidate", candidate]
+    if profile != "exact":
+        command.extend(["--profile", profile])
+    checked(command)
 
 
 def provenance_build(directory):
@@ -227,7 +230,9 @@ def write_report(report, output):
                          f"{cpu:.4f} | {values['peak_rss_bytes'] / (1024 * 1024):.1f} | "
                          f"{values['events_per_second']:.0f} |")
     lines.extend(["", "Ratios are candidate / baseline. Full metrics and per-pair samples: results.json.",
-                  "Only large cases gate acceptance: RSS ≤0.90 and upper wall-time CI ≤1.05.",
+                  ("Refactor profile: peak RSS ≤1.05 and upper wall-time CI ≤1.05."
+                   if report["settings"].get("profile", "exact") == "refactor"
+                   else "Only large cases gate acceptance: RSS ≤0.90 and upper wall-time CI ≤1.05."),
                   "Warm-cache measurements include reading, hashing, publication and provenance; "
                   "they do not measure durable disk flush latency."])
     (output / "scorecard.md").write_text("\n".join(lines) + "\n")
@@ -237,8 +242,9 @@ def run(args):
     if args.output.exists():
         raise ValueError(f"output already exists: {args.output}; select a fresh --output directory")
     args.output.mkdir(parents=True)
+    profile = getattr(args, "profile", "exact")
     report = {"schema_version": 1, "status": "running", "host": host_metadata(),
-              "settings": {"pairs": args.pairs, "warmups": args.warmups,
+              "settings": {"profile": profile, "pairs": args.pairs, "warmups": args.warmups,
                            "bootstrap_samples": 10_000, "bootstrap_seed": 42,
                            "generator_version": 1, "single_input_seed": 42,
                            "multi_input_seeds": [100, 101, 102, 103],
@@ -298,7 +304,7 @@ def run(args):
                     sample["events_per_second"] = case["events"] / sample["wall_seconds"]
                     pair[side] = sample
                     work.rename(archive)
-                verify_outputs(helper, case_dir / "baseline", case_dir / "candidate")
+                verify_outputs(helper, case_dir / "baseline", case_dir / "candidate", profile)
                 for side in ("baseline", "candidate"):
                     build = provenance_build(case_dir / side)
                     previous = report["binaries"][side].setdefault("build", build)
@@ -307,11 +313,11 @@ def run(args):
                 if iteration >= args.warmups:
                     result["pairs"].append(pair)
                 write_report(report, args.output)
-                print(f"{case['name']}: {iteration + 1}/{args.warmups + args.pairs} pairs, parity exact",
+                print(f"{case['name']}: {iteration + 1}/{args.warmups + args.pairs} pairs, parity {profile}",
                       flush=True)
             gating = (case["name"] in REQUIRED and not args.smoke
                       and args.pairs >= 20 and args.warmups >= 2)
-            result["summary"] = summarize(result["pairs"], gating)
+            result["summary"] = summarize(result["pairs"], gating, profile)
         complete = (REQUIRED <= {case["name"] for case in report["cases"]}
                     and not args.smoke and args.pairs >= 20 and args.warmups >= 2)
         failed = any(case["summary"]["acceptance"] is False for case in report["cases"])
@@ -328,6 +334,7 @@ def run(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("exact", "refactor"), default="exact")
     parser.add_argument("--baseline-bin", type=Path, required=True)
     parser.add_argument("--candidate-bin", type=Path, required=True)
     parser.add_argument("--helper-bin", type=Path,

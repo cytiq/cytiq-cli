@@ -4,6 +4,8 @@ mod compensation;
 mod data;
 mod error;
 mod header;
+#[cfg(feature = "inputs")]
+pub mod inputs;
 mod layout;
 mod limits;
 mod lineage;

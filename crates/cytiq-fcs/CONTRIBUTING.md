@@ -29,6 +29,8 @@ this crate.
   ANALYSIS), each with the reason for its value.
 - `src/error.rs` — `FcsError`, exported as `cytiq_fcs::Error`.
 
+- `src/inputs.rs` — optional FCS input expansion, ordering and duplicate checks.
+
 ## Invariants
 
 - Strict over lenient. Reject spec violations with a specific `FcsError`
@@ -63,8 +65,9 @@ this crate.
   through `write_fcs3_1_exact_with_options` and record `CYTIQ_ACQUISITION`.
 - Spillover matrices are row-major, rows = fluorochromes, columns = detectors.
   `compensate` panics on shape mismatch; callers check shapes first.
-- No `unsafe`, and no dependencies beyond `log`, `thiserror`, `serde` /
-  `serde_json` and `sha2`. Dev-dependencies (`proptest`) are for tests only.
+- No `unsafe`. Core dependencies are `log`, `thiserror`, `serde` /
+  `serde_json` and `sha2`; the optional `inputs` feature adds `globset` for
+  shared filename resolution. Dev-dependencies (`proptest`) are for tests only.
 
 ## Where changes belong
 

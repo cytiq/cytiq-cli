@@ -31,7 +31,13 @@ pub(crate) fn write_outputs(
     stage_masks_parquet(&mut publication, &directory.join(MASKS_FILE), masks)?;
     stage_metrics_json(&mut publication, &directory.join(METRICS_FILE), metrics)?;
     stage_text(&mut publication, &directory.join(GATINGML_FILE), gatingml)?;
-    let report = report_html(metrics, strategy, dataset, results)?;
+    let report = report_html(
+        &directory.join(REPORT_FILE),
+        metrics,
+        strategy,
+        dataset,
+        results,
+    )?;
     stage_text(&mut publication, &directory.join(REPORT_FILE), &report)?;
     Ok(publication.commit()?)
 }

@@ -96,3 +96,24 @@ failure handling plus fixture/comparator behavior, without running a benchmark.
 It runs in CI and in `just verify`. Run `just parity` and `just parity-real`
 as the independent R/Python scientific gates; never widen their tolerances
 or regenerate their golden values to make an optimisation pass.
+
+## Refactor profile
+
+Use `--profile refactor` to evaluate simplifications without the default profile's
+10% memory-reduction requirement. The five large cases use the same alternating
+20 measured pairs and two warmups; acceptance requires median peak RSS ratio
+≤1.05 and upper 95% wall-time ratio bound ≤1.05. Short/incomplete runs remain
+diagnostic. The default `exact` profile keeps its original comparison and gates.
+
+The refactor comparator checks FCS metadata and integer/Original_ID columns
+exactly; other finite FCS values and floating fields in `metrics.json` allow
+1e-6 scaled error (`abs(a-b) / max(1, abs(a), abs(b))`). Integer metrics, strings
+and document digests remain exact. Masks and population observations compare
+logically, independent of Parquet encoding. Other artifacts remain byte-exact.
+Each provenance record must carry a valid v3 execution fingerprint, and every
+recorded input/output digest is checked against its actual file before comparing
+records. Only times, build commit, validated execution fingerprints and verified
+output sizes/hashes are excluded from cross-build comparison.
+
+Example: `just performance --profile refactor --baseline-bin
+target/simplification/baseline/cytiq --candidate-bin target/release/cytiq`.

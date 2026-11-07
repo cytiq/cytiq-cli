@@ -7,7 +7,7 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cytiq_fcs::{FcsReader, FcsWriteOptions, FcsWriteParameter};
 use cytiq_mask::EventMask;
 use cytiq_provenance::{FileRecord, RunRecord};
@@ -39,7 +39,15 @@ enum Command {
         baseline: PathBuf,
         #[arg(long)]
         candidate: PathBuf,
+        #[arg(long, value_enum, default_value_t = ComparisonProfile::Exact)]
+        profile: ComparisonProfile,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ComparisonProfile {
+    Exact,
+    Refactor,
 }
 
 fn main() -> Result<()> {
@@ -63,7 +71,11 @@ fn main() -> Result<()> {
         Command::Compare {
             baseline,
             candidate,
-        } => compare(&baseline, &candidate),
+            profile,
+        } => match profile {
+            ComparisonProfile::Exact => compare(&baseline, &candidate),
+            ComparisonProfile::Refactor => compare_refactor(&baseline, &candidate),
+        },
     }
 }
 
@@ -202,6 +214,151 @@ fn compare(baseline: &Path, candidate: &Path) -> Result<()> {
     Ok(())
 }
 
+// Refactor comparisons verify each record before excluding fields that are
+// derived from the build or physical encoding. The default comparator above
+// deliberately retains its original byte-for-byte policy.
+fn refactor_provenance(path: &Path, root: &Path) -> Result<serde_json::Value> {
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+    let record: RunRecord = serde_json::from_value(value.clone())?;
+    if record.reason.is_none()
+        || record.schema_version != cytiq_provenance::SCHEMA_VERSION
+        || record.execution_fingerprint.as_deref() != Some(record.compute_fingerprint().as_str())
+    {
+        return Err("invalid execution fingerprint".into());
+    }
+    let original = root.parent().ok_or("missing archive parent")?.join("work");
+    for output in &record.outputs {
+        let relative = Path::new(&output.path).strip_prefix(&original)?;
+        let actual = FileRecord::of(&root.join(relative))?;
+        if actual.bytes != output.bytes || actual.sha256 != output.sha256 {
+            return Err(format!("output hash mismatch: {}", output.path).into());
+        }
+    }
+    for input in &record.inputs {
+        let actual = FileRecord::of(Path::new(&input.path))?;
+        if actual.bytes != input.bytes || actual.sha256 != input.sha256 {
+            return Err("input hash mismatch".into());
+        }
+    }
+    let object = value
+        .as_object_mut()
+        .ok_or("provenance must be an object")?;
+    object.remove("execution_fingerprint");
+    object.remove("started_at_unix_ms");
+    object.remove("finished_at_unix_ms");
+    object
+        .get_mut("build")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("missing build")?
+        .remove("git_commit");
+    for output in object
+        .get_mut("outputs")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or("missing outputs")?
+    {
+        let output = output.as_object_mut().ok_or("invalid output")?;
+        output.remove("bytes");
+        output.remove("sha256");
+    }
+    Ok(value)
+}
+
+fn same_float(left: f64, right: f64) -> bool {
+    left.is_finite()
+        && right.is_finite()
+        && (left - right).abs() <= 1e-6 * left.abs().max(right.abs()).max(1.0)
+}
+
+fn same_metrics(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (left, right) {
+        (Value::Number(a), Value::Number(b)) if a.is_f64() && b.is_f64() => {
+            same_float(a.as_f64().unwrap(), b.as_f64().unwrap())
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same_metrics(a, b))
+        }
+        (Value::Object(a), Value::Object(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .all(|(key, a)| b.get(key).is_some_and(|b| same_metrics(a, b)))
+        }
+        _ => left == right,
+    }
+}
+
+fn same_fcs(left: &Path, right: &Path) -> Result<bool> {
+    use cytiq_fcs::ColumnData;
+    let mut left = FcsReader::open(left)?.read()?;
+    let mut right = FcsReader::open(right)?.read()?;
+    let a = std::mem::take(&mut left.data.columns);
+    let b = std::mem::take(&mut right.data.columns);
+    Ok(left == right
+        && a.len() == b.len()
+        && a.iter().zip(&b).enumerate().all(|(index, (a, b))| {
+            if left.parameters[index].name == cytiq_fcs::ORIGINAL_ID_PARAMETER {
+                return a == b;
+            }
+            match (a, b) {
+                (ColumnData::UInt(a), ColumnData::UInt(b)) => a == b,
+                (ColumnData::F32(a), ColumnData::F32(b)) => {
+                    a.len() == b.len()
+                        && a.iter()
+                            .zip(b)
+                            .all(|(&a, &b)| same_float(f64::from(a), f64::from(b)))
+                }
+                (ColumnData::F64(a), ColumnData::F64(b)) => {
+                    a.len() == b.len() && a.iter().zip(b).all(|(&a, &b)| same_float(a, b))
+                }
+                _ => false,
+            }
+        }))
+}
+
+fn compare_refactor(baseline: &Path, candidate: &Path) -> Result<()> {
+    let paths = files(baseline)?;
+    if paths != files(candidate)? {
+        return Err("output file sets differ".into());
+    }
+    for relative in paths {
+        let left = baseline.join(&relative);
+        let right = candidate.join(&relative);
+        let name = relative
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let equal = if name == "provenance.json" || name.ends_with(".provenance.json") {
+            refactor_provenance(&left, baseline)? == refactor_provenance(&right, candidate)?
+        } else if relative.extension().is_some_and(|ext| ext == "fcs") {
+            same_fcs(&left, &right)?
+        } else if name == "metrics.json" {
+            same_metrics(
+                &serde_json::from_slice(&fs::read(left)?)?,
+                &serde_json::from_slice(&fs::read(right)?)?,
+            )
+        } else if relative.extension().is_some_and(|ext| ext == "parquet") {
+            let builder = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(
+                fs::File::open(&left)?,
+            )?;
+            if builder
+                .schema()
+                .metadata()
+                .contains_key("cytiq.population.schema_version")
+            {
+                cytiq_population::table::read(&left)? == cytiq_population::table::read(&right)?
+            } else {
+                EventMask::read_parquet(&left)? == EventMask::read_parquet(&right)?
+            }
+        } else {
+            fs::read(&left)? == fs::read(&right)?
+        };
+        if !equal {
+            return Err(format!("outputs differ: {}", relative.display()).into());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +442,69 @@ mod tests {
         )
         .unwrap();
         assert!(compare(&left, &right).is_err());
+    }
+    #[test]
+    fn refactor_metrics_keep_integers_and_document_hashes_exact() {
+        use serde_json::json;
+        assert!(same_metrics(
+            &json!({"value":1.0,"n":9007199254740993u64}),
+            &json!({"value":1.0000001,"n":9007199254740993u64})
+        ));
+        assert!(!same_metrics(
+            &json!({"n":9007199254740993u64}),
+            &json!({"n":9007199254740992u64})
+        ));
+        assert!(!same_metrics(
+            &json!({"sha256":"a"}),
+            &json!({"sha256":"b"})
+        ));
+        assert!(!same_float(f64::NAN, 0.0));
+        assert!(!same_float(1.0, 1.01));
+    }
+    #[test]
+    fn refactor_provenance_verifies_changed_encodings_and_rejects_tampering() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let mut records = Vec::new();
+        for (side, bytes) in [
+            ("baseline", b"{\"x\":1.0}".as_slice()),
+            ("candidate", b"{\"x\":1.0000001}".as_slice()),
+        ] {
+            let archive = root.join(side);
+            fs::create_dir(&archive).unwrap();
+            fs::write(archive.join("metrics.json"), bytes).unwrap();
+            let mut output = FileRecord::of(&archive.join("metrics.json")).unwrap();
+            output.path = root
+                .join("work/metrics.json")
+                .to_string_lossy()
+                .into_owned();
+            let mut record:RunRecord=serde_json::from_value(serde_json::json!({
+                "schema_version":3,"tool":"cytiq test","version":"same",
+                "build":{"git_commit":side,"rustc":"same","target":"same","profile":"release"},
+                "platform":{"os":"same","arch":"same","cpus":4},"arguments":[],"config":{},"constants":{},"algorithms":{},
+                "started_at_unix_ms":1,"finished_at_unix_ms":2,"inputs":[],"outputs":[output],"reason":"success"
+            })).unwrap();
+            record.execution_fingerprint = Some(record.compute_fingerprint());
+            fs::write(
+                archive.join("provenance.json"),
+                serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
+            records.push(record);
+        }
+        let baseline = root.join("baseline");
+        let candidate = root.join("candidate");
+        compare_refactor(&baseline, &candidate).unwrap();
+        assert!(compare(&baseline, &candidate).is_err());
+        fs::write(candidate.join("metrics.json"), b"{\"x\":1.0}").unwrap();
+        assert!(compare_refactor(&baseline, &candidate).is_err());
+        let mut record = records.pop().unwrap();
+        record.execution_fingerprint = Some("invalid".into());
+        fs::write(
+            candidate.join("provenance.json"),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        assert!(refactor_provenance(&candidate.join("provenance.json"), &candidate).is_err());
     }
 }

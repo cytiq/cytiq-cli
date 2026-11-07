@@ -9,10 +9,10 @@ categories.workspace = true
 description = "Run manifest (YAML or JSON) describing a flow cytometry acquisition run"
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-serde-saphyr = "2.0.0"
-serde_json = "1.0.150"
-thiserror = "2.0.17"
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

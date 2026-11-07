@@ -386,108 +386,14 @@ fn validate_non_negative(parameter: &'static str, value: f64) -> Result<(), Tran
 }
 
 fn resolve_inputs(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, TransformError> {
-    let mut paths = Vec::new();
-    for input in inputs {
-        paths.extend(resolve_input(input)?);
-    }
-    if paths.is_empty() {
-        return Err(TransformError::EmptyInputs);
-    }
-
-    paths.sort();
-    let mut seen = HashSet::new();
-    for path in &paths {
-        let canonical =
-            fs::canonicalize(path).map_err(|source| TransformError::InputCanonicalize {
-                path: path.clone(),
-                source,
-            })?;
-        if !seen.insert(canonical) {
-            return Err(TransformError::DuplicateInput { path: path.clone() });
-        }
-    }
-
-    Ok(paths)
-}
-
-fn resolve_input(input: &Path) -> Result<Vec<PathBuf>, TransformError> {
-    let raw = input.to_string_lossy();
-    if raw.contains('*') || raw.contains('?') {
-        return resolve_glob(input, &raw);
-    }
-    if !input.exists() {
-        return Err(TransformError::MissingInput {
-            path: input.to_path_buf(),
-        });
-    }
-    if input.is_dir() {
-        return resolve_directory(input);
-    }
-    if input.is_file() && is_fcs_path(input) {
-        return Ok(vec![input.to_path_buf()]);
-    }
-    Err(TransformError::NonFcsInput {
-        path: input.to_path_buf(),
-    })
-}
-
-fn resolve_glob(input: &Path, raw: &str) -> Result<Vec<PathBuf>, TransformError> {
-    let parent = input.parent().filter(|path| !path.as_os_str().is_empty());
-    let file_pattern = input
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| TransformError::UnsupportedGlob {
-            pattern: raw.to_owned(),
-        })?;
-    let parent = parent.unwrap_or_else(|| Path::new("."));
-    if parent.to_string_lossy().contains('*') || parent.to_string_lossy().contains('?') {
-        return Err(TransformError::UnsupportedGlob {
-            pattern: raw.to_owned(),
-        });
-    }
-
-    let mut matches = fs::read_dir(parent)
-        .map_err(|source| TransformError::DirectoryRead {
-            path: parent.to_path_buf(),
-            source,
-        })?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && is_fcs_path(path))
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| wildcard_match(file_pattern, name))
-        })
-        .collect::<Vec<_>>();
-    matches.sort();
-    if matches.is_empty() {
-        return Err(TransformError::EmptyGlob {
-            pattern: raw.to_owned(),
-        });
-    }
-
-    Ok(matches)
-}
-
-fn resolve_directory(input: &Path) -> Result<Vec<PathBuf>, TransformError> {
-    let mut paths = fs::read_dir(input)
-        .map_err(|source| TransformError::DirectoryRead {
-            path: input.to_path_buf(),
-            source,
-        })?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && is_fcs_path(path))
-        .collect::<Vec<_>>();
-    paths.sort();
-    if paths.is_empty() {
-        return Err(TransformError::EmptyDirectory {
-            path: input.to_path_buf(),
-        });
-    }
-
-    Ok(paths)
+    cytiq_fcs::inputs::resolve_inputs(
+        inputs,
+        cytiq_fcs::inputs::ResolveOptions {
+            order: cytiq_fcs::inputs::InputOrder::Global,
+            require_regular_file: true,
+        },
+    )
+    .map_err(Into::into)
 }
 
 fn plan_outputs(
@@ -1418,42 +1324,6 @@ fn event_count(dataset: &FcsDataset) -> usize {
     dataset.data.columns.first().map_or(0, ColumnData::len)
 }
 
-fn wildcard_match(pattern: &str, text: &str) -> bool {
-    wildcard_match_inner(pattern.as_bytes(), text.as_bytes())
-}
-
-fn wildcard_match_inner(pattern: &[u8], text: &[u8]) -> bool {
-    let mut pattern_index = 0;
-    let mut text_index = 0;
-    let mut star_index = None;
-    let mut star_text_index = 0;
-
-    while text_index < text.len() {
-        if pattern_index < pattern.len()
-            && (pattern[pattern_index] == b'?' || pattern[pattern_index] == text[text_index])
-        {
-            pattern_index += 1;
-            text_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-            star_index = Some(pattern_index);
-            pattern_index += 1;
-            star_text_index = text_index;
-        } else if let Some(star) = star_index {
-            pattern_index = star + 1;
-            star_text_index += 1;
-            text_index = star_text_index;
-        } else {
-            return false;
-        }
-    }
-
-    while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-        pattern_index += 1;
-    }
-
-    pattern_index == pattern.len()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1504,13 +1374,6 @@ mod tests {
                 assert!(operator.apply(value).is_finite());
             }
         }
-    }
-
-    #[test]
-    fn wildcard_matching_supports_simple_file_globs() {
-        assert!(wildcard_match("*.fcs", "sample.fcs"));
-        assert!(wildcard_match("sample-?.fcs", "sample-1.fcs"));
-        assert!(!wildcard_match("sample-?.fcs", "sample-10.fcs"));
     }
 
     // Frozen pre-optimisation implementation from main 1485c1d. Keep independent

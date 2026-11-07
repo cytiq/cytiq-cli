@@ -102,21 +102,23 @@ input/output model:
   `flowFP` probability-binning fingerprints
 - spillover compensation and arcsinh preprocessing from FCS metadata
 - `isotree`-style isolation-forest outlier scoring
-- reference-based novelty detection with Gaussian mixtures from
-  `linfa-clustering` (mclust-style BIC model selection over `G = 1..9`)
+- reference-based novelty detection with an independently implemented
+  mclust-compatible search over eight covariance families and `G = 1..9`
 - summary, feature, config, and debug artifact export
 
 Feature values match upstream to ~1e-12 when both use the same events; see
 `parity/REPORT.md` for the comparison and the remaining differences.
 
-The novelty model uses `linfa-clustering` (<https://github.com/rust-ml/linfa>)
-in place of `mclust`; please also cite mclust when comparing with upstream:
+The novelty model implements mclust-style initialization, covariance families,
+BIC selection and singularity rules in `mixture.rs`; please cite mclust when
+comparing with upstream:
 Scrucca, L. et al. mclust 5: clustering, classification and density estimation
 using Gaussian finite mixture models. *The R Journal* 8(1), 289–317 (2016).
 
 Relevant code:
 - `crates/cytiq-cytoscan/src/runner.rs`
 - `crates/cytiq-cytoscan/src/novelty.rs`
+- `crates/cytiq-cytoscan/src/mixture.rs`
 - `crates/cytiq-cytoscan/src/export.rs`
 
 ## PeacoQC

@@ -9,8 +9,8 @@ categories.workspace = true
 description = "All-or-nothing publication of command output files"
 
 [dependencies]
-tempfile = "3.27.0"
-thiserror = "2.0.17"
+tempfile.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

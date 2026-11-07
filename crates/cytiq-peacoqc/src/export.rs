@@ -1,3 +1,4 @@
+use askama::Template;
 use std::fs;
 use std::path::Path;
 
@@ -105,118 +106,60 @@ fn write_report_html(
     summary: &PeacoQcSummary,
     mask: &[EventMaskRecord],
 ) -> Result<(), PeacoQcError> {
-    let plots = report_plots(summary, mask);
-    let metrics = &summary.metrics;
-    let warnings = if summary.warnings.is_empty() {
-        "<li>None</li>".to_owned()
-    } else {
-        summary
-            .warnings
-            .iter()
-            .map(|warning| format!("<li>{}</li>", escape_html(warning)))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let html = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>PeacoQC Report</title>
-{plotly_js}
-<style>
-body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2933; }}
-table {{ border-collapse: collapse; margin-top: 1rem; }}
-td, th {{ border: 1px solid #d9e2ec; padding: 0.45rem 0.65rem; text-align: left; }}
-th {{ background: #f0f4f8; }}
-code {{ background: #f0f4f8; padding: 0.1rem 0.25rem; }}
-.plot-panel {{ margin-top: 1.5rem; border: 1px solid #d9e2ec; padding: 1rem; }}
-.plot-panel h2 {{ margin-top: 0; }}
-.js-plotly-plot, .plotly, .plotly-graph-div {{ width: 100% !important; }}
-</style>
-</head>
-<body>
-<h1>PeacoQC Report</h1>
-<p><strong>Status:</strong> {status}</p>
-<p><strong>Input:</strong> <code>{input}</code></p>
-<p><strong>Output:</strong> <code>{output}</code></p>
-<p><strong>Channels:</strong> {channels}</p>
-<table>
-<tr><th>Metric</th><th>Value</th></tr>
-<tr><td>Events before</td><td>{events_before}</td></tr>
-<tr><td>Events after</td><td>{events_after}</td></tr>
-<tr><td>Removed total</td><td>{removed_total} ({removed_fraction:.4})</td></tr>
-<tr><td>Removed by margins</td><td>{margin_count} ({margin_fraction:.4})</td></tr>
-<tr><td>Removed by MAD</td><td>{mad_count} ({mad_fraction:.4})</td></tr>
-<tr><td>Removed by IT</td><td>{it_count} ({it_fraction:.4})</td></tr>
-<tr><td>Removed by consecutive bins</td><td>{consecutive_count} ({consecutive_fraction:.4})</td></tr>
-<tr><td>Bins</td><td>{bins}</td></tr>
-<tr><td>Events per bin</td><td>{events_per_bin}</td></tr>
-<tr><td>Peak features</td><td>{peak_features}</td></tr>
-</table>
-<h2>Warnings</h2>
-<ul>
-{warnings}
-</ul>
-<h2>Plots</h2>
-{plots}
-</body>
-</html>
-"#,
-        plotly_js = Plot::online_cdn_js(),
-        status = escape_html(&summary.status),
-        input = escape_html(&summary.input),
-        output = escape_html(&summary.output),
-        channels = escape_html(&summary.channels.join(", ")),
-        events_before = metrics.events_before,
-        events_after = metrics.events_after,
-        removed_total = metrics.removed_total,
-        removed_fraction = metrics.removed_total_fraction,
-        margin_count = metrics.margin_removed_count,
-        margin_fraction = metrics.margin_removed_fraction,
-        mad_count = metrics.mad_removed_event_count,
-        mad_fraction = metrics.mad_removed_fraction,
-        it_count = metrics.it_removed_event_count,
-        it_fraction = metrics.it_removed_fraction,
-        consecutive_count = metrics.consecutive_removed_event_count,
-        consecutive_fraction = metrics.consecutive_removed_fraction,
-        bins = metrics.n_bins,
-        events_per_bin = metrics.events_per_bin,
-        peak_features = metrics.peak_feature_count,
-        warnings = warnings,
-        plots = plots
-    );
+    let html = PeacoQcReport {
+        summary,
+        channels: summary.channels.join(", "),
+        plots: report_plots(summary, mask),
+        plotly_js: PlotHtml(Plot::online_cdn_js()),
+    }
+    .render()
+    .map_err(|error| PeacoQcError::HtmlWrite {
+        path: path.to_path_buf(),
+        source: std::io::Error::other(error),
+    })?;
     fs::write(path, html).map_err(|source| PeacoQcError::HtmlWrite {
         path: path.to_path_buf(),
         source,
     })
 }
 
-fn report_plots(summary: &PeacoQcSummary, mask: &[EventMaskRecord]) -> String {
-    let mut panels = Vec::new();
-    panels.push(plot_panel(
-        "Removal summary",
-        &removal_summary_plot(summary).to_inline_html(Some("removal-summary")),
-    ));
-    panels.push(plot_panel(
-        "Removed bins",
-        &removed_bins_plot(summary).to_inline_html(Some("removed-bins")),
-    ));
-    if !mask.is_empty() {
-        panels.push(plot_panel(
-            "Event mask",
-            &event_mask_plot(mask).to_inline_html(Some("event-mask")),
-        ));
-    }
-    panels.join("\n")
+#[derive(Template)]
+#[template(path = "report.html")]
+struct PeacoQcReport<'a> {
+    summary: &'a PeacoQcSummary,
+    channels: String,
+    plots: Vec<PlotPanel>,
+    plotly_js: PlotHtml,
 }
-
-fn plot_panel(title: &str, plot_html: &str) -> String {
-    format!(
-        "<section class=\"plot-panel\"><h2>{}</h2>{}</section>",
-        escape_html(title),
-        plot_html
-    )
+struct PlotPanel {
+    title: &'static str,
+    plot: PlotHtml,
+}
+// Only generated Plotly fragments use this private wrapper and template |safe.
+struct PlotHtml(String);
+impl std::fmt::Display for PlotHtml {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+fn report_plots(summary: &PeacoQcSummary, mask: &[EventMaskRecord]) -> Vec<PlotPanel> {
+    let mut panels = vec![
+        PlotPanel {
+            title: "Removal summary",
+            plot: PlotHtml(removal_summary_plot(summary).to_inline_html(Some("removal-summary"))),
+        },
+        PlotPanel {
+            title: "Removed bins",
+            plot: PlotHtml(removed_bins_plot(summary).to_inline_html(Some("removed-bins"))),
+        },
+    ];
+    if !mask.is_empty() {
+        panels.push(PlotPanel {
+            title: "Event mask",
+            plot: PlotHtml(event_mask_plot(mask).to_inline_html(Some("event-mask"))),
+        });
+    }
+    panels
 }
 
 fn removal_summary_plot(summary: &PeacoQcSummary) -> Plot {
@@ -310,13 +253,4 @@ fn sampled_mask(mask: &[EventMaskRecord]) -> Vec<EventMaskRecord> {
     }
     let step = mask.len().div_ceil(MAX_POINTS);
     mask.iter().step_by(step).cloned().collect()
-}
-
-fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
 }

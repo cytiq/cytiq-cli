@@ -14,7 +14,7 @@ const PEACOQC_FIXTURE_EVENTS: &str = "sample_events.csv";
 #[test]
 fn cli_runs_peacoqc_with_debug_artifacts() {
     let directory = create_temp_dir("cytiq-engine-peacoqc");
-    let input = directory.join("sample.fcs");
+    let input = directory.join(r#"sample<&"'>.fcs"#);
     let output_path = directory.join("sample.peacoqc.fcs");
     let debug_dir = directory.join("debug");
     write_peacoqc_fixture_fcs(&input);
@@ -49,6 +49,13 @@ fn cli_runs_peacoqc_with_debug_artifacts() {
     assert!(debug_dir.join("mask.csv").is_file());
     let report = fs::read_to_string(debug_dir.join("report.html")).expect("report should exist");
     assert!(report.contains("plotly"));
+    assert!(!report.contains(input.file_name().unwrap().to_str().unwrap()));
+    assert!(report.contains("sample&#60;") || report.contains("sample&lt;"));
+    assert!(
+        report.contains("Removal summary")
+            && report.contains("Removed bins")
+            && report.contains("Event mask")
+    );
 
     let dataset = FcsReader::open(&output_path)
         .and_then(FcsReader::read)

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use cytiq_inspect::stats::{DEFAULT_BINS, StatsConfig, StatsRunner};
 use cytiq_provenance::record_path_for_file;
-use cytiq_stats::{DEFAULT_BINS, StatsConfig, StatsRunner};
 use log::info;
 use serde::Serialize;
 

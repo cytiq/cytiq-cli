@@ -1,4 +1,4 @@
-# Agent Guidelines: cytiq-meta
+# Agent Guidelines: cytiq-inspect
 
 Crate-specific guidance lives in [CONTRIBUTING.md](./CONTRIBUTING.md).
 Workspace-wide guidance lives in the root [CONTRIBUTING.md](../../CONTRIBUTING.md).

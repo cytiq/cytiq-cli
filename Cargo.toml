@@ -13,18 +13,16 @@ members = [
     "crates/cytiq-gating",
     "crates/cytiq-manifest",
     "crates/cytiq-mask",
-    "crates/cytiq-meta",
+    "crates/cytiq-inspect",
     "crates/cytiq-flowsom",
     "crates/cytiq-peacoqc",
     "crates/cytiq-plot",
-    "crates/cytiq-preflight",
     "crates/cytiq-provenance",
     "crates/cytiq-population",
     "crates/cytiq-specimen",
     "crates/cytiq-publish",
     "crates/cytiq-qc",
     "crates/cytiq-spillqc",
-    "crates/cytiq-stats",
     "crates/cytiq-transform",
 ]
 resolver = "3"
@@ -54,17 +52,15 @@ cytiq-flowsom = { path = "crates/cytiq-flowsom", version = "0.4.0" }
 cytiq-gating = { path = "crates/cytiq-gating", version = "0.4.0" }
 cytiq-manifest = { path = "crates/cytiq-manifest", version = "0.4.0" }
 cytiq-mask = { path = "crates/cytiq-mask", version = "0.4.0" }
-cytiq-meta = { path = "crates/cytiq-meta", version = "0.4.0" }
+cytiq-inspect = { path = "crates/cytiq-inspect", version = "0.4.0" }
 cytiq-peacoqc = { path = "crates/cytiq-peacoqc", version = "0.4.0" }
 cytiq-plot = { path = "crates/cytiq-plot", version = "0.4.0" }
-cytiq-preflight = { path = "crates/cytiq-preflight", version = "0.4.0" }
 cytiq-provenance = { path = "crates/cytiq-provenance", version = "0.4.0" }
 cytiq-population = { path = "crates/cytiq-population", version = "0.4.0" }
 cytiq-specimen = { path = "crates/cytiq-specimen", version = "0.4.0" }
 cytiq-publish = { path = "crates/cytiq-publish", version = "0.4.0" }
 cytiq-qc = { path = "crates/cytiq-qc", version = "0.4.0" }
 cytiq-spillqc = { path = "crates/cytiq-spillqc", version = "0.4.0" }
-cytiq-stats = { path = "crates/cytiq-stats", version = "0.4.0" }
 cytiq-transform = { path = "crates/cytiq-transform", version = "0.4.0" }
 
 askama = { version = "0.16.1", default-features = false, features = ["std", "derive"] }

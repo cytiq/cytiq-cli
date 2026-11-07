@@ -1,12 +1,12 @@
 [package]
-name = "cytiq-meta"
+name = "cytiq-inspect"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Exports the metadata of an FCS file as a single JSON document"
+description = "FCS metadata export and per-channel statistics for technical quality control"
 
 [dependencies]
 cytiq-fcs.workspace = true

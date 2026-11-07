@@ -1,4 +1,4 @@
-//! `cytiq-meta` extracts the metadata of an FCS file as a JSON document.
+//! `cytiq_inspect::meta` extracts the metadata of an FCS file as a JSON document.
 //!
 //! The document records the file identity (size and SHA-256), the FCS
 //! version, segment offsets, parameters and every TEXT keyword in file order.
@@ -8,8 +8,8 @@
 mod error;
 mod runner;
 
-pub use crate::error::MetaError;
-pub use crate::runner::{
+pub use self::error::MetaError;
+pub use self::runner::{
     FcsMetadata, FileIdentity, MetaConfig, MetaRunResult, MetaRunner, ParameterMetadata,
     ParameterWidthMetadata, SegmentOffsets, read_metadata,
 };

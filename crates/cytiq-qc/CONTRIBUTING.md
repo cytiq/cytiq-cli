@@ -12,6 +12,9 @@ this crate.
 - `src/runner.rs` — `QcRunner`: manifest and sample lookup, acquisition and
   coverage checks, the report.
 - `src/error.rs` — `QcError` (`thiserror`).
+- `src/preflight/` — run-manifest and FCS checks, their runner and error enum;
+  exposed only with feature `preflight`. Its check table lives in
+  [the preflight guide](docs/preflight.md).
 
 ## Invariants
 
@@ -28,10 +31,19 @@ this crate.
 - The report is written even when checks fail; the CLI turns failures into
   exit code 3 (`checks_failed`) through `ensure_passed` and `QcError::Failed`.
 - Never modifies inputs.
+- Preflight preserves every finding, including warnings, and writes a report
+  before `PreflightError::Failed` produces CLI exit code 3. Reuse `cytiq-fcs`
+  parsing and spillover handling; do not duplicate it here.
+- Both workflows use the same `CheckStatus`, with `pass < warn < fail` and
+  snake-case serialization. Their finding/report structures stay separate.
+- Keep `cytiq-compensate` optional and gated by `preflight`. Standalone QC and
+  specimen users must not gain that dependency without enabling the feature.
 
 ## Testing
 
 ```bash
 cargo test -p cytiq-qc
+cargo test -p cytiq-qc --features preflight
+cargo test -p cytiq-engine --test preflight_cli
 cargo test -p cytiq-engine --test qc_cli
 ```

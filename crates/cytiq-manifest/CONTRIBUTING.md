@@ -16,7 +16,7 @@ this crate.
 - YAML and JSON describe the same document; tests load both.
 - Every struct uses `deny_unknown_fields`, so typos fail loudly.
 - No file I/O beyond reading the manifest: checking FCS files belongs in
-  `cytiq-preflight`.
+  `cytiq-qc::preflight`.
 
 ## Testing
 

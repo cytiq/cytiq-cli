@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use cytiq_preflight::{CheckStatus, PreflightConfig, PreflightRunner};
 use cytiq_provenance::record_path_for_file;
+use cytiq_qc::preflight::{CheckStatus, PreflightConfig, PreflightRunner};
 use log::{debug, error, info, warn};
 use serde::Serialize;
 

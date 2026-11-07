@@ -26,9 +26,9 @@ flowchart TB
 
     subgraph checks["Checks before computation"]
         direction LR
-        preflight["preflight<br/>cytiq-preflight"]
-        meta["meta<br/>cytiq-meta"]
-        stats["stats (technical QC)<br/>cytiq-stats"]
+        preflight["preflight<br/>cytiq-qc::preflight"]
+        meta["meta<br/>cytiq-inspect"]
+        stats["stats (technical QC)<br/>cytiq-inspect"]
         cytoscan["cytoscan (cohort)<br/>cytiq-cytoscan"]
     end
 
@@ -178,8 +178,8 @@ binary; [`crates/cytiq-engine`](crates/cytiq-engine/README.md#build-and-distribu
 gives the `cargo install --locked` command that builds it with the release
 profile of the Docker image.
 
-The package and container were renamed from `cytiq-cli`. Before using the new
-registry names, complete the [registry migration](docs/rename-to-cytiq-engine.md).
+For an existing `cargo install cytiq-cli` installation, add `--force` to that
+install command to replace the `cytiq` executable owned by the old package.
 
 ## Docker
 

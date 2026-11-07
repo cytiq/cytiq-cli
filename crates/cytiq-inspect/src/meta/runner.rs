@@ -7,7 +7,7 @@ use cytiq_publish::{Existing, Publication};
 use log::{debug, info};
 use serde::Serialize;
 
-use crate::error::MetaError;
+use super::error::MetaError;
 
 const SCHEMA_VERSION: u32 = 1;
 

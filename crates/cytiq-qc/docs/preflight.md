@@ -1,4 +1,4 @@
-# cytiq-preflight
+# Preflight checks
 
 Checks a run manifest and its FCS files before any computation. Backs
 `cytiq preflight`.
@@ -53,6 +53,9 @@ still present, look exactly like raw values; such files must be declared
 
 ## Public API
 
+Enable the `preflight` feature and import these items from
+`cytiq_qc::preflight`. `CheckStatus` is shared with the root QC API.
+
 | Item | Purpose |
 | --- | --- |
 | `PreflightRunner::run` / `PreflightConfig` | Run the checks and write the report |
@@ -64,12 +67,13 @@ still present, look exactly like raw values; such files must be declared
 
 ## Dependencies
 
-[`cytiq-fcs`](../cytiq-fcs), [`cytiq-manifest`](../cytiq-manifest),
-[`cytiq-compensate`](../cytiq-compensate) (matrix files, read as `cytiq
+[`cytiq-fcs`](../../cytiq-fcs), [`cytiq-manifest`](../../cytiq-manifest),
+[`cytiq-compensate`](../../cytiq-compensate) (matrix files, read as `cytiq
 compensate --matrix` reads them), `serde` / `serde_json`.
 
 ## Tests
 
 ```bash
+cargo test -p cytiq-qc --features preflight
 cargo test -p cytiq-engine --test preflight_cli
 ```

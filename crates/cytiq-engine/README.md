@@ -17,7 +17,7 @@ chain and signal-state checks.
 | `cytiq transform` | [`cytiq-transform`](../cytiq-transform/README.md) | arcsinh / logicle / hyperlog / biexponential signal transforms |
 | `cytiq compensate` | [`cytiq-compensate`](../cytiq-compensate/README.md) | Apply a spillover or compensation matrix to sample events |
 | `cytiq spillqc` | [`cytiq-spillqc`](../cytiq-spillqc/README.md) | Flag likely spillover-matrix errors in stained samples (CompensAID SSI), per file and across a batch |
-| `cytiq preflight` | [`cytiq-preflight`](../cytiq-preflight/README.md) | Check a run manifest and its FCS files before computation |
+| `cytiq preflight` | [`cytiq-qc::preflight`](../cytiq-qc/docs/preflight.md) | Check a run manifest and its FCS files before computation |
 | `cytiq qc` | [`cytiq-qc`](../cytiq-qc/README.md) | Check a sample's final event mask against its panel's QC policy |
 | `cytiq mask combine` | [`cytiq-mask`](../cytiq-mask/README.md) | Combine per-event masks of one acquisition |
 | `cytiq cytoscan` | [`cytiq-cytoscan`](../cytiq-cytoscan/README.md) | File-level anomaly detection over a cohort |
@@ -33,8 +33,8 @@ chain and signal-state checks.
 | `cytiq flowsom train/apply` | [`cytiq-flowsom`](../cytiq-flowsom/README.md) | Persist and reuse SOM models, with optional consensus metaclustering |
 | `cytiq cytonorm train/apply` | [`cytiq-cytonorm`](../cytiq-cytonorm/README.md) | Panel-specific batch normalization, controls/aggregates and QC |
 | `cytiq plot` | [`cytiq-plot`](../cytiq-plot/README.md) | 2-D density, scatter and contour plots and 1-D histograms as vector SVG (or Plotly JSON), with removed events, gates and classes overlaid |
-| `cytiq meta` | [`cytiq-meta`](../cytiq-meta/README.md) | FCS metadata export as JSON |
-| `cytiq stats` | [`cytiq-stats`](../cytiq-stats/README.md) | Per-channel statistics for technical QC: distribution, detector-limit and zero counts, histograms, Time channel |
+| `cytiq meta` | [`cytiq-inspect::meta`](../cytiq-inspect/docs/meta.md) | FCS metadata export as JSON |
+| `cytiq stats` | [`cytiq-inspect::stats`](../cytiq-inspect/docs/stats.md) | Per-channel statistics for technical QC: distribution, detector-limit and zero counts, histograms, Time channel |
 
 `cytiq <command> --help` lists every flag with its default.
 

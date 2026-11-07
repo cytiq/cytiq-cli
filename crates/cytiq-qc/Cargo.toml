@@ -6,9 +6,14 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Checks a sample's final event mask against the QC policy of its panel"
+description = "Run-manifest preflight checks and sample event-mask quality-control policies"
+
+[features]
+default = []
+preflight = ["dep:cytiq-compensate"]
 
 [dependencies]
+cytiq-compensate = { workspace = true, optional = true }
 cytiq-fcs.workspace = true
 cytiq-manifest.workspace = true
 cytiq-mask.workspace = true

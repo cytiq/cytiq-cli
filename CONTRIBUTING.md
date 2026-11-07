@@ -92,9 +92,6 @@ The parity suites against the upstream R/Python tools run locally, not in CI: in
 
 ## crates.io publication
 
-For the repository, package and container rename, follow
-[the migration guide](docs/rename-to-cytiq-engine.md) before releasing or deploying consumers.
-
 Every workspace crate is published, because `cytiq-engine` depends on all the
 others. They share the workspace version. Library crates are depended on through
 `[workspace.dependencies]` in the root `Cargo.toml`, which gives crates.io the

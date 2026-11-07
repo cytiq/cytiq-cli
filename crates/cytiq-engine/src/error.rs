@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn wrapped_fcs_errors_keep_their_classification() {
-        let error = cytiq_stats::StatsError::FcsRead {
+        let error = cytiq_inspect::stats::StatsError::FcsRead {
             path: PathBuf::from("a.fcs"),
             source: cytiq_fcs::Error::Io(io_error(io::ErrorKind::NotFound)),
         };
@@ -122,12 +122,12 @@ mod tests {
                 path: PathBuf::from("out.fcs"),
             });
         assert_eq!(classify(&exists), OutcomeReason::OutputConflict);
-        assert_eq!(code(&cytiq_stats::StatsError::InvalidBins(1)), 2);
+        assert_eq!(code(&cytiq_inspect::stats::StatsError::InvalidBins(1)), 2);
         assert_eq!(code(&io_error(io::ErrorKind::InvalidInput)), 2);
     }
 
     #[derive(Debug)]
-    struct Wrapper(cytiq_stats::StatsError);
+    struct Wrapper(cytiq_inspect::stats::StatsError);
 
     impl std::fmt::Display for Wrapper {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -145,7 +145,10 @@ mod tests {
     fn unknown_errors_are_runtime_errors_unless_their_source_is_known() {
         let opaque: Box<dyn Error> = "something broke".into();
         assert_eq!(code(opaque.as_ref()), 1);
-        assert_eq!(code(&Wrapper(cytiq_stats::StatsError::InvalidBins(0))), 2);
+        assert_eq!(
+            code(&Wrapper(cytiq_inspect::stats::StatsError::InvalidBins(0))),
+            2
+        );
     }
 
     #[test]

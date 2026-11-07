@@ -45,3 +45,9 @@ repomix-output.xml
 .worktrees/
 worktrees/
 repomix-output*
+
+# Local agent/session artifacts, not maintained documentation.
+/docs/sessions/
+/docs/audits/
+/docs/*-plan.md
+/docs/*-rollout.md

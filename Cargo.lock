@@ -789,19 +789,17 @@ dependencies = [
  "cytiq-fcs",
  "cytiq-flowsom",
  "cytiq-gating",
+ "cytiq-inspect",
  "cytiq-manifest",
  "cytiq-mask",
- "cytiq-meta",
  "cytiq-peacoqc",
  "cytiq-plot",
  "cytiq-population",
- "cytiq-preflight",
  "cytiq-provenance",
  "cytiq-publish",
  "cytiq-qc",
  "cytiq-specimen",
  "cytiq-spillqc",
- "cytiq-stats",
  "cytiq-transform",
  "log",
  "parquet",
@@ -859,6 +857,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cytiq-inspect"
+version = "0.4.0"
+dependencies = [
+ "cytiq-fcs",
+ "cytiq-provenance",
+ "cytiq-publish",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cytiq-manifest"
 version = "0.4.0"
 dependencies = [
@@ -880,19 +891,6 @@ dependencies = [
  "parquet",
  "proptest",
  "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "cytiq-meta"
-version = "0.4.0"
-dependencies = [
- "cytiq-fcs",
- "cytiq-provenance",
- "cytiq-publish",
- "log",
- "serde",
- "serde_json",
  "thiserror",
 ]
 
@@ -959,20 +957,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cytiq-preflight"
-version = "0.4.0"
-dependencies = [
- "cytiq-compensate",
- "cytiq-fcs",
- "cytiq-manifest",
- "cytiq-publish",
- "log",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "cytiq-provenance"
 version = "0.4.0"
 dependencies = [
@@ -997,6 +981,7 @@ dependencies = [
 name = "cytiq-qc"
 version = "0.4.0"
 dependencies = [
+ "cytiq-compensate",
  "cytiq-fcs",
  "cytiq-manifest",
  "cytiq-mask",
@@ -1041,19 +1026,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "cytiq-stats"
-version = "0.4.0"
-dependencies = [
- "cytiq-fcs",
- "cytiq-provenance",
- "cytiq-publish",
- "log",
- "serde",
- "serde_json",
  "thiserror",
 ]
 

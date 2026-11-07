@@ -3,6 +3,10 @@
 Checks one sample's final event mask against the QC policy of its panel in
 the run manifest. Backs `cytiq qc`.
 
+The optional [`preflight` module](docs/preflight.md) also backs `cytiq preflight`
+and checks a run manifest and its FCS files before computation. Enable the
+`preflight` feature for that Rust API; the CLI enables it automatically.
+
 ```bash
 cytiq qc --manifest run.yaml --sample S01 --mask sample.analysis.parquet --output qc.json
 ```
@@ -69,10 +73,25 @@ removed when any is `false`.
 [`cytiq-manifest`](../cytiq-manifest) (`QcPolicy`),
 [`cytiq-mask`](../cytiq-mask), `serde` / `serde_json`.
 
+Default features are empty. Feature `preflight` adds `cytiq-compensate` for
+matrix-file checks. Standalone QC and specimen consumers do not enable it.
+`preflight::CheckStatus` re-exports the root `CheckStatus`.
+
+## Rust API migration
+
+Replace a `cytiq-preflight` dependency with `cytiq-qc` at the matching workspace
+release version and enable its `preflight` feature. Imports move from
+`cytiq_preflight::{…}` to `cytiq_qc::preflight::{…}`; type, function, constant and
+error-variant names stay the same. There is no compatibility package.
+
+The existing root QC API, including `cytiq_qc::CheckStatus`, is preserved.
+`cytiq preflight` retains its flags, findings, report format and exit codes.
+
 ## Tests
 
 ```bash
 cargo test -p cytiq-qc
+cargo test -p cytiq-qc --features preflight
 cargo test -p cytiq-engine --test qc_cli
 cargo test -p cytiq-engine --test pipeline_cli   # the golden chain runs qc
 ```

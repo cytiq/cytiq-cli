@@ -1,4 +1,4 @@
-//! `cytiq-stats` summarizes every channel of an FCS file for technical QC.
+//! `cytiq_inspect::stats` summarizes every channel of an FCS file for technical QC.
 //!
 //! One pass over the decoded events gives, per channel, the value range and
 //! distribution (min, max, mean, standard deviation, 1st/50th/99th
@@ -12,8 +12,8 @@ mod error;
 mod runner;
 mod summary;
 
-pub use crate::error::StatsError;
-pub use crate::runner::{
+pub use self::error::StatsError;
+pub use self::runner::{
     ChannelKind, ChannelStats, DEFAULT_BINS, FileIdentity, Histogram, HistogramScale, StatsConfig,
     StatsReport, StatsRunner, TIME_BINS, TimeStats, read_stats,
 };

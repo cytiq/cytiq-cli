@@ -5,17 +5,11 @@ use cytiq_fcs::{FcsDataset, FcsReader, Parameter, Spillover};
 use cytiq_manifest::{ControlEntry, Marker, MatrixKind, Panel, SignalState};
 use serde::Serialize;
 
+use crate::CheckStatus;
+
 /// Warn when the 1-norm condition number of the spillover matrix exceeds
 /// this: compensation then amplifies raw-value noise by up to that factor.
 pub const SPILLOVER_CONDITION_WARN: f64 = 100.0;
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CheckStatus {
-    Pass,
-    Warn,
-    Fail,
-}
 
 /// One preflight finding.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

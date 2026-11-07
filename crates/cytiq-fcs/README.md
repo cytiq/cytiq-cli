@@ -5,7 +5,7 @@ spillover / compensation helpers. It has no command of its own: every other
 `cytiq` crate that touches FCS files goes through it.
 
 Used by `cytiq-autospill`, `cytiq-autospectral`, `cytiq-clean`,
-`cytiq-cytoscan`, `cytiq-flowsom`, `cytiq-gating`, `cytiq-meta`,
+`cytiq-cytoscan`, `cytiq-flowsom`, `cytiq-gating`, `cytiq-inspect`,
 `cytiq-peacoqc`, `cytiq-transform` and `cytiq-engine`.
 
 ## What it does

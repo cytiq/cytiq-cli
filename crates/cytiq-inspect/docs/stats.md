@@ -1,4 +1,4 @@
-# cytiq-stats
+# Channel statistics
 
 Per-channel statistics of one FCS file for technical QC. Backs the
 `cytiq stats` command.
@@ -63,7 +63,7 @@ The command writes `sample.stats.json.provenance.json` next to the report.
 From Rust:
 
 ```rust
-use cytiq_stats::{DEFAULT_BINS, read_stats};
+use cytiq_inspect::stats::{DEFAULT_BINS, read_stats};
 
 let report = read_stats("sample.fcs", DEFAULT_BINS)?;
 let saturated = report.channels.iter().map(|channel| channel.at_detector_limit).max();

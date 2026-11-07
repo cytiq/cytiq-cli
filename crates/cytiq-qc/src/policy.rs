@@ -342,6 +342,19 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn check_status_preserves_wire_values_and_severity_order() {
+        let statuses = [CheckStatus::Pass, CheckStatus::Warn, CheckStatus::Fail];
+        for (status, value) in statuses.into_iter().zip(["pass", "warn", "fail"]) {
+            let json = format!("\"{value}\"");
+            assert_eq!(serde_json::to_string(&status).unwrap(), json);
+            assert_eq!(serde_json::from_str::<CheckStatus>(&json).unwrap(), status);
+        }
+        assert!(statuses.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(CheckStatus::from(Severity::Warn), CheckStatus::Warn);
+        assert_eq!(CheckStatus::from(Severity::Fail), CheckStatus::Fail);
+    }
+
     const RAW: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
     /// Ten raw events: margins removed 1, `PeacoQC` (as `2.margin_pass` and

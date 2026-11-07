@@ -48,13 +48,13 @@ pub(super) fn known(error: &(dyn Error + 'static)) -> Option<OutcomeReason> {
         cytiq_cytoscan::CytoScanError => cytoscan,
         cytiq_flowsom::FlowSomError => flowsom,
         cytiq_gating::GatingError => gating,
-        cytiq_meta::MetaError => meta,
+        cytiq_inspect::meta::MetaError => meta,
         cytiq_peacoqc::PeacoQcError => peacoqc,
         cytiq_plot::PlotError => plot,
-        cytiq_preflight::PreflightError => preflight,
+        cytiq_qc::preflight::PreflightError => preflight,
         cytiq_qc::QcError => qc,
         cytiq_spillqc::SpillQcError => spillqc,
-        cytiq_stats::StatsError => stats,
+        cytiq_inspect::stats::StatsError => stats,
         cytiq_transform::TransformError => transform,
     }
     None
@@ -149,8 +149,8 @@ fn qc(error: &cytiq_qc::QcError) -> OutcomeReason {
     }
 }
 
-fn preflight(error: &cytiq_preflight::PreflightError) -> OutcomeReason {
-    use cytiq_preflight::PreflightError as E;
+fn preflight(error: &cytiq_qc::preflight::PreflightError) -> OutcomeReason {
+    use cytiq_qc::preflight::PreflightError as E;
     match error {
         E::Manifest(source) => manifest(source),
         E::Publish(source) => OutcomeReason::of_publish(source),
@@ -187,8 +187,8 @@ fn spillqc(error: &cytiq_spillqc::SpillQcError) -> OutcomeReason {
     }
 }
 
-fn stats(error: &cytiq_stats::StatsError) -> OutcomeReason {
-    use cytiq_stats::StatsError as E;
+fn stats(error: &cytiq_inspect::stats::StatsError) -> OutcomeReason {
+    use cytiq_inspect::stats::StatsError as E;
     match error {
         E::FcsRead { source, .. } => fcs(source),
         E::Hash { source, .. } | E::OutputWrite { source, .. } => io(source),
@@ -198,8 +198,8 @@ fn stats(error: &cytiq_stats::StatsError) -> OutcomeReason {
     }
 }
 
-fn meta(error: &cytiq_meta::MetaError) -> OutcomeReason {
-    use cytiq_meta::MetaError as E;
+fn meta(error: &cytiq_inspect::meta::MetaError) -> OutcomeReason {
+    use cytiq_inspect::meta::MetaError as E;
     match error {
         E::FcsRead { source, .. } => fcs(source),
         E::Hash { source, .. } | E::OutputWrite { source, .. } => io(source),

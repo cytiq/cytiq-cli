@@ -5,10 +5,16 @@
 //! Masks are the common contract of the preprocessing stages, so the checks
 //! read the combined mask (`cytiq mask combine`) instead of each stage's own
 //! report.
+//!
+//! With the `preflight` feature, `preflight` checks run manifests and their
+//! FCS inputs before computation. The feature is disabled by default.
 
 mod error;
 mod policy;
 mod runner;
+
+#[cfg(feature = "preflight")]
+pub mod preflight;
 
 pub use crate::error::QcError;
 pub use crate::policy::{CheckStatus, FilterMetrics, QcCheck, QcMetrics, evaluate};

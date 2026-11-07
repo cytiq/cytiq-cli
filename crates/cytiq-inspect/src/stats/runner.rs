@@ -8,8 +8,8 @@ use cytiq_publish::{Existing, Publication};
 use log::{debug, info};
 use serde::Serialize;
 
-use crate::error::StatsError;
-use crate::summary::{Summary, bin, decreases, summarize};
+use super::error::StatsError;
+use super::summary::{Summary, bin, decreases, summarize};
 
 const SCHEMA_VERSION: u32 = 1;
 /// Histogram bins per channel unless `--bins` says otherwise.

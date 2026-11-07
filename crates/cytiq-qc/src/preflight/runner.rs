@@ -8,12 +8,13 @@ use cytiq_publish::Existing;
 use log::{debug, info};
 use serde::Serialize;
 
-use crate::checks::{
-    Check, CheckStatus, LoadedFile, check_control_coverage, check_control_dyes, check_detectors,
-    check_file, check_linear_scale, check_markers, check_matrix, check_primary_channel,
-    check_signal_state, check_spillover, panel_scope,
+use super::checks::{
+    Check, LoadedFile, check_control_coverage, check_control_dyes, check_detectors, check_file,
+    check_linear_scale, check_markers, check_matrix, check_primary_channel, check_signal_state,
+    check_spillover, panel_scope,
 };
-use crate::error::PreflightError;
+use super::error::PreflightError;
+use crate::CheckStatus;
 
 /// Configuration of `cytiq preflight`.
 #[derive(Clone, Debug, PartialEq, Eq)]

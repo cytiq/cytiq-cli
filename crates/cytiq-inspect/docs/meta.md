@@ -1,4 +1,4 @@
-# cytiq-meta
+# Metadata
 
 Exports the metadata of one FCS file as a single JSON document. Backs the
 `cytiq meta` command.
@@ -54,7 +54,7 @@ writes no record.
 From Rust:
 
 ```rust
-use cytiq_meta::{MetaConfig, MetaRunner, read_metadata};
+use cytiq_inspect::meta::{MetaConfig, MetaRunner, read_metadata};
 
 // In-memory only.
 let metadata = read_metadata("raw.fcs")?;
@@ -87,9 +87,9 @@ let result = MetaRunner::run(&MetaConfig {
 
 ## Dependencies
 
-- [`cytiq-fcs`](../cytiq-fcs) for parsing
+- [`cytiq-fcs`](../../cytiq-fcs) for parsing
 - `serde` / `serde_json` for the document,
-  [`cytiq-provenance`](../cytiq-provenance) for hashing
+  [`cytiq-provenance`](../../cytiq-provenance) for hashing
 
 ## Tests
 

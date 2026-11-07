@@ -50,7 +50,7 @@ this crate.
   `FcsReadLimits` before reading either. Use checked arithmetic on declared
   sizes, and keep per-keyword work linear in the TEXT size (`$Pn*` keywords
   are grouped in one pass).
-- `TextSegment::pairs` preserve file order and raw values. `cytiq-meta` exports
+- `TextSegment::pairs` preserve file order and raw values. `cytiq-inspect` exports
   them verbatim, so do not normalize or reorder them.
 - `Parameter::keywords` hold only that parameter's `$Pn*` keywords
   (`parameter_keywords_do_not_leak_across_indexes`).
@@ -73,7 +73,7 @@ this crate.
 
 - Workflow logic (gating, transforms, QC) belongs in the consumer crates, not
   here. This crate stays a format library.
-- Metadata export to JSON belongs in `cytiq-meta`.
+- Metadata export to JSON belongs in `cytiq-inspect`.
 - Public API changes affect every crate in the workspace: run the full
   `just verify`, not only this crate's tests.
 

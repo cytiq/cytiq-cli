@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use cytiq_meta::{MetaConfig, MetaRunner};
+use cytiq_inspect::meta::{MetaConfig, MetaRunner};
 use cytiq_provenance::record_path_for_file;
 use log::debug;
 use serde::Serialize;

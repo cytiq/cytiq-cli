@@ -30,3 +30,6 @@ parity/.env/
 parity/.out/
 parity/.data/
 __pycache__/
+
+.grepai/
+repomix-output.xml
